@@ -257,7 +257,13 @@ export async function POST(req: NextRequest) {
         );
 
         // Try to link to a specific product via campaign code (e.g. "TP01", "INS01")
-        const productId  = extractProductId(row.campaign_name ?? null, account.brandId);
+        // Verify the product actually exists in DB before linking (avoid FK constraint errors)
+        const rawProductId = extractProductId(row.campaign_name ?? null, account.brandId);
+        let productId: string | null = null;
+        if (rawProductId) {
+          const exists = await prisma.product.findUnique({ where: { id: rawProductId }, select: { id: true } });
+          productId = exists ? rawProductId : null;
+        }
 
         await prisma.adSpend.create({
           data: {
