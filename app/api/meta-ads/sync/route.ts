@@ -107,17 +107,11 @@ async function upsertCampaignStatus(
   accountId: string, brandId: string,
   status: string, effectiveStatus: string,
 ) {
-  await prisma.$executeRawUnsafe(`
-    INSERT INTO MetaCampaignStatus (id, campaignId, campaignName, accountId, brandId, status, effectiveStatus, createdAt, updatedAt)
-    VALUES (lower(hex(randomblob(9))), ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
-    ON CONFLICT(campaignId) DO UPDATE SET
-      status = excluded.status,
-      effectiveStatus = excluded.effectiveStatus,
-      campaignName = excluded.campaignName,
-      accountId = excluded.accountId,
-      brandId = excluded.brandId,
-      updatedAt = datetime('now')
-  `, campaignId, campaignName, accountId, brandId, status, effectiveStatus);
+  await prisma.metaCampaignStatus.upsert({
+    where: { campaignId },
+    create: { campaignId, campaignName, accountId, brandId, status, effectiveStatus },
+    update: { campaignName, accountId, brandId, status, effectiveStatus },
+  });
 }
 
 function getPurchases(actions: any[]): number {
