@@ -83,7 +83,7 @@ async function fetchCampaignStatuses(accountId: string): Promise<Array<{
     `?fields=id,name,status,effective_status&limit=200` +
     `&access_token=${TOKEN}`;
   while (url) {
-    const res  = await fetch(url);
+    const res: Response = await fetch(url);
     const data = await res.json();
     if (data.error) {
       const code = data.error?.code ?? 0;
