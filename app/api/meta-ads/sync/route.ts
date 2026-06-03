@@ -258,7 +258,7 @@ export async function POST(req: NextRequest) {
           data: {
             brandId:         account.brandId,
             countryId,
-            productId:       productId ?? undefined,
+            productId:       null,
             accountId:       account.accountId,
             date:            new Date(row.date_start),
             platform:        "facebook",
