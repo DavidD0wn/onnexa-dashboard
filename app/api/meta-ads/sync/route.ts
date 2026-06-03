@@ -256,14 +256,9 @@ export async function POST(req: NextRequest) {
           account.currency,
         );
 
-        // Try to link to a specific product via campaign code (e.g. "TP01", "INS01")
-        // Verify the product actually exists in DB before linking (avoid FK constraint errors)
-        const rawProductId = extractProductId(row.campaign_name ?? null, account.brandId);
-        let productId: string | null = null;
-        if (rawProductId) {
-          const exists = await prisma.product.findUnique({ where: { id: rawProductId }, select: { id: true } });
-          productId = exists ? rawProductId : null;
-        }
+        // productId linking disabled — Product table is empty in cloud DB
+        // Will re-enable once products are seeded
+        const productId: string | null = null;
 
         await prisma.adSpend.create({
           data: {
