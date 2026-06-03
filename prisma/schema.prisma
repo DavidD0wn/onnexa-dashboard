@@ -1,0 +1,562 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Brand {
+  id        String   @id @default(cuid())
+  name      String
+  status    String   @default("active")
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  stores       Store[]
+  products     Product[]
+  adSpend      AdSpend[]
+  dailyMetrics DailyMetric[]
+  tasks        Task[]
+}
+
+model Country {
+  id                  String  @id @default(cuid())
+  name                String
+  code                String  @unique
+  currency            String
+  exchangeRateToUsd   Float   @default(1.0)
+  gatewayFeePercent   Float   @default(3.5)
+  gatewayFixedFee     Float   @default(0.30)
+  defaultShippingCost Float   @default(5.0)
+  targetCpa           Float?
+  targetMargin        Float?
+
+  stores       Store[]
+  products     Product[]
+  adSpend      AdSpend[]
+  dailyMetrics DailyMetric[]
+  tasks        Task[]
+}
+
+model Store {
+  id         String   @id @default(cuid())
+  brandId    String
+  countryId  String
+  name       String
+  shopifyUrl String?
+  currency   String
+  status     String   @default("active")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  brand        Brand         @relation(fields: [brandId], references: [id])
+  country      Country       @relation(fields: [countryId], references: [id])
+  products     Product[]
+  orders       Order[]
+  dailyMetrics DailyMetric[]
+}
+
+model Product {
+  id               String   @id @default(cuid())
+  brandId          String
+  storeId          String
+  countryId        String
+  name             String
+  shopifyProductId String?
+  status           String   @default("active")
+  supplierName     String?
+  supplierCostUsd  Float?
+  localPrice       Float?
+  shippingCost     Float?
+  targetCpa        Float?
+  targetMargin     Float?
+  landingUrl       String?
+  notes            String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  brand        Brand              @relation(fields: [brandId], references: [id])
+  store        Store              @relation(fields: [storeId], references: [id])
+  country      Country            @relation(fields: [countryId], references: [id])
+  costTiers    SupplierCostTier[]
+  orderItems   OrderItem[]
+  adSpend      AdSpend[]
+  dailyMetrics DailyMetric[]
+  tasks        Task[]
+}
+
+model SupplierCostTier {
+  id              String    @id @default(cuid())
+  productId       String
+  supplierName    String
+  minQuantity     Int
+  maxQuantity     Int?
+  unitCostUsd     Float
+  shippingCostUsd Float     @default(0)
+  landedCostUsd   Float
+  quoteDate       DateTime?
+  notes           String?
+  createdAt       DateTime  @default(now())
+
+  product Product @relation(fields: [productId], references: [id])
+}
+
+model Order {
+  id                String   @id @default(cuid())
+  storeId           String
+  shopifyOrderId    String?
+  orderNumber       String
+  orderDate         DateTime
+  customerName      String?
+  currency          String
+  grossRevenue      Float
+  netRevenue        Float
+  discounts         Float    @default(0)
+  taxes             Float    @default(0)
+  shippingCharged   Float    @default(0)
+  paymentStatus     String   @default("pending")
+  fulfillmentStatus String   @default("unfulfilled")
+  orderStatus       String   @default("open")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  store Store       @relation(fields: [storeId], references: [id])
+  items OrderItem[]
+}
+
+model OrderItem {
+  id           String   @id @default(cuid())
+  orderId      String
+  productId    String
+  quantity     Int
+  unitPrice    Float
+  totalPrice   Float
+  productCost  Float    @default(0)
+  shippingCost Float    @default(0)
+  createdAt    DateTime @default(now())
+
+  order   Order   @relation(fields: [orderId], references: [id])
+  product Product @relation(fields: [productId], references: [id])
+}
+
+model AdSpend {
+  id              String   @id @default(cuid())
+  brandId         String
+  countryId       String
+  productId       String?
+  accountId       String?  // Meta Ads account ID (e.g. act_586...)
+  date            DateTime
+  platform        String
+  campaignName    String?
+  adsetName       String?
+  adName          String?
+  spend           Float
+  impressions     Int      @default(0)
+  clicks          Int      @default(0)
+  purchases       Int      @default(0)
+  conversionValue Float    @default(0)
+  ctr             Float?
+  cpc             Float?
+  cpm             Float?
+  cpa             Float?
+  roas            Float?
+  createdAt       DateTime @default(now())
+
+  brand   Brand    @relation(fields: [brandId], references: [id])
+  country Country  @relation(fields: [countryId], references: [id])
+  product Product? @relation(fields: [productId], references: [id])
+}
+
+model DailyMetric {
+  id           String   @id @default(cuid())
+  date         DateTime
+  brandId      String
+  countryId    String
+  storeId      String
+  productId    String?
+  ordersCount      Int      @default(0)
+  unitsSold        Int      @default(0)
+  grossRevenue     Float    @default(0)
+  netRevenue       Float    @default(0)
+  discounts        Float    @default(0)
+  returns          Float    @default(0)
+  adSpend          Float    @default(0)
+  adSpendFacebook  Float    @default(0)
+  adSpendGoogle    Float    @default(0)
+  adSpendSnapchat  Float    @default(0)
+  adSpendTiktok    Float    @default(0)
+  cogs             Float    @default(0)
+  shippingCost     Float    @default(0)
+  fees             Float    @default(0)
+  handlingFees     Float    @default(0)
+  taxes            Float    @default(0)
+  otherCosts       Float    @default(0)
+  costMarketing    Float    @default(0)
+  costOffice       Float    @default(0)
+  netProfit        Float    @default(0)
+  netMargin        Float    @default(0)
+  aov              Float    @default(0)
+  cpa              Float?
+  roas             Float?
+  mer              Float?
+  decision     String?
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  brand   Brand   @relation(fields: [brandId], references: [id])
+  country Country @relation(fields: [countryId], references: [id])
+  store   Store   @relation(fields: [storeId], references: [id])
+  product Product? @relation(fields: [productId], references: [id])
+}
+
+model Task {
+  id          String    @id @default(cuid())
+  title       String
+  description String?
+  status      String    @default("pending")
+  priority    String    @default("medium")
+  brandId     String?
+  countryId   String?
+  productId   String?
+  assignedTo  String?
+  dueDate     DateTime?
+  category    String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  brand   Brand?   @relation(fields: [brandId], references: [id])
+  country Country? @relation(fields: [countryId], references: [id])
+  product Product? @relation(fields: [productId], references: [id])
+}
+
+model PricingScenario {
+  id                 String   @id @default(cuid())
+  name               String
+  brandId            String?
+  countryId          String?
+  productId          String?
+  sellingPrice       Float
+  productCost        Float
+  shippingCost       Float
+  gatewayFeePercent  Float
+  expectedCpa        Float
+  desiredMargin      Float
+  quantity           Int      @default(1)
+  discount           Float    @default(0)
+  otherCosts         Float    @default(0)
+  minProfitablePrice Float?
+  recommendedPrice   Float?
+  maxCpa             Float?
+  profitPerOrder     Float?
+  marginPercent      Float?
+  breakEven          Float?
+  minRoas            Float?
+  status             String?
+  createdAt          DateTime @default(now())
+}
+
+model Import {
+  id           String   @id @default(cuid())
+  type         String
+  filename     String
+  status       String   @default("pending")
+  totalRows    Int      @default(0)
+  importedRows Int      @default(0)
+  errorRows    Int      @default(0)
+  errors       String?
+  createdAt    DateTime @default(now())
+}
+
+model MetaBotConfig {
+  id               String   @id @default(cuid())
+  platform         String   // "instagram" | "facebook" | "both"
+  pageId           String?
+  pageAccessToken  String?
+  igAccountId      String?
+  autoReplyEnabled Boolean  @default(false)
+  replyToComments  Boolean  @default(true)
+  replyToDMs       Boolean  @default(true)
+  systemPrompt     String?
+  signatureText    String?
+  brandContext     String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  conversations MetaConversation[]
+}
+
+model MetaConversation {
+  id           String   @id @default(cuid())
+  configId     String
+  platform     String   // "instagram" | "facebook"
+  type         String   // "comment" | "dm"
+  senderId     String
+  senderName   String?
+  postId       String?
+  commentId    String?
+  threadId     String?
+  inboundText  String
+  outboundText String?
+  ruleMatched  String?
+  status       String   @default("pending")
+  hidden       Boolean  @default(false)
+  errorMsg     String?
+  rawPayload   String?
+  createdAt    DateTime @default(now())
+
+  config MetaBotConfig @relation(fields: [configId], references: [id])
+}
+
+// ── Zoho Mail Bot ───────────────────────────────────────────
+
+model ZohoBotConfig {
+  id               String    @id @default(cuid())
+  emailAddress     String
+  displayName      String?
+  accountId        String    @unique
+  refreshToken     String
+  accessToken      String?
+  tokenExpiry      DateTime?
+  authDomain       String    @default("https://accounts.zoho.com")
+  apiDomain        String    @default("https://mail.zoho.com")
+  inboxFolderId    String?
+  autoReplyEnabled Boolean   @default(true)
+  lastSyncAt       DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  rules         ZohoBotRule[]
+  conversations ZohoConversation[]
+}
+
+model ZohoBotRule {
+  id         String        @id @default(cuid())
+  configId   String
+  config     ZohoBotConfig @relation(fields: [configId], references: [id])
+  name       String
+  keywords   String        // JSON array
+  response   String
+  priority   Int           @default(1)
+  isActive   Boolean       @default(true)
+  matchCount Int           @default(0)
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+}
+
+model ZohoConversation {
+  id           String        @id @default(cuid())
+  configId     String
+  config       ZohoBotConfig @relation(fields: [configId], references: [id])
+  messageId    String        @unique
+  fromEmail    String
+  fromName     String?
+  subject      String
+  inboundText  String
+  outboundText String?
+  ruleMatched  String?
+  status       String        @default("pending")
+  hidden       Boolean       @default(false)
+  errorMsg     String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+}
+
+model MetaBotRule {
+  id           String   @id @default(cuid())
+  configId     String
+  name         String
+  keywords     String   // JSON array: ["precio","cuanto","cuesta"]
+  response     String   // Plantilla con variables: {tienda_url}, {nombre}
+  isActive     Boolean  @default(true)
+  priority     Int      @default(0)
+  matchCount   Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// ── Meta Ads ────────────────────────────────────────────────
+
+model MetaCampaignStatus {
+  id              String   @id @default(cuid())
+  campaignId      String   @unique   // Meta campaign ID numérico
+  campaignName    String
+  accountId       String
+  brandId         String
+  status          String   // "ACTIVE" | "PAUSED" | "DELETED" | "ARCHIVED"
+  effectiveStatus String   // estado real considerando jerarquía (cuenta/adset)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model MetaAdsAccount {
+  id          String   @id @default(cuid())
+  accountId   String   @unique  // act_XXXX
+  accountName String
+  brandId     String
+  currency    String
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model MetaAdsSyncLog {
+  id          String   @id @default(cuid())
+  status      String   // "success" | "error"
+  recordsSaved Int     @default(0)
+  errorMsg    String?
+  dateFrom    String?
+  dateTo      String?
+  createdAt   DateTime @default(now())
+}
+
+// ── Chargebacks ──────────────────────────────────────────────
+
+model Chargeback {
+  id        String   @id @default(cuid())
+  date      DateTime
+  brandId   String
+  amount    Float    // Monto perdido (siempre positivo, se resta a la ganancia)
+  orderId   String?  // Referencia al pedido de Shopify (opcional)
+  reason    String?  // Motivo: "fraud", "item_not_received", "not_as_described", etc.
+  status    String   @default("confirmed") // confirmed | disputed | won
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ── COGS por país, tienda, producto y oferta ──────────────────────────────
+model ProductCogsByCountry {
+  id                     String    @id @default(cuid())
+  countryCode            String    // MX | US | CL
+  storeId                String    @default("all") // brand_glowmmi | brand_balancea | all
+  storeName              String    @default("")
+  brand                  String    @default("") // glowmmi | balancea
+  productBaseName        String    // Holy Basil, InstantLift, Deep Collagen…
+  offerName              String    // Holy Basil x1, Holy Basil 2+1 Free…
+  unitsTotal             Int       @default(1)  // total units client receives
+  unitsPaid              Int       @default(1)
+  unitsFree              Int       @default(0)
+  productCostTotalUsd    Float     @default(0)  // editable: COGS total de esta oferta
+  productCostUnitUsd     Float     @default(0)  // auto: productCostTotalUsd / unitsTotal
+  shippingCostUsd        Float     @default(0)
+  shippingIncludedInCogs Boolean   @default(true)
+  gatewayFeeUsd          Float     @default(0)
+  gatewayFeePercent      Float     @default(3.5)
+  fulfillmentCostUsd     Float     @default(0)
+  otherCostsUsd          Float     @default(0)
+  totalCostBeforeAdsUsd  Float     @default(0)  // auto: suma de todos los costos
+  effectiveFrom          DateTime  @default(now())
+  effectiveTo            DateTime?
+  isActive               Boolean   @default(true)
+  dataQuality            String    @default("ok") // ok | missing_cost | review
+  notes                  String?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  @@index([countryCode])
+  @@index([productBaseName])
+  @@index([brand])
+  @@index([isActive])
+  @@index([countryCode, brand, isActive])
+}
+
+// ── Stats diarios por producto (del Sheet5) ───────────────────────────────
+model ProductDailyStat {
+  id          String   @id  // "pds_HB01_2026-01-22"
+  date        DateTime
+  productCode String   // HB01, INS01, DC01, etc.
+  productName String
+  brandId     String
+  orders      Int      @default(0)
+  revenueMxn  Float    @default(0)
+  revenueUsd  Float    @default(0)
+  adSpendUsd  Float    @default(0)
+  cogsUsd     Float    @default(0)
+  feesUsd     Float    @default(0)
+  profitUsd   Float    @default(0)
+  roas        Float?
+  cpaReal     Float?
+  isProfit    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  @@index([date])
+  @@index([productCode])
+  @@index([brandId])
+}
+
+// ── Facturas Proveedor ────────────────────────────────────────────────────────
+
+model SupplierEscalon {
+  id          String   @id @default(cuid())
+  productCode String   // HB01, INS01, etc.
+  productName String
+  units       Int      // cantidad de unidades del escalón
+  costMx      Float?   // costo para México (USD)
+  costUs      Float?   // costo para USA (USD)
+  costCl      Float?   // costo para Chile (USD)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([productCode, units])
+  @@index([productCode])
+}
+
+model SupplierInvoice {
+  id               String    @id @default(cuid())
+  filename         String
+  brandId          String    // "brand_glowmmi" | "brand_balancea"
+  dateFrom         DateTime?
+  dateTo           DateTime?
+  invoiceMonth     String?
+  totalAmount      Float     @default(0)
+  totalOrders      Int       @default(0)
+  totalUnits       Int       @default(0)
+  status           String    @default("pending") // pending | paid
+  dateOfPayment    DateTime?
+  paymentMethod    String?
+  discrepancyCount Int       @default(0)
+  notes            String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  orders SupplierInvoiceOrder[]
+}
+
+model SupplierInvoiceOrder {
+  id            String   @id @default(cuid())
+  invoiceId     String
+  orderNumber   String   // "#2162"
+  country       String?  // MX | US | CL
+  totalCost     Float    @default(0)
+  status        String   @default("ok") // ok | discrepancy | not_found | cancelled
+  discrepancies String?  // JSON array
+  createdAt     DateTime @default(now())
+
+  invoice SupplierInvoice      @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  items   SupplierInvoiceItem[]
+
+  @@index([invoiceId])
+}
+
+model SupplierInvoiceItem {
+  id                String   @id @default(cuid())
+  orderId           String
+  lineitemName      String
+  productCode       String?
+  quantity          Int      @default(1)
+  costCharged       Float    @default(0)
+  costExpected      Float?
+  isFree            Boolean  @default(false)
+  hasDiscrepancy    Boolean  @default(false)
+  discrepancyType   String?  // "price" | "quantity" | "product" | "not_found" | "cancelled"
+  discrepancyDetail String?
+  createdAt         DateTime @default(now())
+
+  order SupplierInvoiceOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+}

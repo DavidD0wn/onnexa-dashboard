@@ -1,0 +1,264 @@
+@import "tailwindcss";
+
+/* ═══════════════════════════════════════════════════════
+   ONNEXA — Design System
+   Light mode (default) · Dark mode (toggle)
+═══════════════════════════════════════════════════════ */
+
+:root {
+  /* ── Backgrounds ─────────────────────── */
+  --bg:       #F4F6F8;
+  --bg-2:     #F9FAFB;
+  --card:     #FFFFFF;
+  --card-2:   #F9FAFB;
+
+  /* ── Borders & Shadows ───────────────── */
+  --border:   #E5E7EB;
+  --border-2: #D1D5DB;
+  --shadow:   rgba(0, 0, 0, 0.04);
+  --shadow-md: rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.07);
+
+  /* ── Typography ──────────────────────── */
+  --text:     #111827;
+  --text-2:   #4B5563;
+  --text-3:   #9CA3AF;
+  --text-4:   #D1D5DB;
+
+  /* ── Semantic: Green (profit) ─────────── */
+  --green:      #00A676;
+  --green-bg:   #E8F8F2;
+  --green-text: #00694B;
+
+  /* ── Semantic: Red (loss/alert) ──────── */
+  --red:      #DC2626;
+  --red-bg:   #FEE2E2;
+  --red-text: #991B1B;
+
+  /* ── Semantic: Yellow (warning) ──────── */
+  --yellow:      #F59E0B;
+  --yellow-bg:   #FEF3C7;
+  --yellow-text: #92400E;
+
+  /* ── Semantic: Blue (info/links) ─────── */
+  --blue:      #2563EB;
+  --blue-bg:   #EFF6FF;
+  --blue-text: #1E40AF;
+
+  /* ── Semantic: Purple ────────────────── */
+  --purple:      #7C3AED;
+  --purple-bg:   #EDE9FE;
+  --purple-text: #5B21B6;
+
+  /* ── Primary accent ─────────────────── */
+  --primary:    #0E766E;
+  --primary-bg: #E6F7F5;
+
+  /* ── Brand colors ────────────────────── */
+  --glowmmi:    #EC4899;
+  --glowmmi-bg: #FCE7F3;
+  --balancea:    #10B981;
+  --balancea-bg: #D1FAE5;
+
+  /* ── Layout ──────────────────────────── */
+  --sidebar-w: 252px;
+  --header-h:  56px;
+}
+
+/* ─── Dark mode ────────────────────────────────────── */
+[data-theme="dark"] {
+  --bg:       #0D1117;
+  --bg-2:     #161B22;
+  --card:     #1C2433;
+  --card-2:   #21303F;
+
+  --border:   #2D3748;
+  --border-2: #3D4F6A;
+  --shadow:   rgba(0, 0, 0, 0.35);
+  --shadow-md: rgba(0, 0, 0, 0.55);
+  --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.4);
+
+  --text:   #F0F4F8;
+  --text-2: #94A3B8;
+  --text-3: #64748B;
+  --text-4: #475569;
+
+  --green:      #34D399;
+  --green-bg:   #064E3B;
+  --green-text: #A7F3D0;
+
+  --red:      #F87171;
+  --red-bg:   #450A0A;
+  --red-text: #FCA5A5;
+
+  --yellow:      #FBBF24;
+  --yellow-bg:   #451A03;
+  --yellow-text: #FDE68A;
+
+  --blue:      #60A5FA;
+  --blue-bg:   #1E3A5F;
+  --blue-text: #BAE0FE;
+
+  --purple:      #A78BFA;
+  --purple-bg:   #2E1065;
+  --purple-text: #DDD6FE;
+
+  --primary:    #14B8A6;
+  --primary-bg: #0D3B37;
+
+  --glowmmi:    #F472B6;
+  --glowmmi-bg: #500724;
+  --balancea:    #34D399;
+  --balancea-bg: #064E3B;
+}
+
+/* ─── Base reset ─────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  height: 100%;
+  scroll-behavior: smooth;
+}
+
+body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-size: 14px;
+  line-height: 1.5;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+/* ─── Scrollbar ──────────────────────────────────────── */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-3); }
+
+/* ─── Sidebar scrollbar hidden ───────────────────────── */
+.sidebar-scroll::-webkit-scrollbar { display: none; }
+.sidebar-scroll { scrollbar-width: none; }
+
+/* ─── Reusable utility classes ───────────────────────── */
+
+/* Card */
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+}
+
+.card-flat {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+/* Page header */
+.page-header {
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  backdrop-filter: blur(12px);
+}
+
+/* KPI card */
+.kpi-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 1px 3px var(--shadow), 0 1px 2px var(--shadow);
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+.kpi-card:hover {
+  box-shadow: 0 4px 12px var(--shadow-md);
+  transform: translateY(-1px);
+}
+
+/* Filter pill */
+.filter-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 14px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1.5px solid var(--border);
+  background: var(--card);
+  color: var(--text-2);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+.filter-pill:hover {
+  border-color: var(--border-2);
+  color: var(--text);
+}
+.filter-pill.active {
+  border-color: transparent;
+  color: #fff;
+}
+
+/* Status badge */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+/* Table */
+.data-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.data-table th {
+  padding: 10px 16px;
+  text-align: left;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-3);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.data-table td {
+  padding: 12px 16px;
+  font-size: 13px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.data-table tbody tr {
+  transition: background-color 0.1s ease;
+}
+.data-table tbody tr:hover td {
+  background: var(--bg-2);
+}
+.data-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* Subtle transition for theme */
+*, *::before, *::after {
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+/* Except transforms and other properties that shouldn't transition */
+button, a { transition: all 0.15s ease; }

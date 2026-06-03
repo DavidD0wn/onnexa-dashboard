@@ -1,0 +1,10 @@
+{
+  "salaries": [
+    { "id": "salary-fernanda", "name": "Salario Fernanda",    "amountUsd": 0, "active": true },
+    { "id": "salary-jefa",     "name": "Salario Jefa",        "amountUsd": 0, "active": true }
+  ],
+  "other": [
+    { "id": "other-rent",     "name": "Renta / Oficina",     "amountUsd": 0, "active": false },
+    { "id": "other-misc",     "name": "Otros Gastos",        "amountUsd": 0, "active": true }
+  ]
+}

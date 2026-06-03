@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir C:\\\\Users\\\\hamle\\\\Desktop\\\\onnexa-dashboard /b)"
+    ]
+  }
+}

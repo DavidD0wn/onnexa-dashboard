@@ -1,0 +1,279 @@
+{
+  "apps": [
+    {
+      "id": "shopify-brand_glowmmi-klaviyo%3A%20email%20marketing%20%26%20s",
+      "name": "Klaviyo: Email Marketing & SMS",
+      "store": "brand_glowmmi",
+      "category": "marketing",
+      "costUsd": 0,
+      "billingCycle": "monthly",
+      "active": true,
+      "startDate": "2026-05-24",
+      "notes": "Detectada de Shopify · costo a ingresar manualmente"
+    },
+    {
+      "id": "shopify-brand_glowmmi-ck%3A%20whatsapp",
+      "name": "CK: WhatsApp",
+      "store": "brand_glowmmi",
+      "category": "plataforma",
+      "costUsd": 0,
+      "billingCycle": "monthly",
+      "active": true,
+      "startDate": "2026-05-24",
+      "notes": "Detectada de Shopify · costo a ingresar manualmente"
+    },
+    {
+      "id": "shopify-brand_glowmmi-section%20vso%3A%20theme%20sections",
+      "name": "Section VSO: Theme Sections",
+      "store": "brand_glowmmi",
+      "category": "diseno",
+      "costUsd": 0,
+      "billingCycle": "monthly",
+      "active": true,
+      "startDate": "2026-05-24",
+      "notes": "Detectada de Shopify · costo a ingresar manualmente"
+    },
+    {
+      "id": "shopify-brand_glowmmi-trustoo.io%20importer",
+      "name": "Trustoo.io Importer",
+      "store": "brand_glowmmi",
+      "category": "plataforma",
+      "costUsd": 0,
+      "billingCycle": "monthly",
+      "active": true,
+      "startDate": "2026-05-24",
+      "notes": "Detectada de Shopify · costo a ingresar manualmente"
+    },
+    {
+      "id": "shopify-brand_glowmmi-trustwill%20(trustoo)",
+      "name": "TrustWILL (Trustoo)",
+      "store": "brand_glowmmi",
+      "category": "plataforma",
+      "costUsd": 0,
+      "billingCycle": "monthly",
+      "active": true,
+      "startDate": "2026-05-24",
+      "notes": "Detectada de Shopify · costo a ingresar manualmente"
+    },
+    {
+      "id": "shopify-brand_glowmmi-booster%20page%20speed%20optimizer",
+      "name": "Booster Page Speed Optimizer",
+      "store": "brand_glowmmi",
+      "category": "diseno",
+      "costUsd": 0,
+      "billingCycle": "monthly",
+      "active": true,
+      "startDate": "2026-05-24",
+      "notes": "Detectada de Shopify · costo a ingresar manualmente"
+    },
+    {
+      "id": "shopify-brand_glowmmi-opus%20cart%20upsell",
+      "name": "Opus Cart Upsell",
+      "store": "brand_glowmmi",
+      "category": "plataforma",
+      "costUsd": 0,
+      "billingCycle": "monthly",
+      "active": true,
+      "startDate": "2026-05-24",
+      "notes": "Detectada de Shopify · costo a ingresar manualmente"
+    },
+    {
+      "id": "shopify-brand_glowmmi-pendora%20downloads",
+      "name": "Pendora Downloads",
+      "store": "brand_glowmmi",
+      "category": "plataforma",
+      "costUsd": 0,
+      "billingCycle": "monthly",
+      "active": true,
+      "startDate": "2026-05-24",
+      "notes": "Detectada de Shopify · costo a ingresar manualmente"
+    },
+    {
+      "id": "shopify-brand_glowmmi-kaching%20bundles",
+      "name": "Kaching Bundles",
+      "store": "brand_glowmmi",
+      "category": "plataforma",
+      "costUsd": 0,
+      "billingCycle": "monthly",
+      "active": true,
+      "startDate": "2026-05-24",
+      "notes": "Detectada de Shopify · costo a ingresar manualmente"
+    },
+    {
+      "id": "shopify-brand_glowmmi-17track",
+      "name": "17TRACK",
+      "store": "brand_glowmmi",
+      "category": "plataforma",
+      "costUsd": 0,
+      "billingCycle": "monthly",
+      "active": true,
+      "startDate": "2026-05-24",
+      "notes": "Detectada de Shopify · costo a ingresar manualmente"
+    },
+    {
+      "id": "shopify-brand_glowmmi-dianxiaomi%EF%BC%88%E5%BA%97%E5%B0%8F%E7",
+      "name": "Dianxiaomi（店小秘）",
+      "store": "brand_glowmmi",
+      "category": "plataforma",
+      "costUsd": 0,
+      "billingCycle": "monthly",
+      "active": true,
+      "startDate": "2026-05-24",
+      "notes": "Detectada de Shopify · costo a ingresar manualmente"
+    },
+    {
+      "id": "shopify-brand_glowmmi-one%20click%20upsell",
+      "name": "One Click Upsell",
+      "store": "brand_glowmmi",
+      "category": "plataforma",
+      "costUsd": 0,
+      "billingCycle": "monthly",
+      "active": true,
+      "startDate": "2026-05-24",
+      "notes": "Detectada de Shopify · costo a ingresar manualmente"
+    },
+    {
+      "id": "shopify-brand_glowmmi-shogun%20-%20a%2Fb%20testing",
+      "name": "Shogun - A/B Testing",
+      "store": "brand_glowmmi",
+      "category": "plataforma",
+      "costUsd": 0,
+      "billingCycle": "monthly",
+      "active": true,
+      "startDate": "2026-05-24",
+      "notes": "Detectada de Shopify · costo a ingresar manualmente"
+    },
+    {
+      "id": "shopify-brand_glowmmi-trueprofit%3A%20profit%20analytics",
+      "name": "TrueProfit: Profit Analytics",
+      "store": "brand_glowmmi",
+      "category": "analitica",
+      "costUsd": 0,
+      "billingCycle": "monthly",
+      "active": true,
+      "startDate": "2026-05-24",
+      "notes": "Detectada de Shopify · costo a ingresar manualmente"
+    },
+    {
+      "id": "shopify-brand_balancea-kaching%20bundles",
+      "name": "Kaching Bundles",
+      "store": "brand_balancea",
+      "category": "plataforma",
+      "costUsd": 0,
+      "billingCycle": "monthly",
+      "active": true,
+      "startDate": "2026-05-24",
+      "notes": "Detectada de Shopify · costo a ingresar manualmente"
+    },
+    {
+      "id": "shopify-brand_balancea-klaviyo%3A%20email%20marketing%20%26%20s",
+      "name": "Klaviyo: Email Marketing & SMS",
+      "store": "brand_balancea",
+      "category": "marketing",
+      "costUsd": 0,
+      "billingCycle": "monthly",
+      "active": true,
+      "startDate": "2026-05-24",
+      "notes": "Detectada de Shopify · costo a ingresar manualmente"
+    },
+    {
+      "id": "shopify-brand_balancea-17track",
+      "name": "17TRACK",
+      "store": "brand_balancea",
+      "category": "plataforma",
+      "costUsd": 0,
+      "billingCycle": "monthly",
+      "active": true,
+      "startDate": "2026-05-24",
+      "notes": "Detectada de Shopify · costo a ingresar manualmente"
+    },
+    {
+      "id": "shopify-brand_balancea-ck%3A%20whatsapp",
+      "name": "CK: WhatsApp",
+      "store": "brand_balancea",
+      "category": "plataforma",
+      "costUsd": 0,
+      "billingCycle": "monthly",
+      "active": true,
+      "startDate": "2026-05-24",
+      "notes": "Detectada de Shopify · costo a ingresar manualmente"
+    },
+    {
+      "id": "shopify-brand_balancea-booster%20page%20speed%20optimizer",
+      "name": "Booster Page Speed Optimizer",
+      "store": "brand_balancea",
+      "category": "diseno",
+      "costUsd": 0,
+      "billingCycle": "monthly",
+      "active": true,
+      "startDate": "2026-05-24",
+      "notes": "Detectada de Shopify · costo a ingresar manualmente"
+    },
+    {
+      "id": "shopify-brand_balancea-pendora%20downloads",
+      "name": "Pendora Downloads",
+      "store": "brand_balancea",
+      "category": "plataforma",
+      "costUsd": 0,
+      "billingCycle": "monthly",
+      "active": true,
+      "startDate": "2026-05-24",
+      "notes": "Detectada de Shopify · costo a ingresar manualmente"
+    },
+    {
+      "id": "shopify-brand_balancea-opus%20cart%20upsell",
+      "name": "Opus Cart Upsell",
+      "store": "brand_balancea",
+      "category": "plataforma",
+      "costUsd": 0,
+      "billingCycle": "monthly",
+      "active": true,
+      "startDate": "2026-05-24",
+      "notes": "Detectada de Shopify · costo a ingresar manualmente"
+    },
+    {
+      "id": "shopify-brand_balancea-microsoft%20clarity",
+      "name": "Microsoft Clarity",
+      "store": "brand_balancea",
+      "category": "plataforma",
+      "costUsd": 0,
+      "billingCycle": "monthly",
+      "active": true,
+      "startDate": "2026-05-24",
+      "notes": "Detectada de Shopify · costo a ingresar manualmente"
+    },
+    {
+      "id": "shopify-brand_balancea-dianxiaomi%EF%BC%88%E5%BA%97%E5%B0%8F%E7",
+      "name": "Dianxiaomi（店小秘）",
+      "store": "brand_balancea",
+      "category": "plataforma",
+      "costUsd": 0,
+      "billingCycle": "monthly",
+      "active": true,
+      "startDate": "2026-05-24",
+      "notes": "Detectada de Shopify · costo a ingresar manualmente"
+    },
+    {
+      "id": "shopify-brand_balancea-balanceaa%20api",
+      "name": "Balanceaa API",
+      "store": "brand_balancea",
+      "category": "plataforma",
+      "costUsd": 0,
+      "billingCycle": "monthly",
+      "active": true,
+      "startDate": "2026-05-24",
+      "notes": "Detectada de Shopify · costo a ingresar manualmente"
+    },
+    {
+      "id": "shopify-brand_balancea-bill%20pay",
+      "name": "Bill Pay",
+      "store": "brand_balancea",
+      "category": "plataforma",
+      "costUsd": 0,
+      "billingCycle": "monthly",
+      "active": true,
+      "startDate": "2026-05-24",
+      "notes": "Detectada de Shopify · costo a ingresar manualmente"
+    }
+  ]
+}
