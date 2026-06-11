@@ -1919,3 +1919,15 @@ Foreign key constraint violated: `DailyMetric_storeId_fkey (index)`
 [11/6/2026, 1:33:34 p.m.]   📊 Total: 229 registros
 [11/6/2026, 1:33:34 p.m.] ✅ Historial completo sincronizado.
 [11/6/2026, 1:33:34 p.m.] ⏱️  Próximo sync rápido en 1 hora.
+[11/6/2026, 1:52:16 p.m.] 🔄 Sync rápido 3 días...
+[11/6/2026, 1:52:19 p.m.]   ✅ Glowmmi: 8 registros guardados
+[11/6/2026, 1:52:21 p.m.]   ❌ Balancea: 
+Invalid `prisma.dailyMetric.create()` invocation in
+C:\Users\hamle\Desktop\onnexa-dashboard\scripts\daemon.js:161:30
+
+  158 if (existing) {
+  159   await prisma.dailyMetric.update({ where: { id: existing.id }, data: { ...payload, date, brandId, countryId, storeId } });
+  160 } else {
+→ 161   await prisma.dailyMetric.create(
+Foreign key constraint violated: `DailyMetric_storeId_fkey (index)`
+[11/6/2026, 1:52:21 p.m.]   📊 Total: 8 registros

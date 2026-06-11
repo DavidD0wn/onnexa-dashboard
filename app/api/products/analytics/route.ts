@@ -622,7 +622,13 @@ export async function GET(req: NextRequest) {
           const priceLocal    = priceUsd * cCfg.displayRate;
           const date          = orderDate;
 
-          const unitCost    = lookupCost(name, countryCosts, costsDb, variant);
+          // Escalón por cantidad: los pedidos llegan como título base + qty (sin variante),
+          // así que primero probamos el costo del escalón "xN" del proveedor.
+          let unitCost = 0;
+          if (!variant && physicalUnits > 1) {
+            unitCost = lookupCost(name, countryCosts, costsDb, `x${physicalUnits}`);
+          }
+          if (unitCost <= 0) unitCost = lookupCost(name, countryCosts, costsDb, variant);
           // Use physicalUnits (qty × bundleSize) so bundles like "x3" cost 3× per order line
           const itemCogsUsd = unitCost * physicalUnits;
 

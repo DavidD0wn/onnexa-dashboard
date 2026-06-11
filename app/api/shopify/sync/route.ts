@@ -462,7 +462,13 @@ function groupByDate(
       d.unitsSold += physUnits;
       // COGS per line item — use the country-specific cost map for this order
       const variant  = (item.variant_title && item.variant_title !== "Default Title") ? item.variant_title : "";
-      const unitCost = lookupCostSync(item.title ?? "", variant, flatCosts);
+      // Escalón por cantidad: los pedidos llegan como título base + qty (sin variante),
+      // así que primero probamos el costo del escalón "xN" del proveedor.
+      let unitCost = 0;
+      if (!variant && physUnits > 1) {
+        unitCost = lookupCostSync(item.title ?? "", `x${physUnits}`, flatCosts);
+      }
+      if (unitCost <= 0) unitCost = lookupCostSync(item.title ?? "", variant, flatCosts);
       d.cogs += unitCost * physUnits;
     }
     d.grossRevenue    += gross;
