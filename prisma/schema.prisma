@@ -560,3 +560,23 @@ model SupplierInvoiceItem {
 
   @@index([orderId])
 }
+
+// ── HerBiotic Ebook Sends ─────────────────────────────────────────────────────
+model EbookSend {
+  id             String    @id @default(cuid())
+  shopifyOrderId String
+  productKey     String    @default("herbiotic") // herbiotic | cutting-mix | ...
+  orderNumber    String
+  customerEmail  String
+  customerName   String?
+  ebookCount     Int
+  status         String    @default("pending") // pending | sent | error
+  errorMsg       String?
+  sentAt         DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@unique([shopifyOrderId, productKey])
+  @@index([status])
+  @@index([productKey])
+  @@index([customerEmail])
+}

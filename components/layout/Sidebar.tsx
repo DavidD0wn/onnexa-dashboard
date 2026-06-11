@@ -9,7 +9,7 @@ import {
   LayoutDashboard, TrendingUp, BarChart2, Calendar, DollarSign,
   Megaphone, Package, BarChart3, Globe, Calculator, FlaskConical,
   Tag, Layers, CheckSquare, Upload, Truck, Bell, FileText,
-  Settings, ChevronDown, Moon, Sun, X, Telescope, Bot, Mail, Target, ShoppingBag, Table2, Users, AppWindow, Boxes,
+  Settings, ChevronDown, Moon, Sun, X, Telescope, Bot, Mail, Target, ShoppingBag, Table2, Users, AppWindow, Boxes, BookOpen,
 } from "lucide-react";
 
 /* ── Mark ──────────────────────────────────────────────────── */
@@ -87,6 +87,7 @@ const GROUPS = [
     items: [
       { label: "Bot Meta",  href: "/automatizaciones/meta", icon: Bot,  disabled: true },
       { label: "Bot Zoho",  href: "/automatizaciones/zoho", icon: Mail, disabled: true },
+      { label: "Envío de Ebooks", href: "/automatizaciones/ebooks", icon: BookOpen },
     ],
   },
   {

@@ -270,8 +270,8 @@ export default function ZohoPage() {
             Conecta tu cuenta Zoho Mail
           </h2>
           <p style={{ fontSize: 14, color: C.muted, margin: "0 0 24px", lineHeight: 1.6 }}>
-            Una vez conectada, el bot leerá los correos entrantes, detectará
-            palabras clave y responderá automáticamente — sin costo adicional.
+            Autoriza el acceso a <strong>contact@glowmmi.store</strong>. El bot leerá los
+            correos entrantes, detectará palabras clave y responderá automáticamente.
           </p>
 
           <div style={{

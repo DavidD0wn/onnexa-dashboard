@@ -1103,3 +1103,819 @@
 [3/6/2026, 12:12:57 p.m.]   📊 Total: 248 registros
 [3/6/2026, 12:12:57 p.m.] ✅ Historial completo sincronizado.
 [3/6/2026, 12:12:57 p.m.] ⏱️  Próximo sync rápido en 1 hora.
+[3/6/2026, 7:11:25 p.m.] ═══════════════════════════════════════════
+[3/6/2026, 7:11:25 p.m.]   ONNEXA Sync Daemon v2 — Iniciando
+[3/6/2026, 7:11:25 p.m.] ═══════════════════════════════════════════
+[3/6/2026, 7:11:25 p.m.] 📚 Primer sync: descargando historial COMPLETO...
+[3/6/2026, 7:11:25 p.m.] 🔄 Sync historial completo...
+[3/6/2026, 7:12:24 p.m.]   ✅ Glowmmi: 213 registros guardados
+[3/6/2026, 7:12:25 p.m.]   ❌ Balancea: 
+Invalid `prisma.dailyMetric.create()` invocation in
+C:\Users\hamle\Desktop\onnexa-dashboard\scripts\daemon.js:161:30
+
+  158 if (existing) {
+  159   await prisma.dailyMetric.update({ where: { id: existing.id }, data: { ...payload, date, brandId, countryId, storeId } });
+  160 } else {
+→ 161   await prisma.dailyMetric.create(
+Foreign key constraint violated: `DailyMetric_storeId_fkey (index)`
+[3/6/2026, 7:12:25 p.m.]   📊 Total: 213 registros
+[3/6/2026, 7:12:25 p.m.] ✅ Historial completo sincronizado.
+[3/6/2026, 7:12:25 p.m.] ⏱️  Próximo sync rápido en 1 hora.
+[4/6/2026, 12:18:01 p.m.] ═══════════════════════════════════════════
+[4/6/2026, 12:18:01 p.m.]   ONNEXA Sync Daemon v2 — Iniciando
+[4/6/2026, 12:18:01 p.m.] ═══════════════════════════════════════════
+[4/6/2026, 12:18:01 p.m.] 📚 Primer sync: descargando historial COMPLETO...
+[4/6/2026, 12:18:01 p.m.] 🔄 Sync historial completo...
+[4/6/2026, 12:19:13 p.m.]   ✅ Glowmmi: 214 registros guardados
+[4/6/2026, 12:19:15 p.m.]   ❌ Balancea: 
+Invalid `prisma.dailyMetric.create()` invocation in
+C:\Users\hamle\Desktop\onnexa-dashboard\scripts\daemon.js:161:30
+
+  158 if (existing) {
+  159   await prisma.dailyMetric.update({ where: { id: existing.id }, data: { ...payload, date, brandId, countryId, storeId } });
+  160 } else {
+→ 161   await prisma.dailyMetric.create(
+Foreign key constraint violated: `DailyMetric_storeId_fkey (index)`
+[4/6/2026, 12:19:15 p.m.]   📊 Total: 214 registros
+[4/6/2026, 12:19:15 p.m.] ✅ Historial completo sincronizado.
+[4/6/2026, 12:19:15 p.m.] ⏱️  Próximo sync rápido en 1 hora.
+[4/6/2026, 12:28:03 p.m.] ═══════════════════════════════════════════
+[4/6/2026, 12:28:03 p.m.]   ONNEXA Sync Daemon v2 — Iniciando
+[4/6/2026, 12:28:03 p.m.] ═══════════════════════════════════════════
+[4/6/2026, 12:28:03 p.m.] 📚 Primer sync: descargando historial COMPLETO...
+[4/6/2026, 12:28:03 p.m.] 🔄 Sync historial completo...
+[4/6/2026, 12:28:54 p.m.]   ✅ Glowmmi: 214 registros guardados
+[4/6/2026, 12:28:55 p.m.]   ❌ Balancea: 
+Invalid `prisma.dailyMetric.create()` invocation in
+C:\Users\hamle\Desktop\onnexa-dashboard\scripts\daemon.js:161:30
+
+  158 if (existing) {
+  159   await prisma.dailyMetric.update({ where: { id: existing.id }, data: { ...payload, date, brandId, countryId, storeId } });
+  160 } else {
+→ 161   await prisma.dailyMetric.create(
+Foreign key constraint violated: `DailyMetric_storeId_fkey (index)`
+[4/6/2026, 12:28:55 p.m.]   📊 Total: 214 registros
+[4/6/2026, 12:28:55 p.m.] ✅ Historial completo sincronizado.
+[4/6/2026, 12:28:55 p.m.] ⏱️  Próximo sync rápido en 1 hora.
+[4/6/2026, 1:19:15 p.m.] 🔄 Sync rápido 3 días...
+[4/6/2026, 1:19:19 p.m.]   ✅ Glowmmi: 7 registros guardados
+[4/6/2026, 1:19:20 p.m.]   ❌ Balancea: 
+Invalid `prisma.dailyMetric.create()` invocation in
+C:\Users\hamle\Desktop\onnexa-dashboard\scripts\daemon.js:161:30
+
+  158 if (existing) {
+  159   await prisma.dailyMetric.update({ where: { id: existing.id }, data: { ...payload, date, brandId, countryId, storeId } });
+  160 } else {
+→ 161   await prisma.dailyMetric.create(
+Foreign key constraint violated: `DailyMetric_storeId_fkey (index)`
+[4/6/2026, 1:19:20 p.m.]   📊 Total: 7 registros
+[4/6/2026, 1:28:55 p.m.] 🔄 Sync rápido 3 días...
+[4/6/2026, 1:28:59 p.m.]   ✅ Glowmmi: 7 registros guardados
+[4/6/2026, 1:29:00 p.m.]   ❌ Balancea: 
+Invalid `prisma.dailyMetric.create()` invocation in
+C:\Users\hamle\Desktop\onnexa-dashboard\scripts\daemon.js:161:30
+
+  158 if (existing) {
+  159   await prisma.dailyMetric.update({ where: { id: existing.id }, data: { ...payload, date, brandId, countryId, storeId } });
+  160 } else {
+→ 161   await prisma.dailyMetric.create(
+Foreign key constraint violated: `DailyMetric_storeId_fkey (index)`
+[4/6/2026, 1:29:00 p.m.]   📊 Total: 7 registros
+[4/6/2026, 2:19:15 p.m.] 🔄 Sync rápido 3 días...
+[4/6/2026, 2:19:19 p.m.]   ✅ Glowmmi: 7 registros guardados
+[4/6/2026, 2:19:20 p.m.]   ❌ Balancea: 
+Invalid `prisma.dailyMetric.create()` invocation in
+C:\Users\hamle\Desktop\onnexa-dashboard\scripts\daemon.js:161:30
+
+  158 if (existing) {
+  159   await prisma.dailyMetric.update({ where: { id: existing.id }, data: { ...payload, date, brandId, countryId, storeId } });
+  160 } else {
+→ 161   await prisma.dailyMetric.create(
+Foreign key constraint violated: `DailyMetric_storeId_fkey (index)`
+[4/6/2026, 2:19:20 p.m.]   📊 Total: 7 registros
+[4/6/2026, 2:28:55 p.m.] 🔄 Sync rápido 3 días...
+[4/6/2026, 2:28:58 p.m.]   ✅ Glowmmi: 7 registros guardados
+[4/6/2026, 2:29:00 p.m.]   ❌ Balancea: 
+Invalid `prisma.dailyMetric.create()` invocation in
+C:\Users\hamle\Desktop\onnexa-dashboard\scripts\daemon.js:161:30
+
+  158 if (existing) {
+  159   await prisma.dailyMetric.update({ where: { id: existing.id }, data: { ...payload, date, brandId, countryId, storeId } });
+  160 } else {
+→ 161   await prisma.dailyMetric.create(
+Foreign key constraint violated: `DailyMetric_storeId_fkey (index)`
+[4/6/2026, 2:29:00 p.m.]   📊 Total: 7 registros
+[4/6/2026, 4:08:07 p.m.] 🔄 Sync rápido 3 días...
+[4/6/2026, 4:08:07 p.m.] 🔄 Sync rápido 3 días...
+[4/6/2026, 4:08:13 p.m.]   ✅ Glowmmi: 7 registros guardados
+[4/6/2026, 4:08:13 p.m.]   ✅ Glowmmi: 7 registros guardados
+[4/6/2026, 4:08:14 p.m.]   ❌ Balancea: 
+Invalid `prisma.dailyMetric.create()` invocation in
+C:\Users\hamle\Desktop\onnexa-dashboard\scripts\daemon.js:161:30
+
+  158 if (existing) {
+  159   await prisma.dailyMetric.update({ where: { id: existing.id }, data: { ...payload, date, brandId, countryId, storeId } });
+  160 } else {
+→ 161   await prisma.dailyMetric.create(
+Foreign key constraint violated: `DailyMetric_storeId_fkey (index)`
+[4/6/2026, 4:08:14 p.m.]   📊 Total: 7 registros
+[4/6/2026, 4:08:14 p.m.]   ❌ Balancea: 
+Invalid `prisma.dailyMetric.create()` invocation in
+C:\Users\hamle\Desktop\onnexa-dashboard\scripts\daemon.js:161:30
+
+  158 if (existing) {
+  159   await prisma.dailyMetric.update({ where: { id: existing.id }, data: { ...payload, date, brandId, countryId, storeId } });
+  160 } else {
+→ 161   await prisma.dailyMetric.create(
+Foreign key constraint violated: `DailyMetric_storeId_fkey (index)`
+[4/6/2026, 4:08:14 p.m.]   📊 Total: 7 registros
+[4/6/2026, 5:08:07 p.m.] 🔄 Sync rápido 3 días...
+[4/6/2026, 5:08:07 p.m.] 🔄 Sync rápido 3 días...
+[4/6/2026, 5:08:11 p.m.]   ✅ Glowmmi: 7 registros guardados
+[4/6/2026, 5:08:11 p.m.]   ✅ Glowmmi: 7 registros guardados
+[4/6/2026, 5:08:12 p.m.]   ❌ Balancea: 
+Invalid `prisma.dailyMetric.create()` invocation in
+C:\Users\hamle\Desktop\onnexa-dashboard\scripts\daemon.js:161:30
+
+  158 if (existing) {
+  159   await prisma.dailyMetric.update({ where: { id: existing.id }, data: { ...payload, date, brandId, countryId, storeId } });
+  160 } else {
+→ 161   await prisma.dailyMetric.create(
+Foreign key constraint violated: `DailyMetric_storeId_fkey (index)`
+[4/6/2026, 5:08:12 p.m.]   📊 Total: 7 registros
+[4/6/2026, 5:08:12 p.m.]   ❌ Balancea: 
+Invalid `prisma.dailyMetric.create()` invocation in
+C:\Users\hamle\Desktop\onnexa-dashboard\scripts\daemon.js:161:30
+
+  158 if (existing) {
+  159   await prisma.dailyMetric.update({ where: { id: existing.id }, data: { ...payload, date, brandId, countryId, storeId } });
+  160 } else {
+→ 161   await prisma.dailyMetric.create(
+Foreign key constraint violated: `DailyMetric_storeId_fkey (index)`
+[4/6/2026, 5:08:12 p.m.]   📊 Total: 7 registros
+[4/6/2026, 6:08:07 p.m.] 🔄 Sync rápido 3 días...
+[4/6/2026, 6:08:07 p.m.] 🔄 Sync rápido 3 días...
+[4/6/2026, 6:08:10 p.m.]   ✅ Glowmmi: 6 registros guardados
+[4/6/2026, 6:08:10 p.m.]   ✅ Glowmmi: 6 registros guardados
+[4/6/2026, 6:08:12 p.m.]   ❌ Balancea: 
+Invalid `prisma.dailyMetric.create()` invocation in
+C:\Users\hamle\Desktop\onnexa-dashboard\scripts\daemon.js:161:30
+
+  158 if (existing) {
+  159   await prisma.dailyMetric.update({ where: { id: existing.id }, data: { ...payload, date, brandId, countryId, storeId } });
+  160 } else {
+→ 161   await prisma.dailyMetric.create(
+Foreign key constraint violated: `DailyMetric_storeId_fkey (index)`
+[4/6/2026, 6:08:12 p.m.]   ❌ Balancea: 
+Invalid `prisma.dailyMetric.create()` invocation in
+C:\Users\hamle\Desktop\onnexa-dashboard\scripts\daemon.js:161:30
+
+  158 if (existing) {
+  159   await prisma.dailyMetric.update({ where: { id: existing.id }, data: { ...payload, date, brandId, countryId, storeId } });
+  160 } else {
+→ 161   await prisma.dailyMetric.create(
+Foreign key constraint violated: `DailyMetric_storeId_fkey (index)`
+[4/6/2026, 6:08:12 p.m.]   📊 Total: 6 registros
+[4/6/2026, 6:08:12 p.m.]   📊 Total: 6 registros
+[4/6/2026, 7:08:08 p.m.] 🔄 Sync rápido 3 días...
+[4/6/2026, 7:08:08 p.m.] 🔄 Sync rápido 3 días...
+[4/6/2026, 7:08:12 p.m.]   ✅ Glowmmi: 6 registros guardados
+[4/6/2026, 7:08:12 p.m.]   ✅ Glowmmi: 6 registros guardados
+[4/6/2026, 7:08:13 p.m.]   ❌ Balancea: 
+Invalid `prisma.dailyMetric.create()` invocation in
+C:\Users\hamle\Desktop\onnexa-dashboard\scripts\daemon.js:161:30
+
+  158 if (existing) {
+  159   await prisma.dailyMetric.update({ where: { id: existing.id }, data: { ...payload, date, brandId, countryId, storeId } });
+  160 } else {
+→ 161   await prisma.dailyMetric.create(
+Foreign key constraint violated: `DailyMetric_storeId_fkey (index)`
+[4/6/2026, 7:08:13 p.m.]   ❌ Balancea: 
+Invalid `prisma.dailyMetric.create()` invocation in
+C:\Users\hamle\Desktop\onnexa-dashboard\scripts\daemon.js:161:30
+
+  158 if (existing) {
+  159   await prisma.dailyMetric.update({ where: { id: existing.id }, data: { ...payload, date, brandId, countryId, storeId } });
+  160 } else {
+→ 161   await prisma.dailyMetric.create(
+Foreign key constraint violated: `DailyMetric_storeId_fkey (index)`
+[4/6/2026, 7:08:13 p.m.]   📊 Total: 6 registros
+[4/6/2026, 7:08:13 p.m.]   📊 Total: 6 registros
+[5/6/2026, 12:24:38 p.m.] ═══════════════════════════════════════════
+[5/6/2026, 12:24:38 p.m.]   ONNEXA Sync Daemon v2 — Iniciando
+[5/6/2026, 12:24:38 p.m.] ═══════════════════════════════════════════
+[5/6/2026, 12:24:38 p.m.] 📚 Primer sync: descargando historial COMPLETO...
+[5/6/2026, 12:24:38 p.m.] 🔄 Sync historial completo...
+[5/6/2026, 12:25:50 p.m.]   ✅ Glowmmi: 217 registros guardados
+[5/6/2026, 12:25:52 p.m.]   ❌ Balancea: 
+Invalid `prisma.dailyMetric.create()` invocation in
+C:\Users\hamle\Desktop\onnexa-dashboard\scripts\daemon.js:161:30
+
+  158 if (existing) {
+  159   await prisma.dailyMetric.update({ where: { id: existing.id }, data: { ...payload, date, brandId, countryId, storeId } });
+  160 } else {
+→ 161   await prisma.dailyMetric.create(
+Foreign key constraint violated: `DailyMetric_storeId_fkey (index)`
+[5/6/2026, 12:25:52 p.m.]   📊 Total: 217 registros
+[5/6/2026, 12:25:52 p.m.] ✅ Historial completo sincronizado.
+[5/6/2026, 12:25:52 p.m.] ⏱️  Próximo sync rápido en 1 hora.
+[5/6/2026, 1:22:10 p.m.] ═══════════════════════════════════════════
+[5/6/2026, 1:22:10 p.m.]   ONNEXA Sync Daemon v2 — Iniciando
+[5/6/2026, 1:22:10 p.m.] ═══════════════════════════════════════════
+[5/6/2026, 1:22:10 p.m.] 📚 Primer sync: descargando historial COMPLETO...
+[5/6/2026, 1:22:10 p.m.] 🔄 Sync historial completo...
+[5/6/2026, 1:23:02 p.m.]   ✅ Glowmmi: 217 registros guardados
+[5/6/2026, 1:23:03 p.m.]   ❌ Balancea: 
+Invalid `prisma.dailyMetric.create()` invocation in
+C:\Users\hamle\Desktop\onnexa-dashboard\scripts\daemon.js:161:30
+
+  158 if (existing) {
+  159   await prisma.dailyMetric.update({ where: { id: existing.id }, data: { ...payload, date, brandId, countryId, storeId } });
+  160 } else {
+→ 161   await prisma.dailyMetric.create(
+Foreign key constraint violated: `DailyMetric_storeId_fkey (index)`
+[5/6/2026, 1:23:03 p.m.]   📊 Total: 217 registros
+[5/6/2026, 1:23:03 p.m.] ✅ Historial completo sincronizado.
+[5/6/2026, 1:23:03 p.m.] ⏱️  Próximo sync rápido en 1 hora.
+[5/6/2026, 1:25:52 p.m.] 🔄 Sync rápido 3 días...
+[5/6/2026, 1:25:56 p.m.]   ✅ Glowmmi: 8 registros guardados
+[5/6/2026, 1:25:57 p.m.]   ❌ Balancea: 
+Invalid `prisma.dailyMetric.create()` invocation in
+C:\Users\hamle\Desktop\onnexa-dashboard\scripts\daemon.js:161:30
+
+  158 if (existing) {
+  159   await prisma.dailyMetric.update({ where: { id: existing.id }, data: { ...payload, date, brandId, countryId, storeId } });
+  160 } else {
+→ 161   await prisma.dailyMetric.create(
+Foreign key constraint violated: `DailyMetric_storeId_fkey (index)`
+[5/6/2026, 1:25:57 p.m.]   📊 Total: 8 registros
+[5/6/2026, 2:23:03 p.m.] 🔄 Sync rápido 3 días...
+[5/6/2026, 2:23:07 p.m.]   ✅ Glowmmi: 8 registros guardados
+[5/6/2026, 2:23:09 p.m.]   ❌ Balancea: 
+Invalid `prisma.dailyMetric.create()` invocation in
+C:\Users\hamle\Desktop\onnexa-dashboard\scripts\daemon.js:161:30
+
+  158 if (existing) {
+  159   await prisma.dailyMetric.update({ where: { id: existing.id }, data: { ...payload, date, brandId, countryId, storeId } });
+  160 } else {
+→ 161   await prisma.dailyMetric.create(
+Foreign key constraint violated: `DailyMetric_storeId_fkey (index)`
+[5/6/2026, 2:23:09 p.m.]   📊 Total: 8 registros
+[5/6/2026, 2:25:52 p.m.] 🔄 Sync rápido 3 días...
+[5/6/2026, 2:25:56 p.m.]   ✅ Glowmmi: 8 registros guardados
+[5/6/2026, 2:25:57 p.m.]   ❌ Balancea: 
+Invalid `prisma.dailyMetric.create()` invocation in
+C:\Users\hamle\Desktop\onnexa-dashboard\scripts\daemon.js:161:30
+
+  158 if (existing) {
+  159   await prisma.dailyMetric.update({ where: { id: existing.id }, data: { ...payload, date, brandId, countryId, storeId } });
+  160 } else {
+→ 161   await prisma.dailyMetric.create(
+Foreign key constraint violated: `DailyMetric_storeId_fkey (index)`
+[5/6/2026, 2:25:57 p.m.]   📊 Total: 8 registros
+[5/6/2026, 3:23:03 p.m.] 🔄 Sync rápido 3 días...
+[5/6/2026, 3:23:07 p.m.]   ✅ Glowmmi: 8 registros guardados
+[5/6/2026, 3:23:08 p.m.]   ❌ Balancea: 
+Invalid `prisma.dailyMetric.create()` invocation in
+C:\Users\hamle\Desktop\onnexa-dashboard\scripts\daemon.js:161:30
+
+  158 if (existing) {
+  159   await prisma.dailyMetric.update({ where: { id: existing.id }, data: { ...payload, date, brandId, countryId, storeId } });
+  160 } else {
+→ 161   await prisma.dailyMetric.create(
+Foreign key constraint violated: `DailyMetric_storeId_fkey (index)`
+[5/6/2026, 3:23:08 p.m.]   📊 Total: 8 registros
+[5/6/2026, 3:25:52 p.m.] 🔄 Sync rápido 3 días...
+[5/6/2026, 3:25:56 p.m.]   ✅ Glowmmi: 8 registros guardados
+[5/6/2026, 3:25:57 p.m.]   ❌ Balancea: 
+Invalid `prisma.dailyMetric.create()` invocation in
+C:\Users\hamle\Desktop\onnexa-dashboard\scripts\daemon.js:161:30
+
+  158 if (existing) {
+  159   await prisma.dailyMetric.update({ where: { id: existing.id }, data: { ...payload, date, brandId, countryId, storeId } });
+  160 } else {
+→ 161   await prisma.dailyMetric.create(
+Foreign key constraint violated: `DailyMetric_storeId_fkey (index)`
+[5/6/2026, 3:25:57 p.m.]   📊 Total: 8 registros
+[6/6/2026, 11:45:08 a.m.] ═══════════════════════════════════════════
+[6/6/2026, 11:45:08 a.m.]   ONNEXA Sync Daemon v2 — Iniciando
+[6/6/2026, 11:45:08 a.m.] ═══════════════════════════════════════════
+[6/6/2026, 11:45:08 a.m.] 📚 Primer sync: descargando historial COMPLETO...
+[6/6/2026, 11:45:08 a.m.] 🔄 Sync historial completo...
+[6/6/2026, 11:46:18 a.m.]   ✅ Glowmmi: 219 registros guardados
+[6/6/2026, 11:46:20 a.m.]   ❌ Balancea: 
+Invalid `prisma.dailyMetric.create()` invocation in
+C:\Users\hamle\Desktop\onnexa-dashboard\scripts\daemon.js:161:30
+
+  158 if (existing) {
+  159   await prisma.dailyMetric.update({ where: { id: existing.id }, data: { ...payload, date, brandId, countryId, storeId } });
+  160 } else {
+→ 161   await prisma.dailyMetric.create(
+Foreign key constraint violated: `DailyMetric_storeId_fkey (index)`
+[6/6/2026, 11:46:20 a.m.]   📊 Total: 219 registros
+[6/6/2026, 11:46:20 a.m.] ✅ Historial completo sincronizado.
+[6/6/2026, 11:46:20 a.m.] ⏱️  Próximo sync rápido en 1 hora.
+[6/6/2026, 12:46:20 p.m.] 🔄 Sync rápido 3 días...
+[6/6/2026, 12:46:25 p.m.]   ✅ Glowmmi: 8 registros guardados
+[6/6/2026, 12:46:27 p.m.]   ❌ Balancea: 
+Invalid `prisma.dailyMetric.create()` invocation in
+C:\Users\hamle\Desktop\onnexa-dashboard\scripts\daemon.js:161:30
+
+  158 if (existing) {
+  159   await prisma.dailyMetric.update({ where: { id: existing.id }, data: { ...payload, date, brandId, countryId, storeId } });
+  160 } else {
+→ 161   await prisma.dailyMetric.create(
+Foreign key constraint violated: `DailyMetric_storeId_fkey (index)`
+[6/6/2026, 12:46:27 p.m.]   📊 Total: 8 registros
+[6/6/2026, 1:46:20 p.m.] 🔄 Sync rápido 3 días...
+[6/6/2026, 1:46:24 p.m.]   ✅ Glowmmi: 8 registros guardados
+[6/6/2026, 1:46:26 p.m.]   ❌ Balancea: 
+Invalid `prisma.dailyMetric.create()` invocation in
+C:\Users\hamle\Desktop\onnexa-dashboard\scripts\daemon.js:161:30
+
+  158 if (existing) {
+  159   await prisma.dailyMetric.update({ where: { id: existing.id }, data: { ...payload, date, brandId, countryId, storeId } });
+  160 } else {
+→ 161   await prisma.dailyMetric.create(
+Foreign key constraint violated: `DailyMetric_storeId_fkey (index)`
+[6/6/2026, 1:46:26 p.m.]   📊 Total: 8 registros
+[6/6/2026, 2:46:20 p.m.] 🔄 Sync rápido 3 días...
+[6/6/2026, 2:46:24 p.m.]   ✅ Glowmmi: 8 registros guardados
+[6/6/2026, 2:46:26 p.m.]   ❌ Balancea: 
+Invalid `prisma.dailyMetric.create()` invocation in
+C:\Users\hamle\Desktop\onnexa-dashboard\scripts\daemon.js:161:30
+
+  158 if (existing) {
+  159   await prisma.dailyMetric.update({ where: { id: existing.id }, data: { ...payload, date, brandId, countryId, storeId } });
+  160 } else {
+→ 161   await prisma.dailyMetric.create(
+Foreign key constraint violated: `DailyMetric_storeId_fkey (index)`
+[6/6/2026, 2:46:26 p.m.]   📊 Total: 8 registros
+[6/6/2026, 4:21:44 p.m.] 🔄 Sync rápido 3 días...
+[6/6/2026, 4:21:51 p.m.]   ✅ Glowmmi: 8 registros guardados
+[6/6/2026, 4:21:52 p.m.]   ❌ Balancea: 
+Invalid `prisma.dailyMetric.create()` invocation in
+C:\Users\hamle\Desktop\onnexa-dashboard\scripts\daemon.js:161:30
+
+  158 if (existing) {
+  159   await prisma.dailyMetric.update({ where: { id: existing.id }, data: { ...payload, date, brandId, countryId, storeId } });
+  160 } else {
+→ 161   await prisma.dailyMetric.create(
+Foreign key constraint violated: `DailyMetric_storeId_fkey (index)`
+[6/6/2026, 4:21:52 p.m.]   📊 Total: 8 registros
+[6/6/2026, 4:28:52 p.m.] ═══════════════════════════════════════════
+[6/6/2026, 4:28:52 p.m.]   ONNEXA Sync Daemon v2 — Iniciando
+[6/6/2026, 4:28:52 p.m.] ═══════════════════════════════════════════
+[6/6/2026, 4:28:52 p.m.] 📚 Primer sync: descargando historial COMPLETO...
+[6/6/2026, 4:28:52 p.m.] 🔄 Sync historial completo...
+[6/6/2026, 4:29:47 p.m.]   ✅ Glowmmi: 219 registros guardados
+[6/6/2026, 4:29:49 p.m.]   ❌ Balancea: 
+Invalid `prisma.dailyMetric.create()` invocation in
+C:\Users\hamle\Desktop\onnexa-dashboard\scripts\daemon.js:161:30
+
+  158 if (existing) {
+  159   await prisma.dailyMetric.update({ where: { id: existing.id }, data: { ...payload, date, brandId, countryId, storeId } });
+  160 } else {
+→ 161   await prisma.dailyMetric.create(
+Foreign key constraint violated: `DailyMetric_storeId_fkey (index)`
+[6/6/2026, 4:29:49 p.m.]   📊 Total: 219 registros
+[6/6/2026, 4:29:49 p.m.] ✅ Historial completo sincronizado.
+[6/6/2026, 4:29:49 p.m.] ⏱️  Próximo sync rápido en 1 hora.
+[6/6/2026, 5:21:44 p.m.] 🔄 Sync rápido 3 días...
+[6/6/2026, 5:21:49 p.m.]   ✅ Glowmmi: 8 registros guardados
+[6/6/2026, 5:21:50 p.m.]   ❌ Balancea: 
+Invalid `prisma.dailyMetric.create()` invocation in
+C:\Users\hamle\Desktop\onnexa-dashboard\scripts\daemon.js:161:30
+
+  158 if (existing) {
+  159   await prisma.dailyMetric.update({ where: { id: existing.id }, data: { ...payload, date, brandId, countryId, storeId } });
+  160 } else {
+→ 161   await prisma.dailyMetric.create(
+Foreign key constraint violated: `DailyMetric_storeId_fkey (index)`
+[6/6/2026, 5:21:50 p.m.]   📊 Total: 8 registros
+[6/6/2026, 5:29:49 p.m.] 🔄 Sync rápido 3 días...
+[6/6/2026, 5:29:53 p.m.]   ✅ Glowmmi: 8 registros guardados
+[6/6/2026, 5:29:54 p.m.]   ❌ Balancea: 
+Invalid `prisma.dailyMetric.create()` invocation in
+C:\Users\hamle\Desktop\onnexa-dashboard\scripts\daemon.js:161:30
+
+  158 if (existing) {
+  159   await prisma.dailyMetric.update({ where: { id: existing.id }, data: { ...payload, date, brandId, countryId, storeId } });
+  160 } else {
+→ 161   await prisma.dailyMetric.create(
+Foreign key constraint violated: `DailyMetric_storeId_fkey (index)`
+[6/6/2026, 5:29:54 p.m.]   📊 Total: 8 registros
+[6/6/2026, 6:23:19 p.m.] ═══════════════════════════════════════════
+[6/6/2026, 6:23:19 p.m.]   ONNEXA Sync Daemon v2 — Iniciando
+[6/6/2026, 6:23:19 p.m.] ═══════════════════════════════════════════
+[6/6/2026, 6:23:19 p.m.] 📚 Primer sync: descargando historial COMPLETO...
+[6/6/2026, 6:23:19 p.m.] 🔄 Sync historial completo...
+[6/6/2026, 6:24:09 p.m.]   ✅ Glowmmi: 219 registros guardados
+[6/6/2026, 6:24:11 p.m.]   ❌ Balancea: 
+Invalid `prisma.dailyMetric.create()` invocation in
+C:\Users\hamle\Desktop\onnexa-dashboard\scripts\daemon.js:161:30
+
+  158 if (existing) {
+  159   await prisma.dailyMetric.update({ where: { id: existing.id }, data: { ...payload, date, brandId, countryId, storeId } });
+  160 } else {
+→ 161   await prisma.dailyMetric.create(
+Foreign key constraint violated: `DailyMetric_storeId_fkey (index)`
+[6/6/2026, 6:24:11 p.m.]   📊 Total: 219 registros
+[6/6/2026, 6:24:11 p.m.] ✅ Historial completo sincronizado.
+[6/6/2026, 6:24:11 p.m.] ⏱️  Próximo sync rápido en 1 hora.
+[6/6/2026, 7:18:55 p.m.] ═══════════════════════════════════════════
+[6/6/2026, 7:18:55 p.m.]   ONNEXA Sync Daemon v2 — Iniciando
+[6/6/2026, 7:18:55 p.m.] ═══════════════════════════════════════════
+[6/6/2026, 7:18:55 p.m.] 📚 Primer sync: descargando historial COMPLETO...
+[6/6/2026, 7:18:55 p.m.] 🔄 Sync historial completo...
+[6/6/2026, 7:19:43 p.m.]   ✅ Glowmmi: 219 registros guardados
+[6/6/2026, 7:19:45 p.m.]   ❌ Balancea: 
+Invalid `prisma.dailyMetric.create()` invocation in
+C:\Users\hamle\Desktop\onnexa-dashboard\scripts\daemon.js:161:30
+
+  158 if (existing) {
+  159   await prisma.dailyMetric.update({ where: { id: existing.id }, data: { ...payload, date, brandId, countryId, storeId } });
+  160 } else {
+→ 161   await prisma.dailyMetric.create(
+Foreign key constraint violated: `DailyMetric_storeId_fkey (index)`
+[6/6/2026, 7:19:45 p.m.]   📊 Total: 219 registros
+[6/6/2026, 7:19:45 p.m.] ✅ Historial completo sincronizado.
+[6/6/2026, 7:19:45 p.m.] ⏱️  Próximo sync rápido en 1 hora.
+[7/6/2026, 12:41:01 p.m.] ═══════════════════════════════════════════
+[7/6/2026, 12:41:01 p.m.]   ONNEXA Sync Daemon v2 — Iniciando
+[7/6/2026, 12:41:01 p.m.] ═══════════════════════════════════════════
+[7/6/2026, 12:41:01 p.m.] 📚 Primer sync: descargando historial COMPLETO...
+[7/6/2026, 12:41:01 p.m.] 🔄 Sync historial completo...
+[7/6/2026, 12:42:02 p.m.]   ✅ Glowmmi: 220 registros guardados
+[7/6/2026, 12:42:04 p.m.]   ❌ Balancea: 
+Invalid `prisma.dailyMetric.create()` invocation in
+C:\Users\hamle\Desktop\onnexa-dashboard\scripts\daemon.js:161:30
+
+  158 if (existing) {
+  159   await prisma.dailyMetric.update({ where: { id: existing.id }, data: { ...payload, date, brandId, countryId, storeId } });
+  160 } else {
+→ 161   await prisma.dailyMetric.create(
+Foreign key constraint violated: `DailyMetric_storeId_fkey (index)`
+[7/6/2026, 12:42:04 p.m.]   📊 Total: 220 registros
+[7/6/2026, 12:42:04 p.m.] ✅ Historial completo sincronizado.
+[7/6/2026, 12:42:04 p.m.] ⏱️  Próximo sync rápido en 1 hora.
+[7/6/2026, 12:43:35 p.m.] ═══════════════════════════════════════════
+[7/6/2026, 12:43:35 p.m.]   ONNEXA Sync Daemon v2 — Iniciando
+[7/6/2026, 12:43:35 p.m.] ═══════════════════════════════════════════
+[7/6/2026, 12:43:35 p.m.] 📚 Primer sync: descargando historial COMPLETO...
+[7/6/2026, 12:43:35 p.m.] 🔄 Sync historial completo...
+[7/6/2026, 12:44:25 p.m.]   ✅ Glowmmi: 220 registros guardados
+[7/6/2026, 12:44:27 p.m.]   ❌ Balancea: 
+Invalid `prisma.dailyMetric.create()` invocation in
+C:\Users\hamle\Desktop\onnexa-dashboard\scripts\daemon.js:161:30
+
+  158 if (existing) {
+  159   await prisma.dailyMetric.update({ where: { id: existing.id }, data: { ...payload, date, brandId, countryId, storeId } });
+  160 } else {
+→ 161   await prisma.dailyMetric.create(
+Foreign key constraint violated: `DailyMetric_storeId_fkey (index)`
+[7/6/2026, 12:44:27 p.m.]   📊 Total: 220 registros
+[7/6/2026, 12:44:27 p.m.] ✅ Historial completo sincronizado.
+[7/6/2026, 12:44:27 p.m.] ⏱️  Próximo sync rápido en 1 hora.
+[7/6/2026, 1:42:04 p.m.] 🔄 Sync rápido 3 días...
+[7/6/2026, 1:42:08 p.m.]   ✅ Glowmmi: 7 registros guardados
+[7/6/2026, 1:42:09 p.m.]   ❌ Balancea: 
+Invalid `prisma.dailyMetric.create()` invocation in
+C:\Users\hamle\Desktop\onnexa-dashboard\scripts\daemon.js:161:30
+
+  158 if (existing) {
+  159   await prisma.dailyMetric.update({ where: { id: existing.id }, data: { ...payload, date, brandId, countryId, storeId } });
+  160 } else {
+→ 161   await prisma.dailyMetric.create(
+Foreign key constraint violated: `DailyMetric_storeId_fkey (index)`
+[7/6/2026, 1:42:09 p.m.]   📊 Total: 7 registros
+[7/6/2026, 1:44:27 p.m.] 🔄 Sync rápido 3 días...
+[7/6/2026, 1:44:30 p.m.]   ✅ Glowmmi: 7 registros guardados
+[7/6/2026, 1:44:32 p.m.]   ❌ Balancea: 
+Invalid `prisma.dailyMetric.create()` invocation in
+C:\Users\hamle\Desktop\onnexa-dashboard\scripts\daemon.js:161:30
+
+  158 if (existing) {
+  159   await prisma.dailyMetric.update({ where: { id: existing.id }, data: { ...payload, date, brandId, countryId, storeId } });
+  160 } else {
+→ 161   await prisma.dailyMetric.create(
+Foreign key constraint violated: `DailyMetric_storeId_fkey (index)`
+[7/6/2026, 1:44:32 p.m.]   📊 Total: 7 registros
+[7/6/2026, 2:42:04 p.m.] 🔄 Sync rápido 3 días...
+[7/6/2026, 2:42:07 p.m.]   ✅ Glowmmi: 7 registros guardados
+[7/6/2026, 2:42:09 p.m.]   ❌ Balancea: 
+Invalid `prisma.dailyMetric.create()` invocation in
+C:\Users\hamle\Desktop\onnexa-dashboard\scripts\daemon.js:161:30
+
+  158 if (existing) {
+  159   await prisma.dailyMetric.update({ where: { id: existing.id }, data: { ...payload, date, brandId, countryId, storeId } });
+  160 } else {
+→ 161   await prisma.dailyMetric.create(
+Foreign key constraint violated: `DailyMetric_storeId_fkey (index)`
+[7/6/2026, 2:42:09 p.m.]   📊 Total: 7 registros
+[7/6/2026, 2:44:27 p.m.] 🔄 Sync rápido 3 días...
+[7/6/2026, 2:44:30 p.m.]   ✅ Glowmmi: 7 registros guardados
+[7/6/2026, 2:44:32 p.m.]   ❌ Balancea: 
+Invalid `prisma.dailyMetric.create()` invocation in
+C:\Users\hamle\Desktop\onnexa-dashboard\scripts\daemon.js:161:30
+
+  158 if (existing) {
+  159   await prisma.dailyMetric.update({ where: { id: existing.id }, data: { ...payload, date, brandId, countryId, storeId } });
+  160 } else {
+→ 161   await prisma.dailyMetric.create(
+Foreign key constraint violated: `DailyMetric_storeId_fkey (index)`
+[7/6/2026, 2:44:32 p.m.]   📊 Total: 7 registros
+[7/6/2026, 4:39:45 p.m.] 🔄 Sync rápido 3 días...
+[7/6/2026, 4:39:45 p.m.] 🔄 Sync rápido 3 días...
+[7/6/2026, 4:39:51 p.m.]   ✅ Glowmmi: 8 registros guardados
+[7/6/2026, 4:39:51 p.m.]   ✅ Glowmmi: 8 registros guardados
+[7/6/2026, 4:39:52 p.m.]   ❌ Balancea: 
+Invalid `prisma.dailyMetric.create()` invocation in
+C:\Users\hamle\Desktop\onnexa-dashboard\scripts\daemon.js:161:30
+
+  158 if (existing) {
+  159   await prisma.dailyMetric.update({ where: { id: existing.id }, data: { ...payload, date, brandId, countryId, storeId } });
+  160 } else {
+→ 161   await prisma.dailyMetric.create(
+Foreign key constraint violated: `DailyMetric_storeId_fkey (index)`
+[7/6/2026, 4:39:52 p.m.]   📊 Total: 8 registros
+[7/6/2026, 4:39:52 p.m.]   ❌ Balancea: 
+Invalid `prisma.dailyMetric.create()` invocation in
+C:\Users\hamle\Desktop\onnexa-dashboard\scripts\daemon.js:161:30
+
+  158 if (existing) {
+  159   await prisma.dailyMetric.update({ where: { id: existing.id }, data: { ...payload, date, brandId, countryId, storeId } });
+  160 } else {
+→ 161   await prisma.dailyMetric.create(
+Foreign key constraint violated: `DailyMetric_storeId_fkey (index)`
+[7/6/2026, 4:39:52 p.m.]   📊 Total: 8 registros
+[7/6/2026, 5:39:45 p.m.] 🔄 Sync rápido 3 días...
+[7/6/2026, 5:39:45 p.m.] 🔄 Sync rápido 3 días...
+[7/6/2026, 5:39:48 p.m.]   ✅ Glowmmi: 8 registros guardados
+[7/6/2026, 5:39:48 p.m.]   ✅ Glowmmi: 8 registros guardados
+[7/6/2026, 5:39:49 p.m.]   ❌ Balancea: 
+Invalid `prisma.dailyMetric.create()` invocation in
+C:\Users\hamle\Desktop\onnexa-dashboard\scripts\daemon.js:161:30
+
+  158 if (existing) {
+  159   await prisma.dailyMetric.update({ where: { id: existing.id }, data: { ...payload, date, brandId, countryId, storeId } });
+  160 } else {
+→ 161   await prisma.dailyMetric.create(
+Foreign key constraint violated: `DailyMetric_storeId_fkey (index)`
+[7/6/2026, 5:39:49 p.m.]   ❌ Balancea: 
+Invalid `prisma.dailyMetric.create()` invocation in
+C:\Users\hamle\Desktop\onnexa-dashboard\scripts\daemon.js:161:30
+
+  158 if (existing) {
+  159   await prisma.dailyMetric.update({ where: { id: existing.id }, data: { ...payload, date, brandId, countryId, storeId } });
+  160 } else {
+→ 161   await prisma.dailyMetric.create(
+Foreign key constraint violated: `DailyMetric_storeId_fkey (index)`
+[7/6/2026, 5:39:49 p.m.]   📊 Total: 8 registros
+[7/6/2026, 5:39:49 p.m.]   📊 Total: 8 registros
+[7/6/2026, 6:39:45 p.m.] 🔄 Sync rápido 3 días...
+[7/6/2026, 6:39:45 p.m.] 🔄 Sync rápido 3 días...
+[7/6/2026, 6:39:48 p.m.]   ✅ Glowmmi: 8 registros guardados
+[7/6/2026, 6:39:48 p.m.]   ✅ Glowmmi: 8 registros guardados
+[7/6/2026, 6:39:49 p.m.]   ❌ Balancea: 
+Invalid `prisma.dailyMetric.create()` invocation in
+C:\Users\hamle\Desktop\onnexa-dashboard\scripts\daemon.js:161:30
+
+  158 if (existing) {
+  159   await prisma.dailyMetric.update({ where: { id: existing.id }, data: { ...payload, date, brandId, countryId, storeId } });
+  160 } else {
+→ 161   await prisma.dailyMetric.create(
+Foreign key constraint violated: `DailyMetric_storeId_fkey (index)`
+[7/6/2026, 6:39:49 p.m.]   📊 Total: 8 registros
+[7/6/2026, 6:39:49 p.m.]   ❌ Balancea: 
+Invalid `prisma.dailyMetric.create()` invocation in
+C:\Users\hamle\Desktop\onnexa-dashboard\scripts\daemon.js:161:30
+
+  158 if (existing) {
+  159   await prisma.dailyMetric.update({ where: { id: existing.id }, data: { ...payload, date, brandId, countryId, storeId } });
+  160 } else {
+→ 161   await prisma.dailyMetric.create(
+Foreign key constraint violated: `DailyMetric_storeId_fkey (index)`
+[7/6/2026, 6:39:49 p.m.]   📊 Total: 8 registros
+[7/6/2026, 7:41:52 p.m.] ═══════════════════════════════════════════
+[7/6/2026, 7:41:52 p.m.]   ONNEXA Sync Daemon v2 — Iniciando
+[7/6/2026, 7:41:52 p.m.] ═══════════════════════════════════════════
+[7/6/2026, 7:41:52 p.m.] 📚 Primer sync: descargando historial COMPLETO...
+[7/6/2026, 7:41:52 p.m.] 🔄 Sync historial completo...
+[7/6/2026, 7:42:50 p.m.]   ✅ Glowmmi: 221 registros guardados
+[7/6/2026, 7:42:51 p.m.]   ❌ Balancea: 
+Invalid `prisma.dailyMetric.create()` invocation in
+C:\Users\hamle\Desktop\onnexa-dashboard\scripts\daemon.js:161:30
+
+  158 if (existing) {
+  159   await prisma.dailyMetric.update({ where: { id: existing.id }, data: { ...payload, date, brandId, countryId, storeId } });
+  160 } else {
+→ 161   await prisma.dailyMetric.create(
+Foreign key constraint violated: `DailyMetric_storeId_fkey (index)`
+[7/6/2026, 7:42:51 p.m.]   📊 Total: 221 registros
+[7/6/2026, 7:42:51 p.m.] ✅ Historial completo sincronizado.
+[7/6/2026, 7:42:51 p.m.] ⏱️  Próximo sync rápido en 1 hora.
+[9/6/2026, 12:51:55 p.m.] ═══════════════════════════════════════════
+[9/6/2026, 12:51:55 p.m.]   ONNEXA Sync Daemon v2 — Iniciando
+[9/6/2026, 12:51:55 p.m.] ═══════════════════════════════════════════
+[9/6/2026, 12:51:55 p.m.] 📚 Primer sync: descargando historial COMPLETO...
+[9/6/2026, 12:51:55 p.m.] 🔄 Sync historial completo...
+[9/6/2026, 12:53:13 p.m.]   ✅ Glowmmi: 225 registros guardados
+[9/6/2026, 12:53:15 p.m.]   ❌ Balancea: 
+Invalid `prisma.dailyMetric.create()` invocation in
+C:\Users\hamle\Desktop\onnexa-dashboard\scripts\daemon.js:161:30
+
+  158 if (existing) {
+  159   await prisma.dailyMetric.update({ where: { id: existing.id }, data: { ...payload, date, brandId, countryId, storeId } });
+  160 } else {
+→ 161   await prisma.dailyMetric.create(
+Foreign key constraint violated: `DailyMetric_storeId_fkey (index)`
+[9/6/2026, 12:53:15 p.m.]   📊 Total: 225 registros
+[9/6/2026, 12:53:15 p.m.] ✅ Historial completo sincronizado.
+[9/6/2026, 12:53:15 p.m.] ⏱️  Próximo sync rápido en 1 hora.
+[9/6/2026, 1:14:08 p.m.] ═══════════════════════════════════════════
+[9/6/2026, 1:14:08 p.m.]   ONNEXA Sync Daemon v2 — Iniciando
+[9/6/2026, 1:14:08 p.m.] ═══════════════════════════════════════════
+[9/6/2026, 1:14:08 p.m.] 📚 Primer sync: descargando historial COMPLETO...
+[9/6/2026, 1:14:08 p.m.] 🔄 Sync historial completo...
+[9/6/2026, 1:15:04 p.m.]   ✅ Glowmmi: 225 registros guardados
+[9/6/2026, 1:15:05 p.m.]   ❌ Balancea: 
+Invalid `prisma.dailyMetric.create()` invocation in
+C:\Users\hamle\Desktop\onnexa-dashboard\scripts\daemon.js:161:30
+
+  158 if (existing) {
+  159   await prisma.dailyMetric.update({ where: { id: existing.id }, data: { ...payload, date, brandId, countryId, storeId } });
+  160 } else {
+→ 161   await prisma.dailyMetric.create(
+Foreign key constraint violated: `DailyMetric_storeId_fkey (index)`
+[9/6/2026, 1:15:05 p.m.]   📊 Total: 225 registros
+[9/6/2026, 1:15:05 p.m.] ✅ Historial completo sincronizado.
+[9/6/2026, 1:15:05 p.m.] ⏱️  Próximo sync rápido en 1 hora.
+[10/6/2026, 1:05:08 p.m.] ═══════════════════════════════════════════
+[10/6/2026, 1:05:08 p.m.]   ONNEXA Sync Daemon v2 — Iniciando
+[10/6/2026, 1:05:08 p.m.] ═══════════════════════════════════════════
+[10/6/2026, 1:05:08 p.m.] 📚 Primer sync: descargando historial COMPLETO...
+[10/6/2026, 1:05:08 p.m.] 🔄 Sync historial completo...
+[10/6/2026, 1:06:28 p.m.]   ✅ Glowmmi: 227 registros guardados
+[10/6/2026, 1:06:31 p.m.]   ❌ Balancea: 
+Invalid `prisma.dailyMetric.create()` invocation in
+C:\Users\hamle\Desktop\onnexa-dashboard\scripts\daemon.js:161:30
+
+  158 if (existing) {
+  159   await prisma.dailyMetric.update({ where: { id: existing.id }, data: { ...payload, date, brandId, countryId, storeId } });
+  160 } else {
+→ 161   await prisma.dailyMetric.create(
+Foreign key constraint violated: `DailyMetric_storeId_fkey (index)`
+[10/6/2026, 1:06:31 p.m.]   📊 Total: 227 registros
+[10/6/2026, 1:06:31 p.m.] ✅ Historial completo sincronizado.
+[10/6/2026, 1:06:31 p.m.] ⏱️  Próximo sync rápido en 1 hora.
+[10/6/2026, 1:13:13 p.m.] ═══════════════════════════════════════════
+[10/6/2026, 1:13:14 p.m.]   ONNEXA Sync Daemon v2 — Iniciando
+[10/6/2026, 1:13:14 p.m.] ═══════════════════════════════════════════
+[10/6/2026, 1:13:14 p.m.] 📚 Primer sync: descargando historial COMPLETO...
+[10/6/2026, 1:13:14 p.m.] 🔄 Sync historial completo...
+[10/6/2026, 1:14:12 p.m.]   ✅ Glowmmi: 227 registros guardados
+[10/6/2026, 1:14:13 p.m.]   ❌ Balancea: 
+Invalid `prisma.dailyMetric.create()` invocation in
+C:\Users\hamle\Desktop\onnexa-dashboard\scripts\daemon.js:161:30
+
+  158 if (existing) {
+  159   await prisma.dailyMetric.update({ where: { id: existing.id }, data: { ...payload, date, brandId, countryId, storeId } });
+  160 } else {
+→ 161   await prisma.dailyMetric.create(
+Foreign key constraint violated: `DailyMetric_storeId_fkey (index)`
+[10/6/2026, 1:14:13 p.m.]   📊 Total: 227 registros
+[10/6/2026, 1:14:13 p.m.] ✅ Historial completo sincronizado.
+[10/6/2026, 1:14:13 p.m.] ⏱️  Próximo sync rápido en 1 hora.
+[10/6/2026, 2:06:31 p.m.] 🔄 Sync rápido 3 días...
+[10/6/2026, 2:06:36 p.m.]   ✅ Glowmmi: 8 registros guardados
+[10/6/2026, 2:06:38 p.m.]   ❌ Balancea: 
+Invalid `prisma.dailyMetric.create()` invocation in
+C:\Users\hamle\Desktop\onnexa-dashboard\scripts\daemon.js:161:30
+
+  158 if (existing) {
+  159   await prisma.dailyMetric.update({ where: { id: existing.id }, data: { ...payload, date, brandId, countryId, storeId } });
+  160 } else {
+→ 161   await prisma.dailyMetric.create(
+Foreign key constraint violated: `DailyMetric_storeId_fkey (index)`
+[10/6/2026, 2:06:38 p.m.]   📊 Total: 8 registros
+[10/6/2026, 2:14:13 p.m.] 🔄 Sync rápido 3 días...
+[10/6/2026, 2:14:18 p.m.]   ✅ Glowmmi: 8 registros guardados
+[10/6/2026, 2:14:19 p.m.]   ❌ Balancea: 
+Invalid `prisma.dailyMetric.create()` invocation in
+C:\Users\hamle\Desktop\onnexa-dashboard\scripts\daemon.js:161:30
+
+  158 if (existing) {
+  159   await prisma.dailyMetric.update({ where: { id: existing.id }, data: { ...payload, date, brandId, countryId, storeId } });
+  160 } else {
+→ 161   await prisma.dailyMetric.create(
+Foreign key constraint violated: `DailyMetric_storeId_fkey (index)`
+[10/6/2026, 2:14:19 p.m.]   📊 Total: 8 registros
+[10/6/2026, 5:25:30 p.m.] ═══════════════════════════════════════════
+[10/6/2026, 5:25:30 p.m.]   ONNEXA Sync Daemon v2 — Iniciando
+[10/6/2026, 5:25:30 p.m.] ═══════════════════════════════════════════
+[10/6/2026, 5:25:30 p.m.] 📚 Primer sync: descargando historial COMPLETO...
+[10/6/2026, 5:25:30 p.m.] 🔄 Sync historial completo...
+[10/6/2026, 5:26:23 p.m.]   ✅ Glowmmi: 227 registros guardados
+[10/6/2026, 5:26:25 p.m.]   ❌ Balancea: 
+Invalid `prisma.dailyMetric.create()` invocation in
+C:\Users\hamle\Desktop\onnexa-dashboard\scripts\daemon.js:161:30
+
+  158 if (existing) {
+  159   await prisma.dailyMetric.update({ where: { id: existing.id }, data: { ...payload, date, brandId, countryId, storeId } });
+  160 } else {
+→ 161   await prisma.dailyMetric.create(
+Foreign key constraint violated: `DailyMetric_storeId_fkey (index)`
+[10/6/2026, 5:26:25 p.m.]   📊 Total: 227 registros
+[10/6/2026, 5:26:25 p.m.] ✅ Historial completo sincronizado.
+[10/6/2026, 5:26:25 p.m.] ⏱️  Próximo sync rápido en 1 hora.
+[10/6/2026, 5:44:16 p.m.] ═══════════════════════════════════════════
+[10/6/2026, 5:44:16 p.m.]   ONNEXA Sync Daemon v2 — Iniciando
+[10/6/2026, 5:44:16 p.m.] ═══════════════════════════════════════════
+[10/6/2026, 5:44:16 p.m.] 📚 Primer sync: descargando historial COMPLETO...
+[10/6/2026, 5:44:16 p.m.] 🔄 Sync historial completo...
+[10/6/2026, 5:45:08 p.m.]   ✅ Glowmmi: 227 registros guardados
+[10/6/2026, 5:45:09 p.m.]   ❌ Balancea: 
+Invalid `prisma.dailyMetric.create()` invocation in
+C:\Users\hamle\Desktop\onnexa-dashboard\scripts\daemon.js:161:30
+
+  158 if (existing) {
+  159   await prisma.dailyMetric.update({ where: { id: existing.id }, data: { ...payload, date, brandId, countryId, storeId } });
+  160 } else {
+→ 161   await prisma.dailyMetric.create(
+Foreign key constraint violated: `DailyMetric_storeId_fkey (index)`
+[10/6/2026, 5:45:09 p.m.]   📊 Total: 227 registros
+[10/6/2026, 5:45:09 p.m.] ✅ Historial completo sincronizado.
+[10/6/2026, 5:45:09 p.m.] ⏱️  Próximo sync rápido en 1 hora.
+[10/6/2026, 7:08:49 p.m.] ═══════════════════════════════════════════
+[10/6/2026, 7:08:49 p.m.]   ONNEXA Sync Daemon v2 — Iniciando
+[10/6/2026, 7:08:49 p.m.] ═══════════════════════════════════════════
+[10/6/2026, 7:08:49 p.m.] 📚 Primer sync: descargando historial COMPLETO...
+[10/6/2026, 7:08:49 p.m.] 🔄 Sync historial completo...
+[10/6/2026, 7:09:41 p.m.]   ✅ Glowmmi: 227 registros guardados
+[10/6/2026, 7:09:43 p.m.]   ❌ Balancea: 
+Invalid `prisma.dailyMetric.create()` invocation in
+C:\Users\hamle\Desktop\onnexa-dashboard\scripts\daemon.js:161:30
+
+  158 if (existing) {
+  159   await prisma.dailyMetric.update({ where: { id: existing.id }, data: { ...payload, date, brandId, countryId, storeId } });
+  160 } else {
+→ 161   await prisma.dailyMetric.create(
+Foreign key constraint violated: `DailyMetric_storeId_fkey (index)`
+[10/6/2026, 7:09:43 p.m.]   📊 Total: 227 registros
+[10/6/2026, 7:09:43 p.m.] ✅ Historial completo sincronizado.
+[10/6/2026, 7:09:43 p.m.] ⏱️  Próximo sync rápido en 1 hora.
+[10/6/2026, 7:50:51 p.m.] ═══════════════════════════════════════════
+[10/6/2026, 7:50:51 p.m.]   ONNEXA Sync Daemon v2 — Iniciando
+[10/6/2026, 7:50:51 p.m.] ═══════════════════════════════════════════
+[10/6/2026, 7:50:51 p.m.] 📚 Primer sync: descargando historial COMPLETO...
+[10/6/2026, 7:50:51 p.m.] 🔄 Sync historial completo...
+[10/6/2026, 7:51:41 p.m.]   ✅ Glowmmi: 227 registros guardados
+[10/6/2026, 7:51:43 p.m.]   ❌ Balancea: 
+Invalid `prisma.dailyMetric.create()` invocation in
+C:\Users\hamle\Desktop\onnexa-dashboard\scripts\daemon.js:161:30
+
+  158 if (existing) {
+  159   await prisma.dailyMetric.update({ where: { id: existing.id }, data: { ...payload, date, brandId, countryId, storeId } });
+  160 } else {
+→ 161   await prisma.dailyMetric.create(
+Foreign key constraint violated: `DailyMetric_storeId_fkey (index)`
+[10/6/2026, 7:51:43 p.m.]   📊 Total: 227 registros
+[10/6/2026, 7:51:43 p.m.] ✅ Historial completo sincronizado.
+[10/6/2026, 7:51:43 p.m.] ⏱️  Próximo sync rápido en 1 hora.
+[11/6/2026, 12:51:18 p.m.] ═══════════════════════════════════════════
+[11/6/2026, 12:51:18 p.m.]   ONNEXA Sync Daemon v2 — Iniciando
+[11/6/2026, 12:51:18 p.m.] ═══════════════════════════════════════════
+[11/6/2026, 12:51:18 p.m.] 📚 Primer sync: descargando historial COMPLETO...
+[11/6/2026, 12:51:18 p.m.] 🔄 Sync historial completo...
+[11/6/2026, 12:52:14 p.m.]   ✅ Glowmmi: 229 registros guardados
+[11/6/2026, 12:52:16 p.m.]   ❌ Balancea: 
+Invalid `prisma.dailyMetric.create()` invocation in
+C:\Users\hamle\Desktop\onnexa-dashboard\scripts\daemon.js:161:30
+
+  158 if (existing) {
+  159   await prisma.dailyMetric.update({ where: { id: existing.id }, data: { ...payload, date, brandId, countryId, storeId } });
+  160 } else {
+→ 161   await prisma.dailyMetric.create(
+Foreign key constraint violated: `DailyMetric_storeId_fkey (index)`
+[11/6/2026, 12:52:16 p.m.]   📊 Total: 229 registros
+[11/6/2026, 12:52:16 p.m.] ✅ Historial completo sincronizado.
+[11/6/2026, 12:52:16 p.m.] ⏱️  Próximo sync rápido en 1 hora.
+[11/6/2026, 1:32:22 p.m.] ═══════════════════════════════════════════
+[11/6/2026, 1:32:22 p.m.]   ONNEXA Sync Daemon v2 — Iniciando
+[11/6/2026, 1:32:22 p.m.] ═══════════════════════════════════════════
+[11/6/2026, 1:32:22 p.m.] 📚 Primer sync: descargando historial COMPLETO...
+[11/6/2026, 1:32:22 p.m.] 🔄 Sync historial completo...
+[11/6/2026, 1:33:32 p.m.]   ✅ Glowmmi: 229 registros guardados
+[11/6/2026, 1:33:34 p.m.]   ❌ Balancea: 
+Invalid `prisma.dailyMetric.create()` invocation in
+C:\Users\hamle\Desktop\onnexa-dashboard\scripts\daemon.js:161:30
+
+  158 if (existing) {
+  159   await prisma.dailyMetric.update({ where: { id: existing.id }, data: { ...payload, date, brandId, countryId, storeId } });
+  160 } else {
+→ 161   await prisma.dailyMetric.create(
+Foreign key constraint violated: `DailyMetric_storeId_fkey (index)`
+[11/6/2026, 1:33:34 p.m.]   📊 Total: 229 registros
+[11/6/2026, 1:33:34 p.m.] ✅ Historial completo sincronizado.
+[11/6/2026, 1:33:34 p.m.] ⏱️  Próximo sync rápido en 1 hora.

@@ -1,11 +1,24 @@
 import { NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
+import nodemailer from "nodemailer";
 
 const prisma = new PrismaClient();
 
-/* ── Token helper ────────────────────────────────────────────── */
+/* ── SMTP (envío confiable, funciona en plan free) ─────────────── */
+function createTransporter() {
+  return nodemailer.createTransport({
+    host:   "smtp.zoho.com",
+    port:   465,
+    secure: true,
+    auth: {
+      user: process.env.ZOHO_SMTP_EMAIL    ?? "",
+      pass: process.env.ZOHO_SMTP_PASSWORD ?? "",
+    },
+  });
+}
+
+/* ── Token helper (refresh OAuth) ──────────────────────────────── */
 async function getAccessToken(config: any): Promise<string> {
-  // Usar token guardado si sigue vigente (>60s)
   if (config.accessToken && config.tokenExpiry) {
     const remaining = new Date(config.tokenExpiry).getTime() - Date.now();
     if (remaining > 60_000) return config.accessToken;
@@ -34,7 +47,7 @@ async function getAccessToken(config: any): Promise<string> {
   return data.access_token;
 }
 
-/* ── Inbox folder ID ─────────────────────────────────────────── */
+/* ── Inbox folder ID ───────────────────────────────────────────── */
 async function getInboxFolderId(config: any, token: string): Promise<string> {
   if (config.inboxFolderId) return config.inboxFolderId;
 
@@ -49,7 +62,7 @@ async function getInboxFolderId(config: any, token: string): Promise<string> {
     f.folderType?.toLowerCase() === "inbox"
   );
 
-  if (!inbox) throw new Error("Carpeta Inbox no encontrada en Zoho Mail");
+  if (!inbox) throw new Error("Carpeta Inbox no encontrada. Respuesta: " + JSON.stringify(data).slice(0, 300));
 
   await prisma.zohoBotConfig.update({
     where: { id: config.id },
@@ -59,17 +72,20 @@ async function getInboxFolderId(config: any, token: string): Promise<string> {
   return inbox.folderId;
 }
 
-/* ── Listar mensajes del inbox ───────────────────────────────── */
+/* ── Listar mensajes del inbox ─────────────────────────────────── */
 async function fetchMessages(config: any, token: string, folderId: string) {
   const res = await fetch(
-    `${config.apiDomain}/api/accounts/${config.accountId}/folders/${folderId}/messages/view?limit=50&start=0&sortorder=desc`,
+    `${config.apiDomain}/api/accounts/${config.accountId}/messages/view?folderId=${folderId}&start=1&limit=50`,
     { headers: { Authorization: `Zoho-oauthtoken ${token}` } }
   );
   const data = await res.json();
-  return (data.data ?? []) as any[];
+  if (!Array.isArray(data.data)) {
+    throw new Error("La API de Zoho no devolvió mensajes: " + JSON.stringify(data).slice(0, 300));
+  }
+  return data.data as any[];
 }
 
-/* ── Contenido completo del mensaje ─────────────────────────── */
+/* ── Contenido completo del mensaje ───────────────────────────── */
 async function getContent(config: any, token: string, folderId: string, messageId: string): Promise<string> {
   const res = await fetch(
     `${config.apiDomain}/api/accounts/${config.accountId}/folders/${folderId}/messages/${messageId}/content`,
@@ -91,35 +107,20 @@ function stripHtml(html: string): string {
     .replace(/\s+/g, " ").trim();
 }
 
-/* ── Enviar respuesta ────────────────────────────────────────── */
-async function sendReply(config: any, token: string, msg: any, replyText: string) {
+/* ── Enviar respuesta vía SMTP ─────────────────────────────────── */
+async function sendReply(transporter: any, fromEmail: string, msg: any, replyText: string) {
   const subject = msg.subject?.startsWith("Re:") ? msg.subject : `Re: ${msg.subject ?? ""}`;
-
-  const res = await fetch(
-    `${config.apiDomain}/api/accounts/${config.accountId}/messages`,
-    {
-      method:  "POST",
-      headers: {
-        Authorization:  `Zoho-oauthtoken ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        fromAddress: config.emailAddress,
-        toAddress:   msg.fromAddress,
-        subject,
-        content:     replyText,
-        mailFormat:  "plaintext",
-        inReplyTo:   msg.messageId,
-      }),
-    }
-  );
-  const data = await res.json();
-  if (data.status?.code !== 200 && data.status?.code !== 201) {
-    throw new Error("Zoho send error: " + JSON.stringify(data));
-  }
+  await transporter.sendMail({
+    from:       `"Glowmmi" <${fromEmail}>`,
+    to:         msg.fromAddress,
+    subject,
+    text:       replyText,
+    inReplyTo:  msg.messageId,
+    references: msg.messageId,
+  });
 }
 
-/* ── Marcar como leído ───────────────────────────────────────── */
+/* ── Marcar como leído (API REST) ──────────────────────────────── */
 async function markAsRead(config: any, token: string, messageId: string) {
   await fetch(
     `${config.apiDomain}/api/accounts/${config.accountId}/updatemessage`,
@@ -134,7 +135,7 @@ async function markAsRead(config: any, token: string, messageId: string) {
   );
 }
 
-/* ── matchRule ───────────────────────────────────────────────── */
+/* ── matchRule ─────────────────────────────────────────────────── */
 async function matchRule(configId: string, text: string) {
   const rules = await prisma.zohoBotRule.findMany({
     where:   { configId, isActive: true },
@@ -168,41 +169,41 @@ function buildResponse(template: string, vars: Record<string, string>): string {
   return template.replace(/\{(\w+)\}/g, (_, key) => vars[key] ?? `{${key}}`);
 }
 
-/* ── GET /api/automatizaciones/zoho/process ─────────────────── */
+/* ── GET /api/automatizaciones/zoho/process ────────────────────── */
 export async function GET() {
   try {
     const configs = await prisma.zohoBotConfig.findMany();
     if (configs.length === 0) {
-      return NextResponse.json({ error: "Sin configuración Zoho" }, { status: 404 });
+      return NextResponse.json({ error: "Sin configuración Zoho. Conecta tu cuenta primero." }, { status: 404 });
     }
 
+    const transporter = createTransporter();
+    const fromEmail   = process.env.ZOHO_SMTP_EMAIL ?? "";
     const results = [];
 
     for (const config of configs) {
       let processed = 0, replied = 0, skipped = 0, errors = 0;
 
       try {
-        const token      = await getAccessToken(config);
-        const folderId   = await getInboxFolderId(config, token);
-        const messages   = await fetchMessages(config, token, folderId);
+        const token    = await getAccessToken(config);
+        const folderId = await getInboxFolderId(config, token);
+        const messages = await fetchMessages(config, token, folderId);
 
         for (const msg of messages) {
-          // Saltar mensajes ya procesados
           const exists = await prisma.zohoConversation.findUnique({
             where: { messageId: msg.messageId },
           });
           if (exists) continue;
 
-          // Saltar nuestros propios correos (evitar loop)
-          if (msg.fromAddress === config.emailAddress) continue;
+          // Evitar loop con nuestros propios correos
+          if (msg.fromAddress === config.emailAddress || msg.fromAddress === fromEmail) continue;
 
-          // Solo procesar correos no leídos
+          // Solo no leídos
           const unread = msg.status === "0" || msg.status === 0;
           if (!unread) continue;
 
           processed++;
 
-          /* Obtener contenido ───────────────── */
           let content = "";
           try {
             content = await getContent(config, token, msg.folderId ?? folderId, msg.messageId);
@@ -212,7 +213,6 @@ export async function GET() {
 
           const fullText = `${msg.subject ?? ""} ${content}`.trim();
 
-          /* Buscar regla ────────────────────── */
           const matched = config.autoReplyEnabled
             ? await matchRule(config.id, fullText)
             : null;
@@ -226,7 +226,7 @@ export async function GET() {
                 configId:    config.id,
                 messageId:   msg.messageId,
                 fromEmail:   msg.fromAddress,
-                fromName:    msg.displayName ?? null,
+                fromName:    msg.sender ?? msg.fromAddress ?? null,
                 subject:     msg.subject ?? "(sin asunto)",
                 inboundText: fullText,
                 status: config.autoReplyEnabled ? "needs_attention" : "skipped",
@@ -236,28 +236,26 @@ export async function GET() {
             continue;
           }
 
-          /* Construir respuesta ─────────────── */
           const reply = buildResponse(matched.response, {
-            nombre: msg.displayName ?? "amig@",
+            nombre: msg.sender ?? "amig@",
           });
 
-          /* Guardar ANTES de enviar ─────────── */
           const conv = await prisma.zohoConversation.create({
             data: {
-              configId:    config.id,
-              messageId:   msg.messageId,
-              fromEmail:   msg.fromAddress,
-              fromName:    msg.displayName ?? null,
-              subject:     msg.subject ?? "(sin asunto)",
-              inboundText: fullText,
+              configId:     config.id,
+              messageId:    msg.messageId,
+              fromEmail:    msg.fromAddress,
+              fromName:     msg.sender ?? null,
+              subject:      msg.subject ?? "(sin asunto)",
+              inboundText:  fullText,
               outboundText: reply,
-              ruleMatched: matched.name,
-              status:      "pending",
+              ruleMatched:  matched.name,
+              status:       "pending",
             },
           });
 
           try {
-            await sendReply(config, token, msg, reply);
+            await sendReply(transporter, fromEmail, msg, reply);
             await markAsRead(config, token, msg.messageId);
 
             await prisma.zohoBotRule.update({

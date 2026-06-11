@@ -8,7 +8,7 @@ const REDIRECT_URI = process.env.ZOHO_REDIRECT_URI ?? "http://localhost:3000/api
 
 const AUTH_URL =
   `https://accounts.zoho.com/oauth/v2/auth` +
-  `?scope=ZohoMail.messages.ALL,ZohoMail.accounts.READ` +
+  `?scope=ZohoMail.accounts.READ,ZohoMail.folders.READ,ZohoMail.messages.ALL` +
   `&client_id=${CLIENT_ID}` +
   `&response_type=code` +
   `&access_type=offline` +
