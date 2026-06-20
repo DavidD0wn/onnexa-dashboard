@@ -24,7 +24,9 @@ const AUTO_SYNC_ENABLED = true;
 
 // Marca de tiempo del último sync exitoso (persiste entre sesiones).
 const LAST_SYNC_KEY = "onnexa_last_sync_at";
-const SYNC_EVERY_MS = 7 * 24 * 60 * 60 * 1000; // 7 días (no usado con throttle por sesión)
+// Re-sincronizar cuando el último sync exitoso fue hace más de N minutos.
+// 4 horas: balance entre frescura (hoy/ayer al día) y no saturar APIs cada recarga.
+const SYNC_EVERY_MS = 4 * 60 * 60 * 1000;
 // Solo días recientes — el histórico ya está fijo en la BD y no se re-sincroniza.
 const INCREMENTAL_DAYS = 15;
 
@@ -100,12 +102,19 @@ export function AppLoader({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // Si YA sincronizamos en esta sesión del navegador, no repetir (evita
-    // re-sincronizar en cada recarga). Al iniciar una sesión nueva (abrir la
-    // app) sí sincroniza los últimos 15 días para que hoy/ayer estén frescos.
-    if (typeof window !== "undefined" && sessionStorage.getItem(SESSION_KEY)) {
-      setDone(true);
-      return;
+    // Throttle por TIEMPO (no por sesión): sincronizar si han pasado más de
+    // SYNC_EVERY_MS desde el último sync exitoso. Así, aunque la pestaña quede
+    // abierta todo el día, al recargar después de unas horas trae los datos
+    // frescos de hoy y ayer. Pero no satura si recargas varias veces seguidas.
+    if (typeof window !== "undefined") {
+      const last = parseInt(localStorage.getItem(LAST_SYNC_KEY) ?? "0", 10);
+      const fresh = last && Date.now() - last < SYNC_EVERY_MS;
+      if (fresh) {
+        sessionStorage.setItem(SESSION_KEY, "1");
+        setDone(true);
+        window.dispatchEvent(new Event("onnexa-sync-done"));
+        return;
+      }
     }
 
     setShow(true);
