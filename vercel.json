@@ -1,4 +1,3 @@
 {
-  "_comment": "Cron de /api/shopify/autosync DESACTIVADO temporalmente (jun 20 2026): el deploy de Vercel está atascado en jun 3 con código viejo que rompe el ad spend de Glowmmi al ejecutarse cada hora (deleteMany + insert falla por FK del productId). Re-activar después de confirmar que el deploy está al día y corre el código con productId resilient.",
   "crons": []
 }
