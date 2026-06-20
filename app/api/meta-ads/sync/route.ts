@@ -271,39 +271,58 @@ export async function POST(req: NextRequest) {
           account.currency,
         );
 
-        // Habilitado (jun 2026): extrae el código de producto del nombre de campaña
-        // (p.ej. "10/04/26 - HB01 - Cbo - Usa" → prod_glw_7810722168880).
-        // Si el producto no está en el catálogo o no existe en la DB, queda null
-        // — el gasto se conserva igualmente, solo no se vincula a un producto.
-        let productId = extractProductId(row.campaign_name ?? null, account.brandId);
-        if (productId) {
-          const exists = await prisma.product.findUnique({ where: { id: productId }, select: { id: true } });
-          if (!exists) productId = null;
-        }
+        // Atribución de producto: extrae el código del nombre de campaña
+        // (p.ej. "10/04/26 - HB01 - Cbo - Usa") y verifica que el producto
+        // exista en la tabla Product. Si no existe o el lookup falla (tabla
+        // vacía o sin migrar en cloud), queda null y el gasto se guarda igual
+        // SIN vincular al producto — nunca debe romper el sync.
+        let productId: string | null = null;
+        try {
+          const candidate = extractProductId(row.campaign_name ?? null, account.brandId);
+          if (candidate) {
+            const exists = await prisma.product.findUnique({ where: { id: candidate }, select: { id: true } });
+            if (exists) productId = candidate;
+          }
+        } catch { /* lookup falló (schema/permisos) — productId queda null */ }
 
-        await prisma.adSpend.create({
-          data: {
-            brandId:         account.brandId,
-            countryId,
-            productId,
-            accountId:       account.accountId,
-            date:            new Date(row.date_start),
-            platform:        "facebook",
-            campaignName:    row.campaign_name ?? null,
-            adsetName:       row.adset_name    ?? null,
-            adName:          row.ad_name       ?? null,
-            spend,
-            impressions:     parseInt(row.impressions || "0"),
-            clicks:          parseInt(row.clicks      || "0"),
-            purchases:       Math.round(purchases),
-            conversionValue: convValue,
-            ctr:             parseFloat(row.ctr || "0"),
-            cpc:             parseFloat(row.cpc || "0") * fx,
-            cpm:             parseFloat(row.cpm || "0") * fx,
-            cpa,
-            roas:            spend > 0 && convValue > 0 ? convValue / spend : null,
-          },
-        });
+        const baseData = {
+          brandId:         account.brandId,
+          countryId,
+          accountId:       account.accountId,
+          date:            new Date(row.date_start),
+          platform:        "facebook",
+          campaignName:    row.campaign_name ?? null,
+          adsetName:       row.adset_name    ?? null,
+          adName:          row.ad_name       ?? null,
+          spend,
+          impressions:     parseInt(row.impressions || "0"),
+          clicks:          parseInt(row.clicks      || "0"),
+          purchases:       Math.round(purchases),
+          conversionValue: convValue,
+          ctr:             parseFloat(row.ctr || "0"),
+          cpc:             parseFloat(row.cpc || "0") * fx,
+          cpm:             parseFloat(row.cpm || "0") * fx,
+          cpa,
+          roas:            spend > 0 && convValue > 0 ? convValue / spend : null,
+        };
+
+        try {
+          await prisma.adSpend.create({ data: { ...baseData, productId } });
+        } catch (e: any) {
+          // Si falló por FK del productId (cloud sin Product table o ID viejo),
+          // reintentar SIN productId — el gasto se guarda y la atribución se omite.
+          if (productId) {
+            try {
+              await prisma.adSpend.create({ data: { ...baseData, productId: null } });
+            } catch (e2: any) {
+              console.warn(`[Meta Ads] Falló create sin productId para ${row.campaign_name}: ${e2.message?.slice(0, 120)}`);
+              continue;
+            }
+          } else {
+            console.warn(`[Meta Ads] Falló create para ${row.campaign_name}: ${e.message?.slice(0, 120)}`);
+            continue;
+          }
+        }
         totalSaved++;
       }
     }
