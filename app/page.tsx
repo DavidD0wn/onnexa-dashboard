@@ -425,7 +425,11 @@ export default function Dashboard() {
   const syncShopify = useCallback(async () => {
     setSyncing(true);
     try {
-      const syncDays = Math.max(days, 30); // always 30-day minimum to preserve history
+      // Respaldo de seguridad antes de sincronizar (punto de restauración)
+      try { await fetch("/api/backup", { method: "POST" }); } catch { /* no crítico */ }
+      // SOLO últimos 15 días — actualiza el mes en curso sin tocar meses cerrados.
+      // Los meses pasados quedan fijos en la BD; nunca se re-sincronizan ni se degradan.
+      const syncDays = 15;
       await fetch("/api/shopify/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -437,6 +441,8 @@ export default function Dashboard() {
         body: JSON.stringify({ store: "balancea", days: syncDays }),
       });
       setLastSynced(new Date().toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" }));
+      // Resetear el contador de 7 días: el AppLoader no re-sincronizará hasta dentro de una semana.
+      if (typeof window !== "undefined") localStorage.setItem("onnexa_last_sync_at", String(Date.now()));
     } catch { /* non-critical */ }
     setSyncing(false);
     load();

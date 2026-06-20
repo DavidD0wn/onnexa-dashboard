@@ -205,16 +205,43 @@ async function getToken(store: StoreConfig): Promise<string> {
 }
 
 // ─── Fetch paginated helper ───────────────────────────────────────────────────
+// "TODO O NADA": si la paginación no llega al final (rate limit persistente,
+// error de red, error de servidor), LANZA un error. El caller aborta el sync sin
+// escribir nada, conservando los datos buenos en vez de corromperlos con datos
+// parciales. NUNCA devuelve un resultado incompleto silenciosamente.
 async function fetchPaginated(startUrl: string, token: string, key: string): Promise<any[]> {
   const all: any[] = [];
   let url: string | null = startUrl;
   while (url) {
-    const res: Response = await fetch(url, { headers: { "X-Shopify-Access-Token": token } });
-    if (!res.ok) break;
-    const data: any = await res.json();
+    let res: Response | null = null;
+    let attempt = 0;
+    // Reintentar ESTA página con backoff exponencial hasta lograrla.
+    while (true) {
+      try {
+        res = await fetch(url, { headers: { "X-Shopify-Access-Token": token } });
+      } catch (e: any) {
+        // Error de red — backoff y reintentar
+        if (++attempt > 8) throw new Error(`Red falló tras ${attempt} intentos: ${e.message}`);
+        await new Promise((r) => setTimeout(r, Math.min(1000 * 2 ** attempt, 20000)));
+        continue;
+      }
+      // Rate limit (429) o error de servidor (5xx): esperar y reintentar la MISMA página.
+      if (res.status === 429 || res.status >= 500) {
+        if (++attempt > 8) throw new Error(`Shopify ${res.status} persistente tras ${attempt} intentos — sync abortado para no perder datos`);
+        const retryAfter = parseFloat(res.headers.get("Retry-After") ?? "0");
+        const wait = retryAfter > 0 ? retryAfter * 1000 : Math.min(1000 * 2 ** attempt, 20000);
+        await new Promise((r) => setTimeout(r, wait));
+        continue;
+      }
+      if (!res.ok) throw new Error(`Shopify respondió ${res.status} — sync abortado`);
+      break; // página OK
+    }
+    const data: any = await res!.json();
     all.push(...(data[key] ?? []));
-    const next: RegExpMatchArray | null = (res.headers.get("Link") ?? "").match(/<([^>]+)>;\s*rel="next"/);
+    const next: RegExpMatchArray | null = (res!.headers.get("Link") ?? "").match(/<([^>]+)>;\s*rel="next"/);
     url = next ? next[1] : null;
+    // Pausa entre páginas para respetar el bucket de Shopify (2 req/s).
+    if (url) await new Promise((r) => setTimeout(r, 400));
   }
   return all;
 }

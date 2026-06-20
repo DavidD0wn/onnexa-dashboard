@@ -11,7 +11,22 @@ type Step = {
   detail?: string;
 };
 
-const SESSION_KEY = "onnexa_loaded_v2";
+const SESSION_KEY  = "onnexa_loaded_v2";
+
+// ✅ AUTO-SYNC SEGURO (jun 2026).
+// Al abrir la app se sincronizan SOLO los últimos 15 días (mes en curso: hoy, ayer,
+// junio) usando el endpoint correcto /api/shopify/sync — NUNCA el daemon viejo (que
+// fue desactivado por corromper datos). Los meses cerrados (ene–may) NO se tocan:
+// la limpieza de stale rows solo afecta fechas >= (hoy - 15 días). El sync es
+// "todo o nada": si no logra traer todo, no escribe nada (conserva lo bueno).
+// Se sincroniza UNA vez por sesión del navegador (al iniciar), no en cada recarga.
+const AUTO_SYNC_ENABLED = true;
+
+// Marca de tiempo del último sync exitoso (persiste entre sesiones).
+const LAST_SYNC_KEY = "onnexa_last_sync_at";
+const SYNC_EVERY_MS = 7 * 24 * 60 * 60 * 1000; // 7 días (no usado con throttle por sesión)
+// Solo días recientes — el histórico ya está fijo en la BD y no se re-sincroniza.
+const INCREMENTAL_DAYS = 15;
 
 function Spinner() {
   return (
@@ -59,8 +74,8 @@ export function AppLoader({ children }: { children: React.ReactNode }) {
   const [fadeOut,  setFadeOut]  = useState(false);
   const [canSkip,  setCanSkip]  = useState(false);
   const [steps,    setSteps]    = useState<Step[]>([
-    { id: "meta",     label: "Meta Ads",         sublabel: "Sincronizando campañas y gasto (30 días)", status: "waiting" },
-    { id: "shopify",  label: "Ventas Shopify",    sublabel: "Sincronizando órdenes de Glowmmi y Balancea", status: "waiting" },
+    { id: "meta",     label: "Meta Ads",         sublabel: `Actualizando gasto reciente (${INCREMENTAL_DAYS} días)`, status: "waiting" },
+    { id: "shopify",  label: "Ventas Shopify",    sublabel: "Actualizando órdenes recientes de Glowmmi y Balancea", status: "waiting" },
     { id: "rollup",   label: "Dashboard",         sublabel: "Consolidando métricas y KPIs", status: "waiting" },
   ]);
 
@@ -74,7 +89,20 @@ export function AppLoader({ children }: { children: React.ReactNode }) {
     if (ranRef.current) return;
     ranRef.current = true;
 
-    // If already loaded this session, skip splash immediately
+    // ⛔ Auto-sync desactivado: la BD está congelada. Cargar directo desde la BD,
+    // sin sincronizar ni mostrar el splash. Los datos no se mueven.
+    if (!AUTO_SYNC_ENABLED) {
+      setDone(true);
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem(SESSION_KEY, "1");
+        window.dispatchEvent(new Event("onnexa-sync-done"));
+      }
+      return;
+    }
+
+    // Si YA sincronizamos en esta sesión del navegador, no repetir (evita
+    // re-sincronizar en cada recarga). Al iniciar una sesión nueva (abrir la
+    // app) sí sincroniza los últimos 15 días para que hoy/ayer estén frescos.
     if (typeof window !== "undefined" && sessionStorage.getItem(SESSION_KEY)) {
       setDone(true);
       return;
@@ -90,8 +118,13 @@ export function AppLoader({ children }: { children: React.ReactNode }) {
       const localStr = (d: Date) =>
         `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
       const today = localStr(new Date());
-      const from30d = new Date(); from30d.setDate(from30d.getDate() - 30);
-      const from30 = localStr(from30d);
+      // Solo refrescamos los últimos INCREMENTAL_DAYS días — el histórico ya está en la BD.
+      const fromIncD = new Date(); fromIncD.setDate(fromIncD.getDate() - INCREMENTAL_DAYS);
+      const from30 = localStr(fromIncD);
+
+      // ── Step 0: Respaldo de seguridad ANTES de tocar nada ──────────────────
+      // Garantiza un punto de restauración si la sincronización fallara.
+      try { await fetch("/api/backup", { method: "POST" }); } catch { /* no crítico */ }
 
       // ── Step 1: Meta Ads sync ──────────────────────────────────────────────
       updateStep("meta", { status: "loading" });
@@ -118,14 +151,14 @@ export function AppLoader({ children }: { children: React.ReactNode }) {
         const r1   = await fetch("/api/shopify/sync", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ store: "glowmmi", days: 30 }),
+          body: JSON.stringify({ store: "glowmmi", days: INCREMENTAL_DAYS }),
         });
         const d1 = await r1.json().catch(() => ({}));
         // Balancea second (after glowmmi finishes to avoid concurrent DB writes)
         await fetch("/api/shopify/sync", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ store: "balancea", days: 30 }),
+          body: JSON.stringify({ store: "balancea", days: INCREMENTAL_DAYS }),
         });
         const ok = r1.ok || d1.ok || d1.synced || d1.message;
         if (ok) {
@@ -152,7 +185,11 @@ export function AppLoader({ children }: { children: React.ReactNode }) {
       }
 
       // ── All done ─────────────────────────────────────────────────────────
-      if (typeof window !== "undefined") sessionStorage.setItem(SESSION_KEY, "1");
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem(SESSION_KEY, "1");
+        // Guardar la marca de tiempo: el próximo sync será dentro de 7 días.
+        localStorage.setItem(LAST_SYNC_KEY, String(Date.now()));
+      }
       clearTimeout(skipTimer);
 
       // Short pause to show final state, then fade out
@@ -314,7 +351,7 @@ export function AppLoader({ children }: { children: React.ReactNode }) {
               </p>
             ) : (
               <p style={{ fontSize: 12, color: "rgba(255,255,255,0.25)" }}>
-                Sincronizando datos frescos · solo una vez por sesión
+                Actualizando datos recientes · se refresca cada 7 días
               </p>
             )}
             {canSkip && !allDone && (

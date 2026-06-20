@@ -132,7 +132,10 @@ function getCPA(costPerAction: any[]): number | null {
   return pa ? parseFloat(pa.value || "0") : null;
 }
 
-async function fetchInsights(accountId: string, dateFrom: string, dateTo: string) {
+// Devuelve { rows, ok }. ok=false significa que la cuenta NO completó su
+// sincronización (error/cursor/rate-limit) — el caller NO debe borrar los datos
+// existentes de esa cuenta, para no perderlos. ok=true = paginación completa.
+async function fetchInsights(accountId: string, dateFrom: string, dateTo: string): Promise<{ rows: any[]; ok: boolean }> {
   const rows: any[] = [];
   let url: string | null =
     `https://graph.facebook.com/v19.0/${accountId}/insights` +
@@ -140,35 +143,52 @@ async function fetchInsights(accountId: string, dateFrom: string, dateTo: string
     `&time_range=${encodeURIComponent(JSON.stringify({ since: dateFrom, until: dateTo }))}` +
     `&access_token=${TOKEN}`;
 
+  let retries = 0;
   while (url) {
-    const res: Response = await fetch(url);
-    const data: any     = await res.json();
+    let res: Response;
+    try {
+      res = await fetch(url);
+    } catch (e: any) {
+      // Error de red — reintentar hasta 5 veces antes de marcar fallo
+      if (++retries > 5) { console.warn(`[Meta Ads] Network fail ${accountId}: ${e.message}`); return { rows, ok: false }; }
+      await new Promise((r) => setTimeout(r, 2000));
+      continue;
+    }
+    const data: any = await res.json();
     if (data.error) {
       const code = data.error?.code ?? 0;
       const msg  = data.error?.message ?? "Meta API error";
-      // (#2642) = invalid/expired cursor — happens on large paginated requests.
-      // Don't throw: return whatever rows we already collected so the sync
-      // saves partial data instead of failing completely.
-      if (code === 2642 || msg.includes("cursors") || msg.includes("cursor")) {
-        console.warn(`[Meta Ads] Cursor expired mid-pagination for ${accountId} — saving ${rows.length} rows collected so far`);
-        break;
+      // Rate limit (#17, #80000-80004, #4): esperar y reintentar la MISMA página
+      if (code === 17 || code === 4 || (code >= 80000 && code <= 80004) || msg.toLowerCase().includes("rate")) {
+        if (++retries > 8) { console.warn(`[Meta Ads] Rate limit agotado ${accountId}`); return { rows, ok: false }; }
+        await new Promise((r) => setTimeout(r, 5000));
+        continue;
       }
-      // Token expired or invalid → surface this so the user can renew it
+      // Cursor expirado: datos incompletos → ok=false (no borrar lo existente)
+      if (code === 2642 || msg.includes("cursor")) {
+        console.warn(`[Meta Ads] Cursor expired ${accountId} — ${rows.length} filas parciales`);
+        return { rows, ok: false };
+      }
+      // Token inválido → problema global, abortar todo el sync
       if (code === 190 || msg.includes("access token") || msg.includes("token")) {
         throw new Error(`Token expirado o inválido: ${msg}`);
       }
-      // Other errors: log and break (don't lose existing rows)
-      console.warn(`[Meta Ads] API error for ${accountId} (${code}): ${msg.slice(0, 150)}`);
-      break;
+      // Otro error (p.ej. #200 permisos) → ok=false, conservar datos existentes
+      console.warn(`[Meta Ads] API error ${accountId} (${code}): ${msg.slice(0, 150)}`);
+      return { rows, ok: false };
     }
+    retries = 0;
     rows.push(...(data.data ?? []));
     url = data.paging?.next ?? null;
   }
-  return rows;
+  return { rows, ok: true };
 }
 
-/* ── COP → USD conversion rate (Banana #1 account reports in Colombian Pesos) ── */
-const COP_TO_USD = 4100;
+/* ── COP → USD conversion rate (Banana #1 account reports in Colombian Pesos) ──
+   Actualizado jun 2026: 4100 estaba desactualizado y subvaluaba el gasto COP ~14%.
+   Tasa real de mercado ~3550 (er-api) — coincide con el gasto real verificado por
+   Fernanda en Meta. Si COP se mueve mucho, ajustar aquí. */
+const COP_TO_USD = 3550;
 
 export async function POST(req: NextRequest) {
   try {
@@ -197,32 +217,33 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    /* ── Step 1: Fetch rows from ALL accounts before touching the DB ──────────
-       Critical: if we delete+insert inside the per-account loop, the second
-       account's deleteMany wipes the first account's freshly-inserted rows.
-       Solution: collect everything first, then do ONE delete per brand, then
-       insert all rows. */
-    type PendingRow = { account: typeof accounts[number]; row: any };
-    const pendingByBrand: Record<string, PendingRow[]> = {};
-
+    /* ── Step 1: Fetch rows POR CUENTA antes de tocar la DB ──────────────────
+       Cada cuenta se sincroniza independientemente. Si una cuenta falla
+       (ok=false), NO se borran sus datos existentes — así nunca se pierde el
+       histórico de una cuenta que tuvo un error transitorio (la causa de que
+       "se vaya todo" el ad spend). */
+    const perAccount: { account: typeof accounts[number]; rows: any[]; ok: boolean }[] = [];
     for (const account of accounts) {
-      const rows = await fetchInsights(account.accountId, dateFrom, dateTo);
-      if (!pendingByBrand[account.brandId]) pendingByBrand[account.brandId] = [];
-      for (const row of rows) {
-        pendingByBrand[account.brandId].push({ account, row });
+      const { rows, ok } = await fetchInsights(account.accountId, dateFrom, dateTo);
+      perAccount.push({ account, rows, ok });
+      if (!ok) {
+        console.warn(`[Meta Ads] Cuenta ${account.accountId} (${account.brandId}) falló o trajo datos parciales — se CONSERVAN sus datos existentes (no se borran)`);
       }
     }
 
     let totalSaved = 0;
+    const skippedAccounts: string[] = [];
 
-    /* ── Step 2: One delete per brand, then insert all accounts' rows ───── */
-    for (const [brandId, pending] of Object.entries(pendingByBrand)) {
-      // Single deleteMany covers ALL accounts for this brand in the date range
+    /* ── Step 2: Borrar + reinsertar SOLO las cuentas que sincronizaron OK ── */
+    for (const { account, rows, ok } of perAccount) {
+      // Cuenta que falló: conservar sus datos. No borrar, no reinsertar.
+      if (!ok) { skippedAccounts.push(account.accountId); continue; }
+
+      // Borrar solo ESTA cuenta en el rango (no toca las demás cuentas)
       await prisma.adSpend.deleteMany({
         where: {
-          brandId,
+          accountId:    account.accountId,
           platform:     "facebook",
-          campaignName: { not: null },
           date: {
             gte: new Date(dateFrom),
             lte: new Date(dateTo + "T23:59:59Z"),
@@ -231,7 +252,7 @@ export async function POST(req: NextRequest) {
       });
 
       // Insert fresh rows — country and product inferred from campaign name
-      for (const { account, row } of pending) {
+      for (const row of rows) {
         /* Currency conversion: Banana #1 (act_486942987769865) reports in COP.
            Divide monetary values by COP_TO_USD so everything is stored in USD. */
         const fx    = account.currency === "COP" ? 1 / COP_TO_USD : 1;
@@ -250,15 +271,21 @@ export async function POST(req: NextRequest) {
           account.currency,
         );
 
-        // productId linking disabled — Product table is empty in cloud DB
-        // Will re-enable once products are seeded
-        const productId: string | null = null;
+        // Habilitado (jun 2026): extrae el código de producto del nombre de campaña
+        // (p.ej. "10/04/26 - HB01 - Cbo - Usa" → prod_glw_7810722168880).
+        // Si el producto no está en el catálogo o no existe en la DB, queda null
+        // — el gasto se conserva igualmente, solo no se vincula a un producto.
+        let productId = extractProductId(row.campaign_name ?? null, account.brandId);
+        if (productId) {
+          const exists = await prisma.product.findUnique({ where: { id: productId }, select: { id: true } });
+          if (!exists) productId = null;
+        }
 
         await prisma.adSpend.create({
           data: {
             brandId:         account.brandId,
             countryId,
-            productId:       null,
+            productId,
             accountId:       account.accountId,
             date:            new Date(row.date_start),
             platform:        "facebook",
@@ -282,7 +309,12 @@ export async function POST(req: NextRequest) {
     }
 
     await prisma.metaAdsSyncLog.create({
-      data: { status: "success", recordsSaved: totalSaved, dateFrom, dateTo },
+      data: {
+        status: skippedAccounts.length ? "partial" : "success",
+        recordsSaved: totalSaved,
+        dateFrom, dateTo,
+        ...(skippedAccounts.length ? { errorMsg: `Cuentas conservadas (no sincronizadas): ${skippedAccounts.join(", ")}` } : {}),
+      },
     });
 
     /* ── Rollup: pasar AdSpend → DailyMetric.adSpend automáticamente ── */
@@ -298,7 +330,7 @@ export async function POST(req: NextRequest) {
       console.warn("[Meta Ads] Rollup falló (no crítico):", (re as any).message);
     }
 
-    return NextResponse.json({ ok: true, recordsSaved: totalSaved, dateFrom, dateTo });
+    return NextResponse.json({ ok: true, recordsSaved: totalSaved, dateFrom, dateTo, skippedAccounts });
   } catch (err: any) {
     console.error("[Meta Ads Sync]", err.message);
     await prisma.metaAdsSyncLog.create({

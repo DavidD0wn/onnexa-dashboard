@@ -41,3 +41,13 @@ yarn-error.log*
 next-env.d.ts
 
 /app/generated/prisma
+
+# Respaldos locales de BD (datos sensibles, no van al repo público)
+/data/backups
+
+# Logs locales del sync
+/logs
+
+# Scripts desactivados (daemons buggy que corrompían datos — se conservan
+# en local con extensión .DESACTIVADO como referencia, no van al repo)
+scripts/*.DESACTIVADO
