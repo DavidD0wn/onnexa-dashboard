@@ -235,22 +235,52 @@ function CatalogoCOGS({ country, brand, search }: { country: CountryKey; brand: 
   };
 
   const colColor = COUNTRY_CFG[country].color;
-  const thBase = { padding: "9px 10px", fontSize: 10, fontWeight: 600 as const, background: "var(--bg-2)", borderBottom: "1px solid var(--border)", whiteSpace: "nowrap" as const, color: "var(--text-3)" };
 
   if (loading) return <div style={{ padding: 48, textAlign: "center", color: "var(--text-3)" }}>Cargando catálogo…</div>;
 
+  // Stats del catálogo
+  const totalOk     = filtered.filter(r => r.dataQuality === "ok" && r.productCostTotalUsd > 0).length;
+  const totalMissing = filtered.length - totalOk;
+  const avgCost     = filtered.length > 0 ? filtered.reduce((s, r) => s + r.productCostUnitUsd, 0) / filtered.length : 0;
+
   return (
     <div>
+      {/* Resumen del país */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10, padding: "16px 20px 12px" }}>
+        <div style={{ background: "var(--bg-2)", borderLeft: `3px solid ${colColor}`, borderRadius: 8, padding: "10px 14px" }}>
+          <div style={{ fontSize: 10, color: "var(--text-3)", textTransform: "uppercase", fontWeight: 700, letterSpacing: ".05em" }}>Productos</div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: "var(--text)", marginTop: 2 }}>{grouped.size}</div>
+          <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2 }}>{filtered.length} ofertas</div>
+        </div>
+        <div style={{ background: "var(--bg-2)", borderLeft: "3px solid #10B981", borderRadius: 8, padding: "10px 14px" }}>
+          <div style={{ fontSize: 10, color: "var(--text-3)", textTransform: "uppercase", fontWeight: 700, letterSpacing: ".05em" }}>Con costo cargado</div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: "#10B981", marginTop: 2 }}>{totalOk}</div>
+          <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2 }}>{filtered.length > 0 ? Math.round(totalOk / filtered.length * 100) : 0}% del total</div>
+        </div>
+        {totalMissing > 0 && (
+          <div style={{ background: "var(--bg-2)", borderLeft: "3px solid #EF4444", borderRadius: 8, padding: "10px 14px" }}>
+            <div style={{ fontSize: 10, color: "var(--text-3)", textTransform: "uppercase", fontWeight: 700, letterSpacing: ".05em" }}>Faltan datos</div>
+            <div style={{ fontSize: 22, fontWeight: 700, color: "#EF4444", marginTop: 2 }}>{totalMissing}</div>
+            <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2 }}>ofertas por completar</div>
+          </div>
+        )}
+        <div style={{ background: "var(--bg-2)", borderLeft: "3px solid #8B5CF6", borderRadius: 8, padding: "10px 14px" }}>
+          <div style={{ fontSize: 10, color: "var(--text-3)", textTransform: "uppercase", fontWeight: 700, letterSpacing: ".05em" }}>Costo prom / unidad</div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: "#8B5CF6", marginTop: 2 }}>${usd(avgCost)}</div>
+          <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2 }}>{COUNTRY_CFG[country].label}</div>
+        </div>
+      </div>
+
       {/* Toolbar */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 20px 8px" }}>
-        <span style={{ fontSize: 12, color: "var(--text-3)" }}>
-          {filtered.length} registros · {grouped.size} productos · {country}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 20px 12px" }}>
+        <span style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: ".05em", fontWeight: 600 }}>
+          Catálogo · {COUNTRY_CFG[country].flag} {COUNTRY_CFG[country].label}
         </span>
         <button
           onClick={() => setAdding(p => !p)}
-          style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 14px", borderRadius: 8, border: "none", background: colColor, color: "#fff", cursor: "pointer", fontWeight: 700, fontSize: 12 }}
+          style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", borderRadius: 8, border: "none", background: colColor, color: "#fff", cursor: "pointer", fontWeight: 600, fontSize: 12 }}
         >
-          <Plus size={13} /> Agregar oferta
+          <Plus size={13} /> Nueva oferta
         </button>
       </div>
 
@@ -284,160 +314,146 @@ function CatalogoCOGS({ country, brand, search }: { country: CountryKey; brand: 
         </div>
       )}
 
-      {/* Table */}
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-          <thead>
-            <tr>
-              <th style={{ ...thBase, textAlign: "left",  width: 160, paddingLeft: 20 }}>Producto base</th>
-              <th style={{ ...thBase, textAlign: "left",  width: 220 }}>Oferta / Bundle</th>
-              <th style={{ ...thBase, textAlign: "right", width: 55  }}>Uni</th>
-              <th style={{ ...thBase, textAlign: "right", width: 110, color: colColor, borderBottom: `2px solid ${colColor}44` }}>Costo Total</th>
-              <th style={{ ...thBase, textAlign: "right", width: 100, color: colColor, borderBottom: `2px solid ${colColor}44` }}>Costo Unit</th>
-              <th style={{ ...thBase, textAlign: "right", width: 90  }}>Flete</th>
-              <th style={{ ...thBase, textAlign: "right", width: 80  }}>Fee %</th>
-              <th style={{ ...thBase, textAlign: "right", width: 120, color: "#8B5CF6", borderBottom: "2px solid #8B5CF644" }}>Total Antes Ads</th>
-              <th style={{ ...thBase, textAlign: "right", width: 90  }}>CPA BE</th>
-              <th style={{ ...thBase, textAlign: "right", width: 85  }}>ROAS BE</th>
-              <th style={{ ...thBase, textAlign: "center", width: 80 }}>Estado</th>
-              <th style={{ ...thBase, textAlign: "center", width: 36 }}></th>
-            </tr>
-          </thead>
-          <tbody>
-            {grouped.size === 0 && (
-              <tr><td colSpan={12} style={{ padding: 48, textAlign: "center", color: "var(--text-3)" }}>Sin datos para {country}. Haz clic en "Agregar oferta" para comenzar.</td></tr>
-            )}
-            {Array.from(grouped.entries()).map(([productName, productRows], gi) => (
-              <React.Fragment key={`group-${gi}-${productName}`}>
-                {/* Product group header */}
-                <tr key={`gh-${productName}`}>
-                  <td colSpan={12} style={{ padding: "8px 20px 4px", background: "rgba(255,255,255,.02)", borderTop: gi > 0 ? "1px solid var(--border)" : "none" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{productName}</span>
-                      <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 20, background: (BRAND_COLORS[productRows[0].brand] ?? "#6366F1") + "22", color: BRAND_COLORS[productRows[0].brand] ?? "#6366F1", fontWeight: 600 }}>
-                        {BRAND_LABELS[productRows[0].brand] ?? productRows[0].brand}
-                      </span>
-                      <span style={{ fontSize: 10, color: "var(--text-3)" }}>{productRows.length} oferta{productRows.length !== 1 ? "s" : ""}</span>
+      {/* Cards grid — un card por producto base */}
+      <div style={{ padding: "0 20px 20px" }}>
+        {grouped.size === 0 ? (
+          <div style={{ padding: 60, textAlign: "center", color: "var(--text-3)", background: "var(--bg-2)", borderRadius: 12, border: "1px dashed var(--border)" }}>
+            Sin datos para {COUNTRY_CFG[country].label}. Click en <strong>Nueva oferta</strong> para empezar.
+          </div>
+        ) : (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(360px, 1fr))", gap: 14 }}>
+            {Array.from(grouped.entries())
+              .sort(([a],[b]) => a.localeCompare(b))
+              .map(([productName, productRows]) => {
+                const brandColor = BRAND_COLORS[productRows[0].brand] ?? "#6366F1";
+                const brandLabel = BRAND_LABELS[productRows[0].brand] ?? productRows[0].brand;
+                const sorted = [...productRows].sort((a, b) => a.unitsTotal - b.unitsTotal);
+                const okCount = sorted.filter(r => r.dataQuality === "ok" && r.productCostTotalUsd > 0).length;
+                const baseKey = productName.toLowerCase().replace(/[™®–—\-\s]+/g, " ").trim();
+                const aovUnit = aovMap[baseKey];
+
+                return (
+                  <div key={productName} style={{ background: "var(--bg-1)", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+                    {/* Card header */}
+                    <div style={{ padding: "14px 16px 10px", borderBottom: "1px solid var(--border)", background: `linear-gradient(180deg, ${brandColor}08 0%, transparent 100%)` }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flex: 1 }}>
+                          <div style={{ width: 4, height: 26, borderRadius: 2, background: brandColor, flexShrink: 0 }} />
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={productName}>
+                              {productName}
+                            </div>
+                            <div style={{ fontSize: 10, color: "var(--text-3)", marginTop: 1, textTransform: "uppercase", letterSpacing: ".05em", fontWeight: 600 }}>
+                              <span style={{ color: brandColor }}>{brandLabel}</span> · {sorted.length} oferta{sorted.length !== 1 ? "s" : ""}
+                            </div>
+                          </div>
+                        </div>
+                        <span style={{ fontSize: 10, padding: "3px 8px", borderRadius: 20, background: okCount === sorted.length ? "#10B98118" : "#EF444418", color: okCount === sorted.length ? "#10B981" : "#EF4444", fontWeight: 700, flexShrink: 0 }}>
+                          {okCount}/{sorted.length} ✓
+                        </span>
+                      </div>
+                      {aovUnit && (
+                        <div style={{ fontSize: 10, color: "var(--text-3)", marginTop: 6 }}>
+                          AOV/unidad (30d): <strong style={{ color: "var(--text-2)" }}>${usd(aovUnit)}</strong>
+                        </div>
+                      )}
                     </div>
-                  </td>
-                </tr>
-                {/* Offer rows */}
-                {productRows
-                  .sort((a, b) => a.unitsTotal - b.unitsTotal)
-                  .map((row, i) => {
-                    const isSav     = saving[row.id];
-                    // Estimate selling price from analytics
-                    const baseKey   = productName.toLowerCase().replace(/[™®–—\-\s]+/g, " ").trim();
-                    const selPrice  = aovMap[baseKey];
-                    const adjPrice  = selPrice ? selPrice * row.unitsTotal : null;
-                    const cpaBe     = adjPrice ? adjPrice - row.totalCostBeforeAdsUsd : null;
-                    const roasBe    = adjPrice && row.totalCostBeforeAdsUsd > 0 ? adjPrice / row.totalCostBeforeAdsUsd : null;
-                    const statusOk  = row.dataQuality === "ok";
-                    const bg        = i % 2 === 0 ? "transparent" : "rgba(255,255,255,.01)";
 
-                    return (
-                      <tr key={row.id}
-                        style={{ borderBottom: "1px solid rgba(255,255,255,.04)", background: bg, opacity: isSav ? 0.6 : 1 }}
-                        onMouseEnter={ev => (ev.currentTarget.style.background = "rgba(255,255,255,.04)")}
-                        onMouseLeave={ev => (ev.currentTarget.style.background = bg)}
-                      >
-                        {/* Producto base — empty, shown in group header */}
-                        <td style={{ padding: "5px 20px" }}></td>
+                    {/* Ofertas list */}
+                    <div style={{ display: "flex", flexDirection: "column" }}>
+                      {sorted.map((row, i) => {
+                        const isSav    = saving[row.id];
+                        const adjPrice = aovUnit ? aovUnit * row.unitsTotal : null;
+                        const roasBe   = adjPrice && row.totalCostBeforeAdsUsd > 0 ? adjPrice / row.totalCostBeforeAdsUsd : null;
+                        const missing  = row.productCostTotalUsd <= 0;
 
-                        {/* Oferta */}
-                        <td style={{ padding: "5px 10px", color: "var(--text)", fontWeight: 500 }}>
-                          <EditableCell value={row.offerName} type="text" onSave={v => patchRow(row.id, "offerName", v)} />
-                        </td>
-
-                        {/* Uni */}
-                        <td style={{ padding: "5px 10px", textAlign: "right" }}>
-                          <EditableCell value={row.unitsTotal} format="integer" onSave={v => patchRow(row.id, "unitsTotal", v)} />
-                        </td>
-
-                        {/* Costo Total — main editable field */}
-                        <td style={{ padding: "5px 10px", background: row.productCostTotalUsd > 0 ? "rgba(245,158,11,.03)" : "rgba(239,68,68,.04)" }}>
-                          <EditableCell
-                            value={row.productCostTotalUsd}
-                            onSave={v => patchRow(row.id, "productCostTotalUsd", v)}
-                            placeholder="—  editar"
-                          />
-                        </td>
-
-                        {/* Costo Unit — auto */}
-                        <td style={{ padding: "5px 10px", textAlign: "right", color: "var(--text-3)", fontSize: 11 }}>
-                          {row.productCostUnitUsd > 0 ? `$${usd(row.productCostUnitUsd)}` : "—"}
-                        </td>
-
-                        {/* Flete */}
-                        <td style={{ padding: "5px 10px" }}>
-                          <EditableCell
-                            value={row.shippingIncludedInCogs ? null : row.shippingCostUsd}
-                            placeholder="incluido"
-                            onSave={v => patchRow(row.id, "shippingCostUsd", v)}
-                          />
-                        </td>
-
-                        {/* Fee % */}
-                        <td style={{ padding: "5px 10px", textAlign: "right", color: "var(--text-3)", fontSize: 11 }}>
-                          {row.gatewayFeePercent}%
-                        </td>
-
-                        {/* Total Antes Ads — auto */}
-                        <td style={{ padding: "5px 10px", textAlign: "right", fontWeight: 600, color: "#8B5CF6", fontSize: 12 }}>
-                          {row.totalCostBeforeAdsUsd > 0 ? `$${usd(row.totalCostBeforeAdsUsd)}` : "—"}
-                        </td>
-
-                        {/* CPA BE */}
-                        <td style={{ padding: "5px 10px", textAlign: "right" }}>
-                          {cpaBe != null
-                            ? <span style={{ color: cpaBe < 0 ? "#EF4444" : "#10B981", fontWeight: 600 }}>${usd(cpaBe)}</span>
-                            : <span style={{ color: "var(--text-3)" }}>—</span>}
-                        </td>
-
-                        {/* ROAS BE */}
-                        <td style={{ padding: "5px 10px", textAlign: "right" }}>
-                          {roasBe != null
-                            ? <span style={{ color: roasBe < 2 ? "#EF4444" : roasBe < 3 ? "#F59E0B" : "#10B981", fontWeight: 700 }}>{roasBe.toFixed(2)}x</span>
-                            : <span style={{ color: "var(--text-3)" }}>—</span>}
-                        </td>
-
-                        {/* Estado */}
-                        <td style={{ padding: "5px 10px", textAlign: "center" }}>
-                          {isSav
-                            ? <span style={{ fontSize: 10, color: "#F59E0B" }}>saving…</span>
-                            : statusOk
-                              ? <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 20, background: "#10B98118", color: "#10B981" }}>✓ Ok</span>
-                              : <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 20, background: "#EF444418", color: "#EF4444", fontWeight: 600 }}>⚠ Falta</span>
-                          }
-                        </td>
-
-                        {/* Delete */}
-                        <td style={{ padding: "5px 8px", textAlign: "center" }}>
-                          <button
-                            onClick={() => { if (confirm(`¿Eliminar "${row.offerName}"?`)) deleteRow(row.id); }}
-                            style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-3)", opacity: 0.4, padding: 2 }}
-                            title="Eliminar"
-                            onMouseEnter={e => (e.currentTarget.style.opacity = "1")}
-                            onMouseLeave={e => (e.currentTarget.style.opacity = "0.4")}
+                        return (
+                          <div key={row.id}
+                            style={{
+                              padding: "10px 16px",
+                              borderTop: i > 0 ? "1px solid rgba(255,255,255,.04)" : "none",
+                              background: missing ? "rgba(239,68,68,.04)" : "transparent",
+                              opacity: isSav ? 0.5 : 1,
+                              transition: "background .15s",
+                            }}
                           >
-                            <X size={12} />
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-              </React.Fragment>
-            ))}
-          </tbody>
-        </table>
+                            {/* Línea 1: nombre de oferta + units badge + delete */}
+                            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                              <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={row.offerName}>
+                                {row.offerName}
+                              </span>
+                              <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: 4, background: "var(--bg-2)", color: "var(--text-3)", fontWeight: 700, flexShrink: 0 }}>
+                                {row.unitsTotal}u
+                              </span>
+                              <button
+                                onClick={() => { if (confirm(`¿Eliminar "${row.offerName}"?`)) deleteRow(row.id); }}
+                                style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-3)", opacity: 0.3, padding: 2, flexShrink: 0 }}
+                                title="Eliminar oferta"
+                                onMouseEnter={e => (e.currentTarget.style.opacity = "1")}
+                                onMouseLeave={e => (e.currentTarget.style.opacity = "0.3")}
+                              >
+                                <X size={12} />
+                              </button>
+                            </div>
+
+                            {/* Línea 2: costos editables + ROAS BE */}
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 8, alignItems: "end" }}>
+                              {/* Costo total — editable */}
+                              <div>
+                                <div style={{ fontSize: 9, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: ".04em", fontWeight: 600, marginBottom: 2 }}>
+                                  Costo total
+                                </div>
+                                <div style={{ fontSize: 14, fontWeight: 700, color: missing ? "#EF4444" : "var(--text)" }}>
+                                  $<EditableCell
+                                    value={row.productCostTotalUsd}
+                                    onSave={v => patchRow(row.id, "productCostTotalUsd", v)}
+                                    placeholder="0.00"
+                                  />
+                                </div>
+                              </div>
+
+                              {/* Costo unitario — auto */}
+                              <div>
+                                <div style={{ fontSize: 9, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: ".04em", fontWeight: 600, marginBottom: 2 }}>
+                                  Por unidad
+                                </div>
+                                <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-2)" }}>
+                                  {row.productCostUnitUsd > 0 ? `$${usd(row.productCostUnitUsd)}` : "—"}
+                                </div>
+                              </div>
+
+                              {/* ROAS BE — solo si hay datos */}
+                              {roasBe != null ? (
+                                <div style={{ textAlign: "right" }} title="ROAS de break-even (con AOV de últimos 30d)">
+                                  <div style={{ fontSize: 9, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: ".04em", fontWeight: 600, marginBottom: 2 }}>
+                                    ROAS BE
+                                  </div>
+                                  <div style={{ fontSize: 14, fontWeight: 700, color: roasBe < 2 ? "#EF4444" : roasBe < 3 ? "#F59E0B" : "#10B981" }}>
+                                    {roasBe.toFixed(2)}x
+                                  </div>
+                                </div>
+                              ) : (
+                                <div style={{ width: 50 }} />
+                              )}
+                            </div>
+
+                            {isSav && (
+                              <div style={{ fontSize: 10, color: "#F59E0B", marginTop: 4, fontWeight: 600 }}>guardando…</div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+        )}
       </div>
 
-      <div style={{ padding: "12px 20px", fontSize: 11, color: "var(--text-3)", borderTop: "1px solid var(--border)" }}>
-        <strong>Costo Total</strong> = ingresado manualmente (COGS total de esa oferta) ·
-        <strong> Costo Unit</strong> = automático (÷ uni) ·
-        <strong> Total Antes Ads</strong> = Costo + Flete + Fulfillment ·
-        <strong> CPA BE</strong> / <strong>ROAS BE</strong> = calculados con AOV real de Analytics (últimos 30d).
-        Click en cualquier número para editar.
+      <div style={{ padding: "12px 20px 20px", fontSize: 11, color: "var(--text-3)", textAlign: "center" }}>
+        💡 Click en el <strong style={{ color: "var(--text-2)" }}>Costo total</strong> para editarlo. El <strong style={{ color: "var(--text-2)" }}>costo por unidad</strong> se calcula automático (÷ unidades).
+        El <strong style={{ color: "var(--text-2)" }}>ROAS BE</strong> usa el AOV real de Analytics de los últimos 30 días.
       </div>
     </div>
   );
