@@ -27,8 +27,16 @@ const LAST_SYNC_KEY = "onnexa_last_sync_at";
 // Re-sincronizar cuando el último sync exitoso fue hace más de N minutos.
 // 4 horas: balance entre frescura (hoy/ayer al día) y no saturar APIs cada recarga.
 const SYNC_EVERY_MS = 4 * 60 * 60 * 1000;
-// Solo días recientes — el histórico ya está fijo en la BD y no se re-sincroniza.
-const INCREMENTAL_DAYS = 15;
+// Sync incremental: cubre todo el mes en curso + margen (30 días).
+// Antes era 15 días, lo cual dejaba fuera órdenes del inicio del mes y permitía
+// que si una sincronización fallaba parcialmente, datos del mes anterior no se
+// recuperaran nunca. 30 días asegura cobertura completa del mes.
+const INCREMENTAL_DAYS = 30;
+// Sync profundo: una vez por semana, cubre 60 días para recuperar cualquier
+// dato degradado en meses pasados (cancelaciones tardías, etc.).
+const DEEP_SYNC_DAYS = 60;
+const DEEP_SYNC_EVERY_MS = 7 * 24 * 60 * 60 * 1000;
+const LAST_DEEP_SYNC_KEY = "onnexa_last_deep_sync_at";
 
 function Spinner() {
   return (
@@ -127,9 +135,14 @@ export function AppLoader({ children }: { children: React.ReactNode }) {
       const localStr = (d: Date) =>
         `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
       const today = localStr(new Date());
-      // Solo refrescamos los últimos INCREMENTAL_DAYS días — el histórico ya está en la BD.
-      const fromIncD = new Date(); fromIncD.setDate(fromIncD.getDate() - INCREMENTAL_DAYS);
+      // Sync incremental (30 días) cada vez. Sync profundo (60 días) si pasó >7 días.
+      const lastDeep = typeof window !== "undefined"
+        ? parseInt(localStorage.getItem(LAST_DEEP_SYNC_KEY) ?? "0", 10) : 0;
+      const needsDeepSync = !lastDeep || (Date.now() - lastDeep > DEEP_SYNC_EVERY_MS);
+      const syncDays = needsDeepSync ? DEEP_SYNC_DAYS : INCREMENTAL_DAYS;
+      const fromIncD = new Date(); fromIncD.setDate(fromIncD.getDate() - syncDays);
       const from30 = localStr(fromIncD);
+      if (needsDeepSync) console.log(`[AppLoader] Deep sync (${DEEP_SYNC_DAYS} días) — recupera datos del histórico reciente`);
 
       // ── Step 0: Respaldo de seguridad ANTES de tocar nada ──────────────────
       // Garantiza un punto de restauración si la sincronización fallara.
@@ -160,14 +173,14 @@ export function AppLoader({ children }: { children: React.ReactNode }) {
         const r1   = await fetch("/api/shopify/sync", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ store: "glowmmi", days: INCREMENTAL_DAYS }),
+          body: JSON.stringify({ store: "glowmmi", days: syncDays }),
         });
         const d1 = await r1.json().catch(() => ({}));
         // Balancea second (after glowmmi finishes to avoid concurrent DB writes)
         await fetch("/api/shopify/sync", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ store: "balancea", days: INCREMENTAL_DAYS }),
+          body: JSON.stringify({ store: "balancea", days: syncDays }),
         });
         const ok = r1.ok || d1.ok || d1.synced || d1.message;
         if (ok) {
@@ -196,8 +209,9 @@ export function AppLoader({ children }: { children: React.ReactNode }) {
       // ── All done ─────────────────────────────────────────────────────────
       if (typeof window !== "undefined") {
         sessionStorage.setItem(SESSION_KEY, "1");
-        // Guardar la marca de tiempo: el próximo sync será dentro de 7 días.
         localStorage.setItem(LAST_SYNC_KEY, String(Date.now()));
+        // Si fue deep sync, también guardamos esa marca para no repetirlo en 7 días.
+        if (needsDeepSync) localStorage.setItem(LAST_DEEP_SYNC_KEY, String(Date.now()));
       }
       clearTimeout(skipTimer);
 

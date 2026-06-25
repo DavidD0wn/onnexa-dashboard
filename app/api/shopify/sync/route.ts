@@ -602,6 +602,25 @@ export async function POST(req: Request) {
           },
         });
 
+        // ── Upsert defensivo ──────────────────────────────────────────────
+        // Si ya hay datos en BD para esta (fecha+país) Y el sync nuevo trae
+        // significativamente menos órdenes (>50% bajada), saltar el upsert.
+        // Es señal de fetch parcial (rate limit, timezone, etc.) — preferimos
+        // dejar los datos viejos antes que degradarlos. Las cancelaciones reales
+        // suben máximo unas pocas órdenes al día.
+        const prevShopifyRow = await prisma.dailyMetric.findUnique({
+          where: { id: shopifyId },
+          select: { ordersCount: true, grossRevenue: true },
+        });
+        if (prevShopifyRow && prevShopifyRow.ordersCount > 0) {
+          const dropRatio = 1 - (metrics.ordersCount / prevShopifyRow.ordersCount);
+          if (dropRatio > 0.5) {
+            console.warn(`[sync:${store}] SKIP defensivo ${bucketKey}: nuevo=${metrics.ordersCount} ord vs existente=${prevShopifyRow.ordersCount} (bajada ${(dropRatio*100).toFixed(0)}%)`);
+            synced++;
+            continue;
+          }
+        }
+
         const updatePayload = {
           ordersCount:  metrics.ordersCount,
           unitsSold:    metrics.unitsSold,
