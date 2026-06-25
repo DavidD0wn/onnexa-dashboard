@@ -645,31 +645,16 @@ export async function POST(req: Request) {
       }
     }
 
-    // ── Zero-out stale rows for dates the sync DID cover but produced no orders ──
-    // For splitByCountry stores: if the sync produced "MX" rows but not "CL" rows on a date,
-    // any pre-existing "CL" canonical rows for that date are left untouched intentionally.
-    // We only delete/zero stale shopify_* rows that are clearly superseded.
-    const oldShopifyRows = await prisma.dailyMetric.findMany({
-      where: {
-        brandId: cfg.brandId,
-        id:      { startsWith: "shopify_" },
-        NOT:     { id: { in: [...syncedKeys].map(k => {
-          const [d, c] = k.split("|");
-          return `shopify_${store}_${d}_${c}`;
-        })}},
-      },
-      select: { id: true, date: true, countryId: true },
-    });
-    const syncDateRange = Array.from(syncedKeys).map(k => k.split("|")[0]);
-    const minSyncDate = syncDateRange.sort()[0];
-    const staleToDelete = oldShopifyRows.filter(r =>
-      r.date.toISOString().slice(0, 10) >= (minSyncDate ?? "")
-    );
-    if (staleToDelete.length > 0) {
-      await prisma.dailyMetric.deleteMany({
-        where: { id: { in: staleToDelete.map(r => r.id) } },
-      });
-    }
+    // ── Stale deletion DESACTIVADA (jun 20 2026) ──
+    // Antes: se borraban filas shopify_* dentro del rango sincronizado que no
+    // estaban en `syncedKeys`. Causaba que si el sync no traía una orden por
+    // rate limit/timezone/error transitorio, se borrara una orden REAL existente.
+    // Resultado: dashboards se descuadraban cada vez que el AppLoader corría.
+    //
+    // Ahora: el sync solo agrega/actualiza vía upsert. Si una orden se cancela
+    // en Shopify, sus datos siguen en BD hasta una sincronización explícita.
+    // Trade-off intencional: datos ligeramente inflados >> datos faltantes.
+    const staleToDelete: { id: string }[] = [];
 
     // Log the sync in Import table
     await prisma.import.create({
