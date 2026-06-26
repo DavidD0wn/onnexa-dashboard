@@ -5,7 +5,7 @@ import {
   TrendingDown, Package, DollarSign, Percent,
   ChevronDown, ChevronUp, Zap, X, Edit2, Upload,
   BarChart2, Layers, Tag, Clock, ShoppingBag, Plus,
-  Table2,
+  Table2, ExternalLink,
 } from "lucide-react";
 
 /* ─── Types ─────────────────────────────────────────────────────────────── */
@@ -162,8 +162,14 @@ function EditableCell({
 }
 
 /* ─── Catálogo COGS Table (new Excel-style) ──────────────────────────────── */
+type ShopifyProduct = {
+  brand: string; productId: string; title: string; handle: string;
+  status: string; image: string | null; productUrl: string; adminUrl: string;
+};
+
 function CatalogoCOGS({ country, brand, search }: { country: CountryKey; brand: string; search: string }) {
   const [rows,    setRows]    = useState<CogRow[]>([]);
+  const [products, setProducts] = useState<ShopifyProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving,  setSaving]  = useState<Record<string,boolean>>({});
   const [adding,  setAdding]  = useState(false);
@@ -172,14 +178,15 @@ function CatalogoCOGS({ country, brand, search }: { country: CountryKey; brand: 
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [cogsRes, analyticsRes] = await Promise.all([
+    const [cogsRes, analyticsRes, catalogRes] = await Promise.all([
       fetch(`/api/products/cogs-by-country?country=${country}`),
       fetch(`/api/products/analytics?days=30&store=all`),
+      fetch(`/api/products/shopify-catalog`),
     ]);
     const cogsData     = await cogsRes.json();
     const analyticsData = await analyticsRes.json();
+    const catalogData   = await catalogRes.json().catch(() => ({ products: [] }));
 
-    // Build AOV map from analytics
     const aov: Record<string, number> = {};
     for (const row of (analyticsData.rows ?? [])) {
       const key = row.name?.toLowerCase().replace(/[™®–—\-\s]+/g, " ").trim().split(/[|]/)[0].trim();
@@ -188,51 +195,63 @@ function CatalogoCOGS({ country, brand, search }: { country: CountryKey; brand: 
     }
     setAovMap(aov);
     setRows(Array.isArray(cogsData) ? cogsData : []);
+    setProducts(catalogData.products ?? []);
     setLoading(false);
   }, [country]);
 
   useEffect(() => { load(); }, [load]);
 
-  const filtered = useMemo(() => {
-    let r = rows;
-    if (brand !== "all") r = r.filter(e => e.brand === brand);
-    if (search) { const q = search.toLowerCase(); r = r.filter(e => e.productBaseName.toLowerCase().includes(q) || e.offerName.toLowerCase().includes(q)); }
-    return r;
-  }, [rows, brand, search]);
-
-  // Normalizar nombre para unificar variantes: quita ™®, descripción larga
-  // (todo después de — - | ), acentos, etc. "Astaxanthin™ — La Piel..." → "astaxanthin"
+  // Normalizar nombre para matching: quita ™®, acentos, descripción (después de — - |),
+  // sufijo "xN" o "N+M", emojis básicos. Lowercase, sin espacios extra.
   const normalizeBaseName = (name: string): string => name
     .normalize("NFD").replace(/[̀-ͯ]/g, "")
     .replace(/[™®©]/g, "")
     .split(/\s+[—–\-|]\s+/)[0]
     .replace(/\s+x\d+\s*$/i, "")
     .replace(/\s+\d+\s*\+\s*\d+.*$/i, "")
+    .replace(/[^a-zA-Z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
     .trim().toLowerCase();
 
-  // Group by NORMALIZED name + deduplicate offers (mismo units + mismo costo)
-  const grouped = useMemo(() => {
-    const map = new Map<string, { canonical: string; rows: CogRow[]; brand: string }>();
-    for (const r of filtered) {
-      const key = normalizeBaseName(r.productBaseName);
-      if (!key) continue;
-      if (!map.has(key)) map.set(key, { canonical: r.productBaseName, rows: [], brand: r.brand });
-      const g = map.get(key)!;
-      // Canónico = el productBaseName más CORTO (sin emojis ni descripción)
-      if (r.productBaseName.length < g.canonical.length) g.canonical = r.productBaseName;
-      g.rows.push(r);
+  // Map de "nombre normalizado" → COGs (de la BD). Usado para buscar costos por producto Shopify.
+  const cogsByKey = useMemo(() => {
+    const map = new Map<string, CogRow[]>();
+    for (const r of rows) {
+      const k = normalizeBaseName(r.productBaseName);
+      if (!k) continue;
+      if (!map.has(k)) map.set(k, []);
+      map.get(k)!.push(r);
     }
-    // Dedup ofertas idénticas (mismo units + mismo costo unitario) — quedarse con la primera
-    for (const g of map.values()) {
+    // Dedup ofertas idénticas dentro de cada grupo (mismo units + mismo costo unitario)
+    for (const [k, list] of map.entries()) {
       const seen = new Map<string, CogRow>();
-      for (const r of g.rows) {
+      for (const r of list) {
         const sig = `${r.unitsTotal}|${r.productCostUnitUsd.toFixed(2)}`;
         if (!seen.has(sig)) seen.set(sig, r);
       }
-      g.rows = Array.from(seen.values()).sort((a, b) => a.unitsTotal - b.unitsTotal);
+      map.set(k, Array.from(seen.values()).sort((a, b) => a.unitsTotal - b.unitsTotal));
     }
     return map;
-  }, [filtered]);
+  }, [rows]);
+
+  // Productos a mostrar: SOLO los que existen en Shopify. Filtra por marca y búsqueda.
+  const visibleProducts = useMemo(() => {
+    let r = products;
+    if (brand !== "all") r = r.filter(p => p.brand === brand);
+    if (search) { const q = search.toLowerCase(); r = r.filter(p => p.title.toLowerCase().includes(q)); }
+    // Excluir productos que NO son main products (ebooks, guías, accesorios, planes, etc.)
+    r = r.filter(p => !/ebook|guía|guia|brocha|protocolo|recetario|protección|proteccion|calendario|hábitos|habitos|menú|menu|plan de gym|método|metodo|ritual|set|kit/i.test(p.title));
+    return r;
+  }, [products, brand, search]);
+
+  // Estructura final: { product: ShopifyProduct, cogs: CogRow[] }
+  const productsWithCogs = useMemo(() => {
+    return visibleProducts.map(p => {
+      const key = normalizeBaseName(p.title);
+      const cogs = cogsByKey.get(key) ?? [];
+      return { product: p, cogs };
+    });
+  }, [visibleProducts, cogsByKey]);
 
   const patchRow = async (id: string, field: string, rawVal: string) => {
     const numVal = parseFloat(rawVal);
@@ -263,29 +282,30 @@ function CatalogoCOGS({ country, brand, search }: { country: CountryKey; brand: 
   if (loading) return <div style={{ padding: 48, textAlign: "center", color: "var(--text-3)" }}>Cargando catálogo…</div>;
 
   // Stats del catálogo
-  const totalOk     = filtered.filter(r => r.dataQuality === "ok" && r.productCostTotalUsd > 0).length;
-  const totalMissing = filtered.length - totalOk;
-  const avgCost     = filtered.length > 0 ? filtered.reduce((s, r) => s + r.productCostUnitUsd, 0) / filtered.length : 0;
+  const productsWithCount = productsWithCogs.filter(p => p.cogs.length > 0).length;
+  const productsMissing   = productsWithCogs.length - productsWithCount;
+  const allOffers         = productsWithCogs.flatMap(p => p.cogs);
+  const avgCost           = allOffers.length > 0 ? allOffers.reduce((s, r) => s + r.productCostUnitUsd, 0) / allOffers.length : 0;
 
   return (
     <div>
       {/* Resumen del país */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10, padding: "16px 20px 12px" }}>
         <div style={{ background: "var(--bg-2)", borderLeft: `3px solid ${colColor}`, borderRadius: 8, padding: "10px 14px" }}>
-          <div style={{ fontSize: 10, color: "var(--text-3)", textTransform: "uppercase", fontWeight: 700, letterSpacing: ".05em" }}>Productos</div>
-          <div style={{ fontSize: 22, fontWeight: 700, color: "var(--text)", marginTop: 2 }}>{grouped.size}</div>
-          <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2 }}>{filtered.length} ofertas</div>
+          <div style={{ fontSize: 10, color: "var(--text-3)", textTransform: "uppercase", fontWeight: 700, letterSpacing: ".05em" }}>Productos Shopify</div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: "var(--text)", marginTop: 2 }}>{productsWithCogs.length}</div>
+          <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2 }}>{allOffers.length} ofertas con costo</div>
         </div>
         <div style={{ background: "var(--bg-2)", borderLeft: "3px solid #10B981", borderRadius: 8, padding: "10px 14px" }}>
           <div style={{ fontSize: 10, color: "var(--text-3)", textTransform: "uppercase", fontWeight: 700, letterSpacing: ".05em" }}>Con costo cargado</div>
-          <div style={{ fontSize: 22, fontWeight: 700, color: "#10B981", marginTop: 2 }}>{totalOk}</div>
-          <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2 }}>{filtered.length > 0 ? Math.round(totalOk / filtered.length * 100) : 0}% del total</div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: "#10B981", marginTop: 2 }}>{productsWithCount}</div>
+          <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2 }}>{productsWithCogs.length > 0 ? Math.round(productsWithCount / productsWithCogs.length * 100) : 0}% del total</div>
         </div>
-        {totalMissing > 0 && (
+        {productsMissing > 0 && (
           <div style={{ background: "var(--bg-2)", borderLeft: "3px solid #EF4444", borderRadius: 8, padding: "10px 14px" }}>
-            <div style={{ fontSize: 10, color: "var(--text-3)", textTransform: "uppercase", fontWeight: 700, letterSpacing: ".05em" }}>Faltan datos</div>
-            <div style={{ fontSize: 22, fontWeight: 700, color: "#EF4444", marginTop: 2 }}>{totalMissing}</div>
-            <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2 }}>ofertas por completar</div>
+            <div style={{ fontSize: 10, color: "var(--text-3)", textTransform: "uppercase", fontWeight: 700, letterSpacing: ".05em" }}>Sin costo</div>
+            <div style={{ fontSize: 22, fontWeight: 700, color: "#EF4444", marginTop: 2 }}>{productsMissing}</div>
+            <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2 }}>productos por cargar</div>
           </div>
         )}
         <div style={{ background: "var(--bg-2)", borderLeft: "3px solid #8B5CF6", borderRadius: 8, padding: "10px 14px" }}>
@@ -338,52 +358,90 @@ function CatalogoCOGS({ country, brand, search }: { country: CountryKey; brand: 
         </div>
       )}
 
-      {/* Cards grid — un card por producto base */}
+      {/* Cards grid — un card por producto Shopify */}
       <div style={{ padding: "0 20px 20px" }}>
-        {grouped.size === 0 ? (
+        {productsWithCogs.length === 0 ? (
           <div style={{ padding: 60, textAlign: "center", color: "var(--text-3)", background: "var(--bg-2)", borderRadius: 12, border: "1px dashed var(--border)" }}>
-            Sin datos para {COUNTRY_CFG[country].label}. Click en <strong>Nueva oferta</strong> para empezar.
+            {products.length === 0
+              ? "No se pudo cargar el catálogo de Shopify. Revisa las credenciales."
+              : <>Sin productos para {brand === "all" ? "esta marca" : BRAND_LABELS[brand]}.</>}
           </div>
         ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(360px, 1fr))", gap: 14 }}>
-            {Array.from(grouped.entries())
-              .sort(([,a],[,b]) => a.canonical.localeCompare(b.canonical))
-              .map(([key, group]) => {
-                const productName = group.canonical;
-                const brandColor = BRAND_COLORS[group.brand] ?? "#6366F1";
-                const brandLabel = BRAND_LABELS[group.brand] ?? group.brand;
-                const sorted = group.rows; // ya viene deduplicado + ordenado
-                const okCount = sorted.filter(r => r.dataQuality === "ok" && r.productCostTotalUsd > 0).length;
-                const aovUnit = aovMap[key];
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(380px, 1fr))", gap: 16 }}>
+            {productsWithCogs.map(({ product, cogs }) => {
+              const brandColor = BRAND_COLORS[product.brand] ?? "#6366F1";
+              const brandLabel = BRAND_LABELS[product.brand] ?? product.brand;
+              const productName = product.title;
+              const sorted = cogs;
+              const okCount = sorted.filter(r => r.dataQuality === "ok" && r.productCostTotalUsd > 0).length;
+              const aovUnit = aovMap[normalizeBaseName(productName)];
+              const hasCogs = sorted.length > 0;
 
-                return (
-                  <div key={productName} style={{ background: "var(--bg-1)", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-                    {/* Card header */}
-                    <div style={{ padding: "14px 16px 10px", borderBottom: "1px solid var(--border)", background: `linear-gradient(180deg, ${brandColor}08 0%, transparent 100%)` }}>
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flex: 1 }}>
-                          <div style={{ width: 4, height: 26, borderRadius: 2, background: brandColor, flexShrink: 0 }} />
-                          <div style={{ minWidth: 0 }}>
-                            <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={productName}>
-                              {productName}
-                            </div>
-                            <div style={{ fontSize: 10, color: "var(--text-3)", marginTop: 1, textTransform: "uppercase", letterSpacing: ".05em", fontWeight: 600 }}>
-                              <span style={{ color: brandColor }}>{brandLabel}</span> · {sorted.length} oferta{sorted.length !== 1 ? "s" : ""}
-                            </div>
-                          </div>
-                        </div>
-                        <span style={{ fontSize: 10, padding: "3px 8px", borderRadius: 20, background: okCount === sorted.length ? "#10B98118" : "#EF444418", color: okCount === sorted.length ? "#10B981" : "#EF4444", fontWeight: 700, flexShrink: 0 }}>
-                          {okCount}/{sorted.length} ✓
-                        </span>
+              return (
+                <div key={product.productId} style={{ background: "var(--bg-1)", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden", display: "flex", flexDirection: "column", transition: "border-color .15s" }}
+                  onMouseEnter={e => (e.currentTarget.style.borderColor = brandColor + "60")}
+                  onMouseLeave={e => (e.currentTarget.style.borderColor = "var(--border)")}
+                >
+                  {/* Card header con imagen */}
+                  <div style={{ padding: "12px 14px", borderBottom: hasCogs ? "1px solid var(--border)" : "none", background: `linear-gradient(180deg, ${brandColor}10 0%, transparent 100%)`, display: "flex", gap: 12 }}>
+                    {/* Imagen del producto */}
+                    {product.image ? (
+                      <a href={product.productUrl} target="_blank" rel="noopener noreferrer"
+                        style={{ width: 60, height: 60, borderRadius: 8, overflow: "hidden", flexShrink: 0, background: "var(--bg-2)", display: "block", border: `1px solid ${brandColor}30`, textDecoration: "none" }}
+                        title={`Ver "${productName}" en Shopify`}
+                      >
+                        <img src={product.image} alt={productName} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                      </a>
+                    ) : (
+                      <div style={{ width: 60, height: 60, borderRadius: 8, background: brandColor + "22", color: brandColor, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, fontWeight: 800, flexShrink: 0 }}>
+                        {productName.charAt(0).toUpperCase()}
                       </div>
-                      {aovUnit && (
-                        <div style={{ fontSize: 10, color: "var(--text-3)", marginTop: 6 }}>
-                          AOV/unidad (30d): <strong style={{ color: "var(--text-2)" }}>${usd(aovUnit)}</strong>
+                    )}
+
+                    {/* Texto */}
+                    <div style={{ minWidth: 0, flex: 1, display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+                      <div>
+                        <a href={product.productUrl} target="_blank" rel="noopener noreferrer"
+                          style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", textDecoration: "none", display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 1.3 }}
+                          title={`Abrir landing — ${productName}`}
+                        >
+                          {productName}
+                          <ExternalLink size={11} style={{ marginLeft: 4, opacity: 0.5, verticalAlign: "middle" }} />
+                        </a>
+                        <div style={{ fontSize: 10, color: "var(--text-3)", marginTop: 3, textTransform: "uppercase", letterSpacing: ".05em", fontWeight: 600 }}>
+                          <span style={{ color: brandColor }}>{brandLabel}</span>
+                          {hasCogs && <> · {sorted.length} oferta{sorted.length !== 1 ? "s" : ""}</>}
+                          {product.status === "draft" && <span style={{ color: "#F59E0B", marginLeft: 6 }}>· borrador</span>}
+                        </div>
+                      </div>
+                      {hasCogs && (
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, marginTop: 4 }}>
+                          <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 20, background: okCount === sorted.length ? "#10B98118" : "#F59E0B18", color: okCount === sorted.length ? "#10B981" : "#F59E0B", fontWeight: 700 }}>
+                            {okCount}/{sorted.length} ✓
+                          </span>
+                          {aovUnit && (
+                            <span style={{ fontSize: 10, color: "var(--text-3)" }}>
+                              AOV: <strong style={{ color: "var(--text-2)" }}>${usd(aovUnit)}</strong>
+                            </span>
+                          )}
                         </div>
                       )}
                     </div>
+                  </div>
 
-                    {/* Ofertas list */}
+                  {/* Mensaje "sin costo" si no hay cogs */}
+                  {!hasCogs && (
+                    <div style={{ padding: "12px 16px", background: "rgba(239,68,68,.05)", color: "var(--text-3)", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                      <span style={{ color: "#EF4444", fontWeight: 600 }}>⚠ Sin costo cargado</span>
+                      <button onClick={() => { setNewRow({ productBaseName: productName, offerName: productName, unitsTotal: 1, productCostTotalUsd: 0 }); setAdding(true); }}
+                        style={{ background: brandColor, color: "#fff", border: "none", borderRadius: 6, padding: "4px 10px", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>
+                        + Agregar
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Ofertas list — solo si hay cogs */}
+                  {hasCogs && (
                     <div style={{ display: "flex", flexDirection: "column" }}>
                       {sorted.map((row, i) => {
                         const isSav    = saving[row.id];
@@ -468,9 +526,10 @@ function CatalogoCOGS({ country, brand, search }: { country: CountryKey; brand: 
                         );
                       })}
                     </div>
-                  </div>
-                );
-              })}
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
