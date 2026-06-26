@@ -200,12 +200,36 @@ function CatalogoCOGS({ country, brand, search }: { country: CountryKey; brand: 
     return r;
   }, [rows, brand, search]);
 
-  // Group by productBaseName for visual grouping
+  // Normalizar nombre para unificar variantes: quita ™®, descripción larga
+  // (todo después de — - | ), acentos, etc. "Astaxanthin™ — La Piel..." → "astaxanthin"
+  const normalizeBaseName = (name: string): string => name
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/[™®©]/g, "")
+    .split(/\s+[—–\-|]\s+/)[0]
+    .replace(/\s+x\d+\s*$/i, "")
+    .replace(/\s+\d+\s*\+\s*\d+.*$/i, "")
+    .trim().toLowerCase();
+
+  // Group by NORMALIZED name + deduplicate offers (mismo units + mismo costo)
   const grouped = useMemo(() => {
-    const map = new Map<string, CogRow[]>();
+    const map = new Map<string, { canonical: string; rows: CogRow[]; brand: string }>();
     for (const r of filtered) {
-      if (!map.has(r.productBaseName)) map.set(r.productBaseName, []);
-      map.get(r.productBaseName)!.push(r);
+      const key = normalizeBaseName(r.productBaseName);
+      if (!key) continue;
+      if (!map.has(key)) map.set(key, { canonical: r.productBaseName, rows: [], brand: r.brand });
+      const g = map.get(key)!;
+      // Canónico = el productBaseName más CORTO (sin emojis ni descripción)
+      if (r.productBaseName.length < g.canonical.length) g.canonical = r.productBaseName;
+      g.rows.push(r);
+    }
+    // Dedup ofertas idénticas (mismo units + mismo costo unitario) — quedarse con la primera
+    for (const g of map.values()) {
+      const seen = new Map<string, CogRow>();
+      for (const r of g.rows) {
+        const sig = `${r.unitsTotal}|${r.productCostUnitUsd.toFixed(2)}`;
+        if (!seen.has(sig)) seen.set(sig, r);
+      }
+      g.rows = Array.from(seen.values()).sort((a, b) => a.unitsTotal - b.unitsTotal);
     }
     return map;
   }, [filtered]);
@@ -323,14 +347,14 @@ function CatalogoCOGS({ country, brand, search }: { country: CountryKey; brand: 
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(360px, 1fr))", gap: 14 }}>
             {Array.from(grouped.entries())
-              .sort(([a],[b]) => a.localeCompare(b))
-              .map(([productName, productRows]) => {
-                const brandColor = BRAND_COLORS[productRows[0].brand] ?? "#6366F1";
-                const brandLabel = BRAND_LABELS[productRows[0].brand] ?? productRows[0].brand;
-                const sorted = [...productRows].sort((a, b) => a.unitsTotal - b.unitsTotal);
+              .sort(([,a],[,b]) => a.canonical.localeCompare(b.canonical))
+              .map(([key, group]) => {
+                const productName = group.canonical;
+                const brandColor = BRAND_COLORS[group.brand] ?? "#6366F1";
+                const brandLabel = BRAND_LABELS[group.brand] ?? group.brand;
+                const sorted = group.rows; // ya viene deduplicado + ordenado
                 const okCount = sorted.filter(r => r.dataQuality === "ok" && r.productCostTotalUsd > 0).length;
-                const baseKey = productName.toLowerCase().replace(/[™®–—\-\s]+/g, " ").trim();
-                const aovUnit = aovMap[baseKey];
+                const aovUnit = aovMap[key];
 
                 return (
                   <div key={productName} style={{ background: "var(--bg-1)", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden", display: "flex", flexDirection: "column" }}>
