@@ -448,19 +448,25 @@ function lookupCost(name: string, countryCosts: Record<string, number>, dbCosts:
 // Sincronizado con la regex del filtro en /costos y /productos.
 // Un producto sin COGS cargados sigue siendo "físico" — no confundir con digital.
 function isDigitalProduct(name: string): boolean {
-  // Solo contenido descargable/no físico. Los upsells físicos (Reafirmante,
-  // Rendimiento Extendido, Fórmula Pro, Vitamina C, etc.) tienen costo de proveedor
-  // y se tratan como físicos — NO deben quedar como "Digital 100%".
+  // Solo contenido descargable/no físico.
   return /ebook|eook|guía|guia|protocolo|recetario|calendario|hábitos|habitos|menú|menu|plan de gym|plan anti|método|metodo|ritual|agenda|21d|reto |challenge|poros bajo|poros abiertos|glow desde adentro|lifting desde dentro|rutina anti|tracker/i.test(name);
+}
+
+// Upsells post-compra: productos físicos que se venden después de la compra principal.
+// Características: 0 ad spend (la campaña ya se pagó), 0 envío extra (va en la misma caja),
+// COGS mínimo o nulo según el producto. Son margen casi puro — no mostrar como "Datos incompletos".
+function isUpsellProduct(name: string): boolean {
+  return /rendimiento extendido|rendimiento m[aá]ximo|pureza extendida|reafirmante|vitamina c|youtful|fórmula pro|formula pro|protección de pedido|proteccion de pedido/i.test(name);
 }
 
 // ─── Status + Data Quality ─────────────────────────────────────────────────────
 function calcStatus(
   netProfit: number, netMargin: number, cogsUsd: number,
   adSpendUsd: number, _cpa: number | null, _cpaBE: number | null,
-  isDigital: boolean,
+  isDigital: boolean, isUpsell: boolean,
 ): string {
-  if (isDigital)                   return "Digital 100%";   // ebooks/upsells: pure margin
+  if (isDigital)                   return "Digital 100%";
+  if (isUpsell)                    return netMargin >= 60 ? "Upsell ✓" : "Upsell";
   if (cogsUsd === 0)               return "Datos incompletos";
   if (adSpendUsd === 0)            return "Sin pauta";
   if (netMargin >= 25 && netProfit > 0) return "Escalable";
@@ -469,8 +475,8 @@ function calcStatus(
   return "No rentable";
 }
 
-function calcDataQuality(cogsUsd: number, adSpendUsd: number, isDigital: boolean): string {
-  if (isDigital)          return "OK";                // ebooks: no COGS expected
+function calcDataQuality(cogsUsd: number, adSpendUsd: number, isDigital: boolean, isUpsell: boolean): string {
+  if (isDigital || isUpsell) return "OK";             // ebooks y upsells: no COGS esperado
   if (cogsUsd === 0)      return "Falta COGS";
   if (adSpendUsd === 0)   return "Sin pauta registrada";
   return "OK";
@@ -816,9 +822,9 @@ export async function GET(req: NextRequest) {
     const cCfg     = COUNTRY_CFG[p.countryCode] ?? COUNTRY_CFG.MX;
 
     const key         = `${p.name}||${p.variant}||${p.brandId}||${p.countryCode}`;
-    // Digital products (ebooks, guías, protocolos, etc.): classified by name, not by missing COGS.
-    // A physical product with no cost loaded must NOT be treated as digital.
+    // Clasificación por nombre, nunca por COGS = 0.
     const isDigital   = isDigitalProduct(p.name);
+    const isUpsell    = !isDigital && isUpsellProduct(p.name);
 
     // Proportional: unmatched for this brand+country PLUS unmatched with no country
     const bck         = `${p.brandId}||${p.countryCode}`;
@@ -826,10 +832,9 @@ export async function GET(req: NextRequest) {
     const unmatched   = (unmatchedBrandCountrySpend[bck] ?? 0) + (unmatchedBrandCountrySpend[bckAll] ?? 0);
     const bcRevenue   = brandCountryRevenue[bck] ?? 0;
     const revShare    = bcRevenue > 0 ? p.revenueUsd / bcRevenue : 0;
-    // Digital products get 0 ad spend — never direct-matched (excluded from nameToKey)
-    // and never prorated (they don't drive ad spend).
-    const directSpend = isDigital ? 0 : (productAdSpend[key] ?? 0);
-    const proratSpend = (!isDigital && p.orders > 1) ? unmatched * revShare : 0;
+    // Digitales y upsells: 0 ad spend — no tienen campaña propia.
+    const directSpend = (isDigital || isUpsell) ? 0 : (productAdSpend[key] ?? 0);
+    const proratSpend = (!isDigital && !isUpsell && p.orders > 1) ? unmatched * revShare : 0;
     const adSpendUsd  = directSpend + proratSpend;
 
     // ── Calibrate fees, shipping, returns from DailyMetric (effective rate approach) ──
@@ -875,8 +880,8 @@ export async function GET(req: NextRequest) {
     const roasAds = adSpendUsd > 0 && campaignConversionValue > 0 ? campaignConversionValue / adSpendUsd : null;
     // totalCost = COGS + AdSpend + Fees + Shipping + Returns + Taxes (all-in, consistent with dashboard)
     const totalCost    = cogsUsd + adSpendUsd + feesUsd + shippingUsd + returnsUsd + taxesUsd;
-    const status       = calcStatus(netProfit, netMargin, cogsUsd, adSpendUsd, cpa, cpaBE, isDigital);
-    const dataQuality  = calcDataQuality(cogsUsd, adSpendUsd, isDigital);
+    const status       = calcStatus(netProfit, netMargin, cogsUsd, adSpendUsd, cpa, cpaBE, isDigital, isUpsell);
+    const dataQuality  = calcDataQuality(cogsUsd, adSpendUsd, isDigital, isUpsell);
 
     // Funnel data — matched by product name (normalized, multiple fallback keys)
     const funnelMap  = funnelByStore[p.brandId] ?? {};
@@ -947,8 +952,8 @@ export async function GET(req: NextRequest) {
       ...p,
       priceUsd: p.unitPriceUsd,   // unit selling price for products table display
       costPerUnit, cogsUsd, adSpendUsd, totalCost,
-      aov, cpaBE, isDigital,
-      productType: isDigital ? "digital" : "físico",
+      aov, cpaBE, isDigital, isUpsell,
+      productType: isDigital ? "digital" : isUpsell ? "upsell" : "físico",
       grossProfit, grossMargin,
       netProfit, netMargin,
       roas, cpa, cpaAds, roasAds, campaignPurchases, campaignConversionValue,
