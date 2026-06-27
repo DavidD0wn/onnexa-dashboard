@@ -36,11 +36,11 @@ const BRANDS = [
 type ProductType = "físico" | "digital" | "upsell";
 
 function classifyProduct(name: string): ProductType {
-  // Upsell: versiones extendidas, add-ons de pedido, protecciones
-  if (/protección de pedido|proteccion de pedido|rendimiento extendido|rendimiento m[aá]ximo|pureza extendida|reafirmante|vitamina c|youtful/i.test(name))
+  // Sincronizado con isUpsellProduct() en analytics/route.ts
+  if (/rendimiento extendido|rendimiento m[aá]ximo|pureza extendida|reafirmante|vitamina c|youtful|fórmula pro|formula pro|protección de pedido|proteccion de pedido/i.test(name))
     return "upsell";
-  // Digital: ebooks, guías, protocolos, trackers, planes, etc.
-  if (/ebook|eook|guía|guia|brocha|protocolo|recetario|protección|proteccion|calendario|hábitos|habitos|menú|menu|plan de gym|plan anti|método|metodo|ritual|agenda|21d|reto |challenge|tracker|poros|glow desde|fórmula pro|formula pro|rutina anti|lifting desde/i.test(name))
+  // Sincronizado con isDigitalProduct() en analytics/route.ts
+  if (/ebook|eook|guía|guia|protocolo|recetario|calendario|hábitos|habitos|menú|menu|plan de gym|plan anti|método|metodo|ritual|agenda|21d|reto |challenge|tracker|poros bajo|poros abiertos|glow desde adentro|lifting desde dentro|rutina anti/i.test(name))
     return "digital";
   return "físico";
 }
