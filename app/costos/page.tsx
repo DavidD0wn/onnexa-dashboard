@@ -240,7 +240,7 @@ function CatalogoCOGS({ country, brand, search }: { country: CountryKey; brand: 
     if (brand !== "all") r = r.filter(p => p.brand === brand);
     if (search) { const q = search.toLowerCase(); r = r.filter(p => p.title.toLowerCase().includes(q)); }
     // Excluir productos que NO son main products (ebooks, guías, accesorios, planes, etc.)
-    r = r.filter(p => !/ebook|guía|guia|brocha|protocolo|recetario|protección|proteccion|calendario|hábitos|habitos|menú|menu|plan de gym|método|metodo|ritual|set |kit |collar|agenda|21d|reto |challenge|gratis|upsell|vitamina c/i.test(p.title));
+    r = r.filter(p => !/ebook|eook|guía|guia|brocha|protocolo|recetario|protección|proteccion|calendario|hábitos|habitos|menú|menu|plan de gym|método|metodo|ritual|set |kit |collar|agenda|21d|reto |challenge|gratis|upsell|vitamina c|youtful|reafirmante|rendimiento extendido|rendimiento m[aá]ximo|lifting desde|pureza extendida/i.test(p.title));
     return r;
   }, [products, brand, search]);
 
