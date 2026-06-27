@@ -444,6 +444,13 @@ function lookupCost(name: string, countryCosts: Record<string, number>, dbCosts:
   );
 }
 
+// ─── Clasificación físico vs digital ──────────────────────────────────────────
+// Sincronizado con la regex del filtro en /costos y /productos.
+// Un producto sin COGS cargados sigue siendo "físico" — no confundir con digital.
+function isDigitalProduct(name: string): boolean {
+  return /ebook|eook|guía|guia|brocha|protocolo|recetario|protección|proteccion|calendario|hábitos|habitos|menú|menu|plan de gym|plan anti|método|metodo|ritual|set |kit |collar|agenda|21d|reto |challenge|vitamina c|youtful|reafirmante|rendimiento extendido|rendimiento m[aá]ximo|lifting desde|pureza extendida|poros|glow desde|fórmula pro|formula pro|rutina anti|tracker/i.test(name);
+}
+
 // ─── Status + Data Quality ─────────────────────────────────────────────────────
 function calcStatus(
   netProfit: number, netMargin: number, cogsUsd: number,
@@ -806,9 +813,9 @@ export async function GET(req: NextRequest) {
     const cCfg     = COUNTRY_CFG[p.countryCode] ?? COUNTRY_CFG.MX;
 
     const key         = `${p.name}||${p.variant}||${p.brandId}||${p.countryCode}`;
-    // Digital products (ebooks, upsells): cogsUsd === 0 → 100% margin, zero ad spend.
-    // Their sales ride on physical product campaigns — they never have their own ads.
-    const isDigital   = cogsUsd === 0;
+    // Digital products (ebooks, guías, protocolos, etc.): classified by name, not by missing COGS.
+    // A physical product with no cost loaded must NOT be treated as digital.
+    const isDigital   = isDigitalProduct(p.name);
 
     // Proportional: unmatched for this brand+country PLUS unmatched with no country
     const bck         = `${p.brandId}||${p.countryCode}`;
@@ -938,6 +945,7 @@ export async function GET(req: NextRequest) {
       priceUsd: p.unitPriceUsd,   // unit selling price for products table display
       costPerUnit, cogsUsd, adSpendUsd, totalCost,
       aov, cpaBE, isDigital,
+      productType: isDigital ? "digital" : "físico",
       grossProfit, grossMargin,
       netProfit, netMargin,
       roas, cpa, cpaAds, roasAds, campaignPurchases, campaignConversionValue,

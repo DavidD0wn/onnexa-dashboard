@@ -31,30 +31,24 @@ const BRANDS = [
 ];
 
 /* ─── Product type classifier ────────────────────────────────── */
-type ProductType = "físico" | "digital" | "upsell" | "otro";
+// Sincronizado con la regex de /costos y analytics/route.ts.
+// "otro" eliminado: todo producto real es físico (aunque no tenga COGS cargados).
+type ProductType = "físico" | "digital" | "upsell";
 
-function classifyProduct(name: string, costUsd: number): ProductType {
-  const n = name.toLowerCase();
-  if (n.includes("upsell") || n.includes("order bump") || n.includes("potenciador") || n.includes("add-on")) return "upsell";
-  if (
-    n.includes("guía") || n.includes("guia") || n.includes("ebook") || n.includes("e-book") ||
-    n.includes("digital") || n.includes("pdf") || n.includes("protocolo") ||
-    n.includes("agenda") || n.includes("tracker") || n.includes("recetas") ||
-    n.includes("alimentos") || n.includes("lifting desde") || n.includes("glow desde") ||
-    n.includes("curva 360") || n.includes("plan de gym") || n.includes("plan ") ||
-    n.includes("rutina anti") || n.includes("poros bajo") || n.includes("poros abiertos") ||
-    n.includes("equilibrio íntimo") || n.includes("equilibrio intimo") ||
-    n.includes("infecciones") || n.includes("hormonas") || n.includes("cuerpo")
-  ) return "digital";
-  if (costUsd > 0) return "físico";
-  return "otro";
+function classifyProduct(name: string): ProductType {
+  // Upsell: versiones extendidas, add-ons de pedido, protecciones
+  if (/protección de pedido|proteccion de pedido|rendimiento extendido|rendimiento m[aá]ximo|pureza extendida|reafirmante|vitamina c|youtful/i.test(name))
+    return "upsell";
+  // Digital: ebooks, guías, protocolos, trackers, planes, etc.
+  if (/ebook|eook|guía|guia|brocha|protocolo|recetario|protección|proteccion|calendario|hábitos|habitos|menú|menu|plan de gym|plan anti|método|metodo|ritual|agenda|21d|reto |challenge|tracker|poros|glow desde|fórmula pro|formula pro|rutina anti|lifting desde/i.test(name))
+    return "digital";
+  return "físico";
 }
 
 const TYPE_CONFIG: Record<ProductType, { label: string; color: string; bg: string; border: string; emoji: string }> = {
   físico:  { label: "Físico",   color: "#065F46", bg: "#D1FAE5", border: "#6EE7B7", emoji: "📦" },
   digital: { label: "Digital",  color: "#1E40AF", bg: "#DBEAFE", border: "#93C5FD", emoji: "📱" },
   upsell:  { label: "Upsell",   color: "#92400E", bg: "#FEF3C7", border: "#FCD34D", emoji: "⚡" },
-  otro:    { label: "Sin tipo", color: "#6B7280", bg: "#F3F4F6", border: "#E5E7EB", emoji: "•" },
 };
 
 /* ─── Types ──────────────────────────────────────────────────── */
@@ -122,7 +116,7 @@ function ProductRow({ p, fmtC }: { p: ProductAnalytics; fmtC: (v: number) => str
   const brandColor = p.brandId === "brand_glowmmi" ? "#EC4899" : "#10B981";
   const marginColor = p.margin >= 40 ? "var(--green)" : p.margin >= 25 ? "var(--yellow)" : "var(--red)";
   const roasColor   = p.roas === null ? "var(--text-3)" : p.roas >= 3 ? "var(--green)" : p.roas >= 2 ? "var(--yellow)" : "var(--red)";
-  const pType = classifyProduct(p.name, p.costUsd);
+  const pType = classifyProduct(p.name);
   const tc    = TYPE_CONFIG[pType];
 
   return (
@@ -137,15 +131,13 @@ function ProductRow({ p, fmtC }: { p: ProductAnalytics; fmtC: (v: number) => str
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
                 <p style={{ fontWeight: 600, color: "var(--text)", fontSize: 13 }}>{p.name}</p>
-                {pType !== "otro" && (
-                  <span style={{
-                    fontSize: 10, fontWeight: 700, padding: "1px 7px", borderRadius: 20,
-                    background: tc.bg, color: tc.color, border: `1px solid ${tc.border}`,
-                    whiteSpace: "nowrap",
-                  }}>
-                    {tc.emoji} {tc.label}
-                  </span>
-                )}
+                <span style={{
+                  fontSize: 10, fontWeight: 700, padding: "1px 7px", borderRadius: 20,
+                  background: tc.bg, color: tc.color, border: `1px solid ${tc.border}`,
+                  whiteSpace: "nowrap",
+                }}>
+                  {tc.emoji} {tc.label}
+                </span>
               </div>
               <p style={{ fontSize: 11, color: "var(--text-3)" }}>{p.brandName} · {p.countryName}</p>
             </div>
@@ -369,7 +361,7 @@ export default function ProductosPage() {
       list = list.filter((p) => p.name.toLowerCase().includes(q) || p.supplierName?.toLowerCase().includes(q));
     }
     if (statusFilter !== "all") list = list.filter((p) => p.status === statusFilter);
-    if (typeFilter   !== "all") list = list.filter((p) => classifyProduct(p.name, p.costUsd) === typeFilter);
+    if (typeFilter   !== "all") list = list.filter((p) => classifyProduct(p.name) === typeFilter);
     if (profitFilter === "winners") list = list.filter((p) => p.profit > 0);
     if (profitFilter === "losers")  list = list.filter((p) => p.profit < 0);
     return [...list].sort((a, b) => {
@@ -389,11 +381,21 @@ export default function ProductosPage() {
   };
 
   // Computed KPIs
-  const products  = Array.isArray(data?.products) ? data!.products : [];
-  const winners   = products.filter((p) => p.status === "winner").length;
-  const inTest    = products.filter((p) => p.status === "test").length;
-  const total     = products.length;
-  const avgMargin = total > 0 ? (products.reduce((s, p) => s + p.margin, 0) / total) : 0;
+  const products   = Array.isArray(data?.products) ? data!.products : [];
+  const winners    = products.filter((p) => p.status === "winner").length;
+  const inTest     = products.filter((p) => p.status === "test").length;
+  const total      = products.length;
+  const avgMargin  = total > 0 ? (products.reduce((s, p) => s + p.margin, 0) / total) : 0;
+
+  // Breakdown físico vs digital
+  const fisicos    = products.filter((p) => classifyProduct(p.name) === "físico");
+  const digitales  = products.filter((p) => classifyProduct(p.name) === "digital");
+  const upsells    = products.filter((p) => classifyProduct(p.name) === "upsell");
+  const revFisico  = fisicos.reduce((s, p) => s + p.revenue, 0);
+  const revDigital = digitales.reduce((s, p) => s + p.revenue, 0);
+  const revUpsell  = upsells.reduce((s, p) => s + p.revenue, 0);
+  const totalRev   = revFisico + revDigital + revUpsell;
+  const pctDigital = totalRev > 0 ? ((revDigital + revUpsell) / totalRev) * 100 : 0;
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--bg)" }}>
@@ -436,13 +438,32 @@ export default function ProductosPage() {
       <div style={{ padding: "24px 32px", display: "flex", flexDirection: "column", gap: 20 }}>
 
         {/* ── KPI row ─────────────────────────────────────────── */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 14 }}>
-          <KpiMini label="Productos"     value={fmtNum(total, 0)}        sub="en cartera"      color="var(--text)" />
-          <KpiMini label="Ganadores"     value={fmtNum(winners, 0)}      sub="status winner"   color="var(--green)" />
-          <KpiMini label="En Test"       value={fmtNum(inTest, 0)}       sub="evaluando"       color="var(--yellow)" />
-          <KpiMini label="Margen Prom."  value={fmtPct(avgMargin, 1)}    sub="catálogo"        color={avgMargin >= 35 ? "var(--green)" : avgMargin >= 20 ? "var(--yellow)" : "var(--red)"} />
-          <KpiMini label="Revenue Total" value={fmtC(data?.totals?.revenue ?? 0)} sub="período" color="var(--blue)" />
-          <KpiMini label="Utilidad Total" value={fmtC(data?.totals?.profit ?? 0)} sub="período" color={(data?.totals?.profit ?? 0) >= 0 ? "var(--green)" : "var(--red)"} />
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
+          <KpiMini label="Revenue Total"  value={fmtC(data?.totals?.revenueUsd ?? data?.totals?.revenue ?? 0)} sub={`${fmtNum(total, 0)} productos`}  color="var(--blue)" />
+          <KpiMini label="Utilidad Neta"  value={fmtC(data?.totals?.netProfit ?? data?.totals?.profit ?? 0)} sub="Revenue − COGS − Ads − Fees"       color={(data?.totals?.netProfit ?? data?.totals?.profit ?? 0) >= 0 ? "var(--green)" : "var(--red)"} />
+          <KpiMini label="Margen Prom."   value={fmtPct(avgMargin, 1)}    sub={`${winners} ganadores · ${inTest} en test`} color={avgMargin >= 35 ? "var(--green)" : avgMargin >= 20 ? "var(--yellow)" : "var(--red)"} />
+          <KpiMini label="COGS Total"     value={fmtC(data?.totals?.cogsUsd ?? 0)} sub={`${fisicos.length} físicos con costo`}  color="var(--yellow)" />
+        </div>
+
+        {/* ── Breakdown físico / digital ───────────────────── */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+          {[
+            { label: "📦 Físicos",  count: fisicos.length,   rev: revFisico,  color: "#10B981", border: "#6EE7B7", bg: "#D1FAE5", pct: totalRev > 0 ? (revFisico / totalRev) * 100 : 0 },
+            { label: "📱 Digitales", count: digitales.length, rev: revDigital, color: "#3B82F6", border: "#93C5FD", bg: "#DBEAFE", pct: totalRev > 0 ? (revDigital / totalRev) * 100 : 0 },
+            { label: "⚡ Upsells",  count: upsells.length,   rev: revUpsell,  color: "#D97706", border: "#FCD34D", bg: "#FEF3C7", pct: totalRev > 0 ? (revUpsell / totalRev) * 100 : 0 },
+          ].map((t) => (
+            <div key={t.label} className="card" style={{ padding: "14px 18px", borderLeft: `4px solid ${t.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <p style={{ fontSize: 12, fontWeight: 700, color: t.color, marginBottom: 4 }}>{t.label}</p>
+                <p style={{ fontSize: 20, fontWeight: 800, color: "var(--text)", lineHeight: 1 }}>{fmtC(t.rev)}</p>
+                <p style={{ fontSize: 11, color: "var(--text-3)", marginTop: 4 }}>{t.count} producto{t.count !== 1 ? "s" : ""}</p>
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <p style={{ fontSize: 22, fontWeight: 800, color: t.color }}>{t.pct.toFixed(1)}%</p>
+                <p style={{ fontSize: 10, color: "var(--text-3)" }}>del revenue</p>
+              </div>
+            </div>
+          ))}
         </div>
 
         {/* ── Table ───────────────────────────────────────────── */}
@@ -487,7 +508,7 @@ export default function ProductosPage() {
               {/* Type filter chips */}
               <div style={{ display: "flex", gap: 4 }}>
                 {([
-                  { v: "all",     l: "Tipo: Todos" },
+                  { v: "all",     l: "Todos"       },
                   { v: "físico",  l: "📦 Físico"   },
                   { v: "digital", l: "📱 Digital"  },
                   { v: "upsell",  l: "⚡ Upsell"   },
