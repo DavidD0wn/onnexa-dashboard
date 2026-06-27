@@ -101,17 +101,24 @@ function FilterPill({
 
 /* ─── KpiCard (hero / grande) ────────────────────────────────── */
 function KpiCard({
-  label, value, sub, color, icon: Icon, alert, badge,
+  label, value, sub, color, icon: Icon, alert, badge, onExplain,
 }: {
   label: string; value: string; sub?: string; color: string;
   icon: React.ComponentType<{ size?: number; style?: React.CSSProperties }>;
   alert?: boolean; badge?: { text: string; type: "good" | "ok" | "bad" | "neutral" };
+  onExplain?: () => void;
 }) {
   return (
-    <div className="kpi-card" style={{ position: "relative" }}>
+    <div
+      className="kpi-card"
+      style={{ position: "relative", cursor: onExplain ? "pointer" : undefined }}
+      onClick={onExplain}
+      title={onExplain ? "Clic para ver cómo se calcula" : undefined}
+    >
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 14 }}>
         <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)" }}>
           {label}
+          {onExplain && <span style={{ marginLeft: 5, fontSize: 10, color: "var(--text-3)", fontWeight: 400, opacity: 0.6 }}>ⓘ</span>}
         </p>
         <div
           style={{
@@ -146,15 +153,17 @@ function KpiCard({
 
 /* ─── CompactMetric (fila Costos) ────────────────────────────── */
 function CompactMetric({
-  label, value, sub, color, icon: Icon,
+  label, value, sub, color, icon: Icon, onExplain,
 }: {
   label: string; value: string; sub?: string; color: string;
   icon: React.ComponentType<{ size?: number; style?: React.CSSProperties }>;
+  onExplain?: () => void;
 }) {
   return (
     <div
       className="card-flat"
-      style={{ padding: "16px 20px", display: "flex", alignItems: "center", gap: 14 }}
+      onClick={onExplain}
+      style={{ padding: "16px 20px", display: "flex", alignItems: "center", gap: 14, cursor: onExplain ? "pointer" : undefined }}
     >
       <div
         style={{
@@ -168,6 +177,7 @@ function CompactMetric({
       <div style={{ flex: 1, minWidth: 0 }}>
         <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)", marginBottom: 4 }}>
           {label}
+          {onExplain && <span style={{ marginLeft: 5, fontSize: 10, fontWeight: 400, opacity: 0.5 }}>ⓘ</span>}
         </p>
         <p style={{ fontSize: 20, fontWeight: 800, color: "var(--text)", letterSpacing: "-0.02em", lineHeight: 1 }}>
           {value}
@@ -361,6 +371,307 @@ function ChargebackModal({
   );
 }
 
+/* ─── ExplainerModal ─────────────────────────────────────────── */
+type ExplainRow = { label: string; value: string; sub?: string; isTotal?: boolean; isDivider?: boolean };
+
+function ExplainerModal({
+  metricKey, t, fmtC, derived, onClose,
+}: {
+  metricKey: string;
+  t: DashboardData["totals"];
+  fmtC: (v: number) => string;
+  derived: {
+    grossProfit: number; grossMargin: number; totalCosts: number; totalCostsTP: number;
+    netMarginVsNet: number; poas: number | null; roasBe: number | null;
+    breakEvenCpa: number | null; profitPerOrder: number;
+    cogsPerOrder: number; adSpendPerOrder: number; shippingPerOrder: number; feesPerOrder: number;
+    cpaMáx: number;
+  };
+  onClose: () => void;
+}) {
+  type Def = { title: string; subtitle: string; rows: ExplainRow[]; source: string; note?: string };
+
+  const { grossProfit, grossMargin, totalCosts, totalCostsTP, netMarginVsNet, poas, roasBe, breakEvenCpa, profitPerOrder, cogsPerOrder, adSpendPerOrder, shippingPerOrder, feesPerOrder, cpaMáx } = derived;
+
+  const defs: Record<string, Def> = {
+    net_profit: {
+      title: "Net Profit", subtitle: "Ganancia neta después de todos los costos",
+      rows: [
+        { label: "Revenue Neto",         value: fmtC(t.net),              sub: "Shopify (después de descuentos y devoluciones)" },
+        { label: "− COGS (proveedor)",   value: `−${fmtC(t.cogs)}`,       sub: "/costos → product-costs.json" },
+        { label: "− Ad Spend",           value: `−${fmtC(t.adSpend)}`,    sub: "Meta Ads API" },
+        { label: "− Flete / Envío",      value: `−${fmtC(t.shipping)}`,   sub: "Shopify shipping lines" },
+        { label: "− Fees / Pasarela",    value: `−${fmtC(t.fees)}`,       sub: "Estimado: 2.9% + $0.30 por transacción" },
+        { label: "− Chargebacks",        value: `−${fmtC(t.chargebacks ?? 0)}`, sub: "Entrada manual" },
+        { isDivider: true, label: "", value: "" },
+        { label: "= Net Profit",         value: fmtC(t.profit),           isTotal: true },
+      ],
+      source: "Shopify + Meta Ads + /costos + Manual",
+    },
+    cogs_kpi: {
+      title: "COGS Spend", subtitle: "Costo total pagado a proveedores en el período",
+      rows: [
+        { label: "¿De dónde viene?",     value: "", sub: "Se calcula por producto: unidades vendidas × costo por escalón" },
+        { label: "Fuente de costos",     value: "", sub: "data/product-costs.json → tabla ProductCogsByCountry en BD" },
+        { label: "Fuente de ventas",     value: "", sub: "Shopify Orders → OrderLine → cantidad vendida" },
+        { isDivider: true, label: "", value: "" },
+        { label: "COGS Total",           value: fmtC(t.cogs),             isTotal: true },
+        { label: "COGS por pedido",      value: fmtC(cogsPerOrder),       sub: `${fmtC(t.cogs)} ÷ ${t.orders} pedidos` },
+        { label: "% del Revenue",        value: t.net > 0 ? `${((t.cogs / t.net) * 100).toFixed(1)}%` : "—", sub: "COGS / Revenue Neto" },
+        { label: "Gross Profit restante",value: fmtC(grossProfit),        sub: `Revenue ${fmtC(t.net)} − COGS ${fmtC(t.cogs)}` },
+      ],
+      source: "/costos (product-costs.json)",
+      note: "Si el COGS es $0, ve a /costos a cargar los costos de tus productos.",
+    },
+    revenue: {
+      title: "Revenue Neto", subtitle: "Ingresos reales después de descuentos y devoluciones",
+      rows: [
+        { label: "Ventas Brutas (Gross)", value: fmtC(t.gross),           sub: "Suma de todos los precios de línea en Shopify" },
+        { label: "− Descuentos",          value: `−${fmtC(t.discounts ?? 0)}`, sub: "Códigos de descuento y automáticos" },
+        { label: "− Devoluciones",        value: `−${fmtC(t.returns ?? 0)}`,   sub: "Refunds en Shopify" },
+        { isDivider: true, label: "", value: "" },
+        { label: "= Revenue Neto",        value: fmtC(t.net),             isTotal: true },
+      ],
+      source: "Shopify Orders API",
+    },
+    total_costs: {
+      title: "Total Costs", subtitle: "Suma de todos los costos del período",
+      rows: [
+        { label: "COGS",         value: fmtC(t.cogs),                sub: "Costo de productos (proveedor)" },
+        { label: "Ad Spend",     value: fmtC(t.adSpend),             sub: "Pauta Meta Ads" },
+        { label: "Flete",        value: fmtC(t.shipping),            sub: "Costo de envío a clientes" },
+        { label: "Fees",         value: fmtC(t.fees),                sub: "Comisiones de pasarela de pago" },
+        { label: "Chargebacks",  value: fmtC(t.chargebacks ?? 0),   sub: "Contracargos registrados" },
+        { isDivider: true, label: "", value: "" },
+        { label: "= Total Costs",value: fmtC(totalCosts),            isTotal: true },
+        { label: "% del Revenue",value: t.net > 0 ? `${((totalCosts / t.net) * 100).toFixed(1)}%` : "—" },
+      ],
+      source: "Shopify + Meta Ads + Estimado + Manual",
+      note: "Total Costs = Revenue − Net Profit (método True Profit). Incluye todo lo que sale del negocio.",
+    },
+    net_margin: {
+      title: "Net Profit Margin", subtitle: "% de cada peso de revenue que queda como ganancia",
+      rows: [
+        { label: "Net Profit",    value: fmtC(t.profit),              sub: "Ganancia después de todos los costos" },
+        { label: "÷ Revenue Neto",value: fmtC(t.net),                 sub: "Ingresos reales del período" },
+        { label: "× 100",         value: "",                          sub: "Para expresar en porcentaje" },
+        { isDivider: true, label: "", value: "" },
+        { label: "= Net Margin",  value: `${netMarginVsNet.toFixed(2)}%`, isTotal: true },
+        { label: "Gross Margin",  value: `${grossMargin.toFixed(1)}%`,    sub: `(Revenue − COGS) / Revenue = Margen antes de ads` },
+      ],
+      source: "Calculado en dashboard",
+    },
+    ad_spend: {
+      title: "Total Ad Spend", subtitle: "Inversión total en publicidad de Meta Ads",
+      rows: [
+        { label: "Fuente",        value: "",       sub: "Meta Ads API — se sincroniza automáticamente al abrir el dashboard" },
+        { label: "Cobertura",     value: "",       sub: "Incluye todas las cuentas y campañas del período" },
+        { isDivider: true, label: "", value: "" },
+        { label: "Ad Spend Total",value: fmtC(t.adSpend),   isTotal: true },
+        { label: "por Pedido",    value: fmtC(adSpendPerOrder), sub: `${fmtC(t.adSpend)} ÷ ${t.orders} pedidos` },
+        { label: "% del Revenue", value: t.net > 0 ? `${((t.adSpend / t.net) * 100).toFixed(1)}%` : "—" },
+        { label: "ROAS",          value: t.roas !== null ? `${t.roas.toFixed(2)}x` : "—", sub: `Revenue / Ad Spend = ${fmtC(t.net)} / ${fmtC(t.adSpend)}` },
+      ],
+      source: "Meta Ads API",
+    },
+    aov: {
+      title: "Average Order Value (AOV)", subtitle: "Cuánto gasta cada cliente en promedio por pedido",
+      rows: [
+        { label: "Revenue Neto",  value: fmtC(t.net),      sub: "Ingresos totales del período" },
+        { label: "÷ Pedidos",     value: String(t.orders),  sub: "Número de órdenes en el período" },
+        { isDivider: true, label: "", value: "" },
+        { label: "= AOV",         value: fmtC(t.aov),      isTotal: true },
+      ],
+      source: "Shopify Orders API",
+      note: "Un AOV más alto = más margen por costo de adquisición. Meta para skincare DTC: ≥$50 USD.",
+    },
+    units: {
+      title: "Units Sold", subtitle: "Total de unidades vendidas en el período",
+      rows: [
+        { label: "Fuente",         value: "",       sub: "Shopify Orders → cada línea de producto suma sus quantities" },
+        { label: "Unidades Total", value: String(t.units), isTotal: true },
+        { label: "Unidades/Pedido",value: t.orders > 0 ? (t.units / t.orders).toFixed(1) : "—", sub: `${t.units} uds ÷ ${t.orders} pedidos` },
+      ],
+      source: "Shopify Orders API",
+    },
+    gross_sales: {
+      title: "Gross Sales", subtitle: "Ventas brutas antes de descuentos y devoluciones",
+      rows: [
+        { label: "Fuente",         value: "",         sub: "Suma de line_item.price × quantity en cada orden de Shopify" },
+        { label: "Gross Sales",    value: fmtC(t.gross), isTotal: true },
+        { label: "− Descuentos",   value: `−${fmtC(t.discounts ?? 0)}` },
+        { label: "− Devoluciones", value: `−${fmtC(t.returns ?? 0)}` },
+        { label: "= Revenue Neto", value: fmtC(t.net),   sub: `${t.gross > 0 ? ((t.net / t.gross) * 100).toFixed(0) : 0}% del bruto` },
+      ],
+      source: "Shopify Orders API",
+    },
+    roas: {
+      title: "ROAS", subtitle: "Return on Ad Spend — cuántos $ de revenue genera cada $ invertido en ads",
+      rows: [
+        { label: "Revenue Neto",  value: fmtC(t.net),      sub: "Ingresos del período" },
+        { label: "÷ Ad Spend",    value: fmtC(t.adSpend),  sub: "Inversión en Meta Ads" },
+        { isDivider: true, label: "", value: "" },
+        { label: "= ROAS",        value: t.roas !== null ? `${t.roas.toFixed(2)}x` : "—", isTotal: true },
+        { label: "ROAS BE",       value: roasBe !== null ? `${roasBe.toFixed(2)}x` : "—", sub: "Mínimo para no perder — calculado con tu estructura de costos" },
+      ],
+      source: "Revenue: Shopify | Ad Spend: Meta Ads",
+      note: "Meta para DTC: ROAS ≥ 3x. Por debajo del ROAS BE estás perdiendo por cada $1 invertido.",
+    },
+    cpa: {
+      title: "CPA Real", subtitle: "Costo por adquisición — cuánto cuesta conseguir un cliente",
+      rows: [
+        { label: "Ad Spend Total",value: fmtC(t.adSpend),  sub: "Inversión en Meta Ads" },
+        { label: "÷ Pedidos",     value: String(t.orders),  sub: "Número de órdenes atribuidas" },
+        { isDivider: true, label: "", value: "" },
+        { label: "= CPA Real",    value: t.cpa !== null ? fmtC(t.cpa) : "—", isTotal: true },
+        { label: "CPA Break-Even",value: breakEvenCpa !== null ? fmtC(breakEvenCpa) : "—", sub: "CPA máximo antes de perder dinero por pedido" },
+      ],
+      source: "Ad Spend: Meta Ads | Pedidos: Shopify",
+      note: "Si CPA > CPA BE, cada venta te cuesta más de lo que ganas. Meta: CPA < CPA BE × 0.75.",
+    },
+    cpa_be: {
+      title: "CPA Break-Even", subtitle: "CPA máximo que puedes pagar sin perder dinero",
+      rows: [
+        { label: "Revenue por Pedido (AOV)", value: fmtC(t.aov) },
+        { label: "− COGS por Pedido",        value: `−${fmtC(cogsPerOrder)}` },
+        { label: "− Flete por Pedido",       value: `−${fmtC(shippingPerOrder)}` },
+        { label: "− Fees por Pedido",        value: `−${fmtC(feesPerOrder)}` },
+        { isDivider: true, label: "", value: "" },
+        { label: "= CPA BE (Margen Bruto)",  value: breakEvenCpa !== null ? fmtC(breakEvenCpa) : "—", isTotal: true },
+        { label: "CPA Máx c/15% reserva",   value: cpaMáx > 0 ? fmtC(cpaMáx) : "—", sub: "AOV − COGS − Flete − Fees − 15% del AOV" },
+      ],
+      source: "Calculado en dashboard con datos de Shopify y /costos",
+    },
+    mer: {
+      title: "MER (Marketing Efficiency Ratio)", subtitle: "Eficiencia total del negocio, no solo de los ads",
+      rows: [
+        { label: "Revenue Neto",  value: fmtC(t.net),     sub: "Total de ingresos" },
+        { label: "÷ Ad Spend",    value: fmtC(t.adSpend), sub: "Inversión en publicidad" },
+        { isDivider: true, label: "", value: "" },
+        { label: "= MER",         value: t.mer !== null ? `${t.mer.toFixed(2)}x` : "—", isTotal: true },
+      ],
+      source: "Revenue: Shopify | Ad Spend: Meta Ads",
+      note: "A diferencia del ROAS (que usa el revenue atribuido por Meta), el MER usa el revenue real de Shopify. Es más honesto.",
+    },
+    poas: {
+      title: "POAS (Profit on Ad Spend)", subtitle: "Cuántos $ de gross profit genera cada $ invertido en ads",
+      rows: [
+        { label: "Gross Profit",  value: fmtC(grossProfit), sub: `Revenue ${fmtC(t.net)} − COGS ${fmtC(t.cogs)}` },
+        { label: "÷ Ad Spend",    value: fmtC(t.adSpend) },
+        { isDivider: true, label: "", value: "" },
+        { label: "= POAS",        value: poas !== null ? `${poas.toFixed(2)}x` : "—", isTotal: true },
+      ],
+      source: "Calculado en dashboard",
+      note: "POAS > 1 = los ads generan más profit del que cuestan. Es más preciso que el ROAS para medir rentabilidad real.",
+    },
+    cogs_compact: {
+      title: "COGS", subtitle: "Pago a proveedor — costo directo de los productos vendidos",
+      rows: [
+        { label: "Cálculo",       value: "", sub: "Unidades vendidas × costo unitario por escalón de precio" },
+        { label: "Escalones",     value: "", sub: "x1, x2, x3... — el costo unitario baja al comprar más unidades" },
+        { isDivider: true, label: "", value: "" },
+        { label: "COGS Total",    value: fmtC(t.cogs),       isTotal: true },
+        { label: "por Pedido",    value: fmtC(cogsPerOrder), sub: `${fmtC(t.cogs)} ÷ ${t.orders} pedidos` },
+        { label: "% Revenue",     value: t.net > 0 ? `${((t.cogs / t.net) * 100).toFixed(1)}%` : "—" },
+      ],
+      source: "data/product-costs.json → ProductCogsByCountry → Shopify Orders",
+    },
+    flete: {
+      title: "Flete / Envío", subtitle: "Costo de logística pagado para entregar los pedidos",
+      rows: [
+        { label: "Fuente",        value: "", sub: "Shopify Orders → shipping_lines.price de cada orden" },
+        { label: "Tipo",          value: "", sub: "Incluye envío estándar, express, y cualquier línea de shipping de Shopify" },
+        { isDivider: true, label: "", value: "" },
+        { label: "Flete Total",   value: fmtC(t.shipping),          isTotal: true },
+        { label: "por Pedido",    value: fmtC(shippingPerOrder),    sub: `${fmtC(t.shipping)} ÷ ${t.orders} pedidos` },
+        { label: "% Revenue",     value: t.net > 0 ? `${((t.shipping / t.net) * 100).toFixed(1)}%` : "—" },
+      ],
+      source: "Shopify Orders API (shipping_lines)",
+    },
+    fees: {
+      title: "Fees / Pasarela de Pago", subtitle: "Comisión que cobra el procesador de pagos",
+      rows: [
+        { label: "Fórmula",       value: "", sub: "2.9% del monto + $0.30 por transacción (tarifa estándar Shopify Payments / Stripe)" },
+        { label: "Ejemplo",       value: "", sub: `Pedido de $100 → 2.9% × $100 + $0.30 = $3.20 de fee` },
+        { isDivider: true, label: "", value: "" },
+        { label: "Fees Total",    value: fmtC(t.fees),              isTotal: true },
+        { label: "por Pedido",    value: fmtC(feesPerOrder),        sub: `${fmtC(t.fees)} ÷ ${t.orders} pedidos` },
+        { label: "% Revenue",     value: t.net > 0 ? `${((t.fees / t.net) * 100).toFixed(1)}%` : "—" },
+      ],
+      source: "Estimado (no viene de Shopify directamente)",
+      note: "Si usas una pasarela diferente a Shopify Payments, ajusta la tasa en el código (app/api/dashboard).",
+    },
+  };
+
+  const def = defs[metricKey];
+  if (!def) return null;
+
+  return (
+    <div
+      style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}
+      onClick={onClose}
+    >
+      <div
+        style={{ background: "var(--card)", borderRadius: 18, padding: 32, width: "100%", maxWidth: 500, boxShadow: "0 32px 80px rgba(0,0,0,0.35)", maxHeight: "85vh", overflowY: "auto" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 20 }}>
+          <div>
+            <p style={{ fontSize: 18, fontWeight: 800, color: "var(--text)", lineHeight: 1.2 }}>{def.title}</p>
+            <p style={{ fontSize: 12, color: "var(--text-3)", marginTop: 4 }}>{def.subtitle}</p>
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-3)", padding: 4, fontSize: 20, lineHeight: 1, marginLeft: 16, flexShrink: 0 }}>×</button>
+        </div>
+
+        {/* Rows */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          {def.rows.map((row, i) =>
+            row.isDivider ? (
+              <div key={i} style={{ height: 1, background: "var(--border)", margin: "8px 0" }} />
+            ) : (
+              <div
+                key={i}
+                style={{
+                  display: "flex", alignItems: "flex-start", justifyContent: "space-between",
+                  padding: "9px 12px", borderRadius: 8,
+                  background: row.isTotal ? "var(--bg-2)" : "transparent",
+                  border: row.isTotal ? "1px solid var(--border)" : "1px solid transparent",
+                }}
+              >
+                <div style={{ flex: 1 }}>
+                  <p style={{ fontSize: 13, fontWeight: row.isTotal ? 800 : 500, color: row.isTotal ? "var(--text)" : "var(--text-2)" }}>
+                    {row.label}
+                  </p>
+                  {row.sub && <p style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2 }}>{row.sub}</p>}
+                </div>
+                {row.value && (
+                  <p style={{ fontSize: 14, fontWeight: 800, color: row.isTotal ? "var(--text)" : row.value.startsWith("−") ? "var(--red)" : "var(--text)", fontFamily: "monospace", marginLeft: 16, whiteSpace: "nowrap" }}>
+                    {row.value}
+                  </p>
+                )}
+              </div>
+            )
+          )}
+        </div>
+
+        {/* Source */}
+        <div style={{ marginTop: 16, padding: "10px 14px", borderRadius: 8, background: "var(--bg-2)", border: "1px solid var(--border)" }}>
+          <p style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--text-3)", marginBottom: 3 }}>Fuente de datos</p>
+          <p style={{ fontSize: 12, color: "var(--text-2)", fontWeight: 500 }}>{def.source}</p>
+        </div>
+
+        {/* Note */}
+        {def.note && (
+          <div style={{ marginTop: 10, padding: "10px 14px", borderRadius: 8, background: "var(--yellow-bg)", border: "1px solid var(--yellow)" }}>
+            <p style={{ fontSize: 12, color: "var(--yellow-text)", fontWeight: 500 }}>{def.note}</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ─── Dashboard ──────────────────────────────────────────────── */
 export default function Dashboard() {
   const { days, brand, country, setBrand, setCountry, isCustom, customFrom, customTo } = useFilters();
@@ -369,6 +680,8 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [showCbModal, setShowCbModal] = useState(false);
   const [showProfit, setShowProfit] = useState(false);
+  const [explainerKey, setExplainerKey] = useState<string | null>(null);
+  const explain = (key: string) => () => setExplainerKey(key);
   const [syncing, setSyncing] = useState(false);
   const [autoSyncing, setAutoSyncing] = useState(false);   // silent background sync on mount
   const [lastSynced, setLastSynced] = useState<string>("");
@@ -562,10 +875,19 @@ export default function Dashboard() {
       alertas.push({ icon: "🇨🇱", msg: "Chile — Conversión CLP/USD en revisión. Valida la tasa de cambio antes de usar la utilidad como definitiva.", type: "warn" });
   }
 
+  const derived = {
+    grossProfit, grossMargin, totalCosts, totalCostsTP, netMarginVsNet,
+    poas, roasBe, breakEvenCpa, profitPerOrder, cogsPerOrder,
+    adSpendPerOrder, shippingPerOrder, feesPerOrder, cpaMáx,
+  };
+
   return (
     <div style={{ minHeight: "100vh", background: "var(--bg)" }}>
       {showCbModal && (
         <ChargebackModal onClose={() => setShowCbModal(false)} onSaved={load} />
+      )}
+      {explainerKey && t && (
+        <ExplainerModal metricKey={explainerKey} t={t} fmtC={fmtC} derived={derived} onClose={() => setExplainerKey(null)} />
       )}
 
       {/* ══════════════════════════════════════════════════════
@@ -766,6 +1088,7 @@ export default function Dashboard() {
                   icon={t.profit >= 0 ? TrendingUp : TrendingDown}
                   alert={t.profit < 0}
                   badge={{ text: t.profit >= 0 ? "Rentable ✓" : "En pérdida ✗", type: t.profit >= 0 ? "good" : "bad" }}
+                  onExplain={explain("net_profit")}
                 />
 
                 {/* 2. Orders */}
@@ -776,6 +1099,7 @@ export default function Dashboard() {
                   color="#6366F1"
                   icon={ShoppingCart}
                   badge={{ text: `${fmtNum(t.units, 0)} uds`, type: "neutral" }}
+                  onExplain={explain("units")}
                 />
 
                 {/* 3. Revenue */}
@@ -785,6 +1109,7 @@ export default function Dashboard() {
                   sub={`Revenue neto · ${t.net > 0 && t.gross > 0 ? ((t.net / t.gross) * 100).toFixed(0) : "0"}% del bruto`}
                   color="#2563EB"
                   icon={Banknote}
+                  onExplain={explain("revenue")}
                 />
 
                 {/* 4. Total Costs */}
@@ -794,6 +1119,7 @@ export default function Dashboard() {
                   sub={`${t.net > 0 ? ((totalCostsTP / t.net) * 100).toFixed(1) : "0"}% del revenue`}
                   color="#DC2626"
                   icon={DollarSign}
+                  onExplain={explain("total_costs")}
                 />
 
                 {/* 5. Net Profit Margin */}
@@ -804,6 +1130,7 @@ export default function Dashboard() {
                   color={netMarginVsNet >= 20 ? "#00A676" : netMarginVsNet >= 10 ? "#F59E0B" : "#DC2626"}
                   icon={Target}
                   badge={{ text: netMarginVsNet >= 20 ? "Sano ✓" : netMarginVsNet >= 10 ? "OK" : "Bajo ⚠", type: netMarginVsNet >= 20 ? "good" : netMarginVsNet >= 10 ? "ok" : "bad" }}
+                  onExplain={explain("net_margin")}
                 />
 
                 {/* 6. Total Ad Spend */}
@@ -813,6 +1140,7 @@ export default function Dashboard() {
                   sub={`${t.net > 0 ? ((t.adSpend / t.net) * 100).toFixed(1) : "0"}% del revenue`}
                   color="#F59E0B"
                   icon={Zap}
+                  onExplain={explain("ad_spend")}
                 />
 
                 {/* 7. Avg. Order Value */}
@@ -823,6 +1151,7 @@ export default function Dashboard() {
                   color="#8B5CF6"
                   icon={BarChart3}
                   badge={{ text: t.aov >= 50 ? "Saludable" : "Bajo", type: t.aov >= 50 ? "good" : "ok" }}
+                  onExplain={explain("aov")}
                 />
 
                 {/* 8. Units Sold */}
@@ -832,26 +1161,28 @@ export default function Dashboard() {
                   sub={`${t.orders > 0 ? (t.units / t.orders).toFixed(1) : "0"} uds/pedido`}
                   color="#06B6D4"
                   icon={Package}
+                  onExplain={explain("units")}
                 />
 
                 {/* 9. Gross Sales */}
                 <KpiCard
                   label="Gross Sales"
                   value={fmtC(t.gross)}
-                  sub={`Ventas brutas antes de ajustes`}
+                  sub="Ventas brutas antes de ajustes"
                   color="#10B981"
                   icon={ArrowUpRight}
+                  onExplain={explain("gross_sales")}
                 />
 
-                {/* 10. Gross Profit */}
+                {/* 10. COGS Spend (reemplaza Gross Profit) */}
                 <KpiCard
-                  label="Gross Profit"
-                  value={fmtC(grossProfit)}
-                  sub={`${grossMargin.toFixed(1)}% · antes de ads`}
-                  color={grossProfit >= 0 ? "#059669" : "#DC2626"}
-                  icon={grossProfit >= 0 ? TrendingUp : TrendingDown}
-                  alert={grossProfit < 0}
-                  badge={{ text: grossMargin >= 40 ? "Sano ✓" : grossMargin >= 20 ? "OK" : "Bajo ⚠", type: grossMargin >= 40 ? "good" : grossMargin >= 20 ? "ok" : "bad" }}
+                  label="COGS Spend"
+                  value={fmtC(t.cogs)}
+                  sub={`${t.net > 0 ? ((t.cogs / t.net) * 100).toFixed(1) : "0"}% del revenue · ${fmtC(cogsPerOrder)}/pedido`}
+                  color="#6366F1"
+                  icon={Package}
+                  badge={{ text: grossMargin >= 40 ? `Margen bruto ${grossMargin.toFixed(0)}% ✓` : `Margen bruto ${grossMargin.toFixed(0)}%`, type: grossMargin >= 40 ? "good" : grossMargin >= 20 ? "ok" : "bad" }}
+                  onExplain={explain("cogs_kpi")}
                 />
 
               </div>
@@ -872,48 +1203,49 @@ export default function Dashboard() {
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 0, borderRadius: 10, overflow: "hidden", border: "1px solid var(--border)" }}>
                     {[
                       {
-                        label: "ROAS",
+                        label: "ROAS", explainKey: "roas",
                         value: t.roas !== null ? `${t.roas.toFixed(2)}x` : "—",
                         sub: roasBe !== null ? `BE: ${roasBe.toFixed(2)}x` : "Sin pauta",
-                        good: t.roas !== null ? (t.roas >= 3 ? "good" : t.roas >= 2 ? "ok" : "bad") : "neutral",
                         color: t.roas !== null ? (t.roas >= 3 ? "var(--green)" : t.roas >= 2 ? "var(--yellow)" : "var(--red)") : "var(--text-3)",
                       },
                       {
-                        label: "CPA Real",
+                        label: "CPA Real", explainKey: "cpa",
                         value: t.cpa !== null ? fmtC(t.cpa) : "—",
                         sub: breakEvenCpa !== null ? `BE: ${fmtC(breakEvenCpa)}` : "Sin pauta",
-                        good: t.cpa !== null && breakEvenCpa !== null ? (t.cpa > breakEvenCpa ? "bad" : t.cpa > breakEvenCpa * 0.85 ? "ok" : "good") : "neutral",
                         color: t.cpa !== null && breakEvenCpa !== null ? (t.cpa > breakEvenCpa ? "var(--red)" : t.cpa > breakEvenCpa * 0.85 ? "var(--yellow)" : "var(--green)") : "var(--text-3)",
                       },
                       {
-                        label: "CPA BE",
+                        label: "CPA BE", explainKey: "cpa_be",
                         value: breakEvenCpa !== null ? fmtC(breakEvenCpa) : "—",
                         sub: cpaMáx > 0 ? `Máx c/15%: ${fmtC(cpaMáx)}` : "CPA máximo",
-                        good: "neutral" as const,
                         color: "var(--text)",
                       },
                       {
-                        label: "MER",
+                        label: "MER", explainKey: "mer",
                         value: t.mer !== null ? `${t.mer.toFixed(2)}x` : "—",
                         sub: "Eficiencia total",
-                        good: t.mer !== null ? (t.mer >= 3 ? "good" : t.mer >= 2 ? "ok" : "bad") : "neutral",
                         color: t.mer !== null ? (t.mer >= 3 ? "var(--green)" : t.mer >= 2 ? "var(--yellow)" : "var(--red)") : "var(--text-3)",
                       },
                       {
-                        label: "POAS",
+                        label: "POAS", explainKey: "poas",
                         value: poas !== null ? `${poas.toFixed(2)}x` : "—",
                         sub: "Profit on Ad Spend",
-                        good: poas !== null ? (poas >= 1.5 ? "good" : poas >= 1 ? "ok" : "bad") : "neutral",
                         color: poas !== null ? (poas >= 1.5 ? "var(--green)" : poas >= 1 ? "var(--yellow)" : "var(--red)") : "var(--text-3)",
                       },
                     ].map((m, i, arr) => (
-                      <div key={m.label} style={{
-                        padding: "18px 16px",
-                        borderRight: i < arr.length - 1 ? "1px solid var(--border)" : "none",
-                        background: "var(--card)",
-                      }}>
+                      <div
+                        key={m.label}
+                        onClick={() => setExplainerKey(m.explainKey)}
+                        style={{
+                          padding: "18px 16px",
+                          borderRight: i < arr.length - 1 ? "1px solid var(--border)" : "none",
+                          background: "var(--card)",
+                          cursor: "pointer",
+                        }}
+                        title="Clic para ver cómo se calcula"
+                      >
                         <p style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-3)", marginBottom: 10 }}>
-                          {m.label}
+                          {m.label} <span style={{ opacity: 0.5, fontSize: 9 }}>ⓘ</span>
                         </p>
                         <p style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", lineHeight: 1, color: m.color }}>
                           {m.value}
@@ -968,6 +1300,7 @@ export default function Dashboard() {
                   sub={`${fmtC(cogsPerOrder)}/pedido · ${totalCosts > 0 ? ((t.cogs / totalCosts) * 100).toFixed(0) : 0}% del total`}
                   color="#6366F1"
                   icon={Package}
+                  onExplain={explain("cogs_compact")}
                 />
                 <CompactMetric
                   label="Flete / Envío"
@@ -975,6 +1308,7 @@ export default function Dashboard() {
                   sub={`${fmtC(shippingPerOrder)}/pedido · ${totalCosts > 0 ? ((t.shipping / totalCosts) * 100).toFixed(0) : 0}% del total`}
                   color="#F59E0B"
                   icon={Truck}
+                  onExplain={explain("flete")}
                 />
                 <CompactMetric
                   label="Fees / Pasarela"
@@ -982,6 +1316,7 @@ export default function Dashboard() {
                   sub={`${fmtC(feesPerOrder)}/pedido · ${totalCosts > 0 ? ((t.fees / totalCosts) * 100).toFixed(0) : 0}% del total`}
                   color="#EC4899"
                   icon={CreditCard}
+                  onExplain={explain("fees")}
                 />
                 <div className="card-flat" style={{
                   padding: "16px 20px",
