@@ -448,7 +448,10 @@ function lookupCost(name: string, countryCosts: Record<string, number>, dbCosts:
 // Sincronizado con la regex del filtro en /costos y /productos.
 // Un producto sin COGS cargados sigue siendo "físico" — no confundir con digital.
 function isDigitalProduct(name: string): boolean {
-  return /ebook|eook|guía|guia|brocha|protocolo|recetario|protección|proteccion|calendario|hábitos|habitos|menú|menu|plan de gym|plan anti|método|metodo|ritual|set |kit |collar|agenda|21d|reto |challenge|vitamina c|youtful|reafirmante|rendimiento extendido|rendimiento m[aá]ximo|lifting desde|pureza extendida|poros|glow desde|fórmula pro|formula pro|rutina anti|tracker/i.test(name);
+  // Solo contenido descargable/no físico. Los upsells físicos (Reafirmante,
+  // Rendimiento Extendido, Fórmula Pro, Vitamina C, etc.) tienen costo de proveedor
+  // y se tratan como físicos — NO deben quedar como "Digital 100%".
+  return /ebook|eook|guía|guia|protocolo|recetario|calendario|hábitos|habitos|menú|menu|plan de gym|plan anti|método|metodo|ritual|agenda|21d|reto |challenge|poros bajo|poros abiertos|glow desde adentro|lifting desde dentro|rutina anti|tracker/i.test(name);
 }
 
 // ─── Status + Data Quality ─────────────────────────────────────────────────────
