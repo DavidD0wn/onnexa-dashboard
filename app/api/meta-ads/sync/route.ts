@@ -234,6 +234,16 @@ export async function POST(req: NextRequest) {
     let totalSaved = 0;
     const skippedAccounts: string[] = [];
 
+    /* ── Precargar IDs de producto válidos UNA sola vez ──────────────────────
+       Antes se hacía un prisma.product.findUnique POR CADA fila (miles de
+       round-trips a Neon). Con la tabla en memoria validamos sin tocar la BD.
+       Si la tabla Product no existe en cloud, queda vacío → productId = null. */
+    let validProductIds = new Set<string>();
+    try {
+      const prods = await prisma.product.findMany({ select: { id: true } });
+      validProductIds = new Set(prods.map((p) => p.id));
+    } catch { /* tabla Product ausente/sin migrar — se omite la atribución */ }
+
     /* ── Step 2: Borrar + reinsertar SOLO las cuentas que sincronizaron OK ── */
     for (const { account, rows, ok } of perAccount) {
       // Cuenta que falló: conservar sus datos. No borrar, no reinsertar.
@@ -251,8 +261,10 @@ export async function POST(req: NextRequest) {
         },
       });
 
-      // Insert fresh rows — country and product inferred from campaign name
-      for (const row of rows) {
+      // Construir todas las filas en memoria y luego insertarlas en LOTE.
+      // Antes se hacía un prisma.adSpend.create por fila (miles de round-trips
+      // a Neon → ~18 min). createMany hace ~1 viaje por lote de 500.
+      const toInsert = rows.map((row) => {
         /* Currency conversion: Banana #1 (act_486942987769865) reports in COP.
            Divide monetary values by COP_TO_USD so everything is stored in USD. */
         const fx    = account.currency === "COP" ? 1 / COP_TO_USD : 1;
@@ -272,20 +284,13 @@ export async function POST(req: NextRequest) {
         );
 
         // Atribución de producto: extrae el código del nombre de campaña
-        // (p.ej. "10/04/26 - HB01 - Cbo - Usa") y verifica que el producto
-        // exista en la tabla Product. Si no existe o el lookup falla (tabla
-        // vacía o sin migrar en cloud), queda null y el gasto se guarda igual
-        // SIN vincular al producto — nunca debe romper el sync.
-        let productId: string | null = null;
-        try {
-          const candidate = extractProductId(row.campaign_name ?? null, account.brandId);
-          if (candidate) {
-            const exists = await prisma.product.findUnique({ where: { id: candidate }, select: { id: true } });
-            if (exists) productId = candidate;
-          }
-        } catch { /* lookup falló (schema/permisos) — productId queda null */ }
+        // (p.ej. "10/04/26 - HB01 - Cbo - Usa") y valida contra el set precargado.
+        // Si el producto no existe, queda null y el gasto se guarda igual SIN
+        // vincular — así createMany nunca choca contra la FK del productId.
+        const candidate  = extractProductId(row.campaign_name ?? null, account.brandId);
+        const productId  = candidate && validProductIds.has(candidate) ? candidate : null;
 
-        const baseData = {
+        return {
           brandId:         account.brandId,
           countryId,
           accountId:       account.accountId,
@@ -304,26 +309,19 @@ export async function POST(req: NextRequest) {
           cpm:             parseFloat(row.cpm || "0") * fx,
           cpa,
           roas:            spend > 0 && convValue > 0 ? convValue / spend : null,
+          productId,
         };
+      });
 
+      // Insertar en lotes de 500 para no exceder límites de tamaño de query.
+      const BATCH = 500;
+      for (let i = 0; i < toInsert.length; i += BATCH) {
         try {
-          await prisma.adSpend.create({ data: { ...baseData, productId } });
+          const res = await prisma.adSpend.createMany({ data: toInsert.slice(i, i + BATCH) });
+          totalSaved += res.count;
         } catch (e: any) {
-          // Si falló por FK del productId (cloud sin Product table o ID viejo),
-          // reintentar SIN productId — el gasto se guarda y la atribución se omite.
-          if (productId) {
-            try {
-              await prisma.adSpend.create({ data: { ...baseData, productId: null } });
-            } catch (e2: any) {
-              console.warn(`[Meta Ads] Falló create sin productId para ${row.campaign_name}: ${e2.message?.slice(0, 120)}`);
-              continue;
-            }
-          } else {
-            console.warn(`[Meta Ads] Falló create para ${row.campaign_name}: ${e.message?.slice(0, 120)}`);
-            continue;
-          }
+          console.warn(`[Meta Ads] Falló createMany lote ${i}-${i + BATCH} (${account.accountId}): ${e.message?.slice(0, 150)}`);
         }
-        totalSaved++;
       }
     }
 
@@ -336,9 +334,13 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    /* ── Rollup: pasar AdSpend → DailyMetric.adSpend automáticamente ── */
+    /* ── Rollup: pasar AdSpend → DailyMetric.adSpend automáticamente ──
+       Usar el origin de la propia request (no un puerto fijo): si otra app
+       ocupó el 3000 y el dashboard arrancó en 3001, el rollup debe llamarse a
+       SÍ MISMO — no a la otra app. Evita el "choque" entre proyectos. */
     try {
-      const rollupRes  = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL ?? "http://localhost:3000"}/api/meta-ads/rollup`, {
+      const baseUrl    = new URL(req.url).origin;
+      const rollupRes  = await fetch(`${baseUrl}/api/meta-ads/rollup`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ from: dateFrom, to: dateTo }),
