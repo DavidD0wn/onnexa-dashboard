@@ -361,6 +361,13 @@ model ZohoConversation {
   status       String        @default("pending")
   hidden       Boolean       @default(false)
   errorMsg     String?
+  // ── Campos del redactor IA (borrador + aprobación) ──
+  aiDraft      String?       // respuesta redactada por la IA, pendiente de aprobar
+  caseType     String?       // tipo de caso clasificado (CJ_*, CLIENTE_*, ESCALAR_HUMANO)
+  aiConfidence Float?        // 0..1 confianza de la IA
+  needsData    String?       // JSON array: datos que faltan
+  orderContext String?       // datos reales de Shopify inyectados (para auditoría)
+  source       String        @default("rule")  // "rule" | "ai"
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 }

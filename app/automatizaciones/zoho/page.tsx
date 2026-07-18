@@ -106,6 +106,10 @@ export default function ZohoPage() {
   const [rules,       setRules]       = useState<Rule[]>([]);
   const [editRule,    setEditRule]    = useState<Rule | null>(null);
   const [newRule,     setNewRule]     = useState(false);
+  const [drafts,      setDrafts]      = useState<any[]>([]);
+  const [draftEdits,  setDraftEdits]  = useState<Record<string, string>>({});
+  const [draftBusy,   setDraftBusy]   = useState<string>("");
+  const [draftMsg,    setDraftMsg]    = useState<string>("");
 
   /* ── carga inicial ─────────────────────────────────── */
   const loadConfig = useCallback(async () => {
@@ -133,14 +137,21 @@ export default function ZohoPage() {
     setRules(Array.isArray(data) ? data : []);
   }, []);
 
+  const loadDrafts = useCallback(async () => {
+    const res  = await fetch("/api/automatizaciones/zoho/drafts");
+    const data = await res.json();
+    setDrafts(data.drafts ?? []);
+  }, []);
+
   useEffect(() => { loadConfig(); }, [loadConfig]);
 
   useEffect(() => {
     if (!connected) return;
-    if (tab === "bandeja")  loadConvs();
-    if (tab === "reglas")   loadRules();
-    if (tab === "estado")   { loadConvs(); loadRules(); }
-  }, [tab, connected, convFilter, loadConvs, loadRules]);
+    if (tab === "bandeja")     loadConvs();
+    if (tab === "reglas")      loadRules();
+    if (tab === "borradores")  loadDrafts();
+    if (tab === "estado")      { loadConvs(); loadRules(); loadDrafts(); }
+  }, [tab, connected, convFilter, loadConvs, loadRules, loadDrafts]);
 
   /* ── auto-sync cada 5 min ──────────────────────────── */
   useEffect(() => {
@@ -227,6 +238,30 @@ export default function ZohoPage() {
     loadRules();
   };
 
+  /* ── acciones de borradores IA ─────────────────────── */
+  const sendDraft = async (id: string) => {
+    setDraftBusy(id); setDraftMsg("");
+    const text = draftEdits[id];   // texto editado, si lo hay
+    const res  = await fetch(`/api/automatizaciones/zoho/drafts/${id}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body:   JSON.stringify(text !== undefined ? { text } : {}),
+    });
+    const data = await res.json();
+    setDraftBusy("");
+    if (data.error) { setDraftMsg("❌ " + data.error); return; }
+    setDraftMsg("✅ Enviado a " + (drafts.find((d) => d.id === id)?.fromEmail ?? ""));
+    setDrafts((ds) => ds.filter((d) => d.id !== id));
+  };
+
+  const discardDraft = async (id: string) => {
+    if (!confirm("¿Descartar este borrador? No se enviará.")) return;
+    setDraftBusy(id);
+    await fetch(`/api/automatizaciones/zoho/drafts/${id}`, { method: "DELETE" });
+    setDraftBusy("");
+    setDrafts((ds) => ds.filter((d) => d.id !== id));
+  };
+
   const toggleRule = async (r: Rule) => {
     await fetch("/api/automatizaciones/zoho/rules", {
       method: "PUT",
@@ -307,9 +342,10 @@ export default function ZohoPage() {
   }
 
   /* ── render: conectado ────────────────────────────── */
-  const tabs = ["estado", "bandeja", "reglas", "instrucciones"];
+  const tabs = ["estado", "borradores", "bandeja", "reglas", "instrucciones"];
   const tabLabels: Record<string, string> = {
-    estado: "Estado", bandeja: "Bandeja", reglas: "Reglas", instrucciones: "Instrucciones",
+    estado: "Estado", borradores: `Borradores IA${drafts.length ? ` (${drafts.length})` : ""}`,
+    bandeja: "Bandeja", reglas: "Reglas", instrucciones: "Instrucciones",
   };
 
   return (
@@ -448,6 +484,123 @@ export default function ZohoPage() {
                 ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── Tab: Borradores IA ────────────────────────── */}
+      {tab === "borradores" && (
+        <div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+            <p style={{ fontSize: 13, color: C.muted, margin: 0 }}>
+              La IA redacta con tu manual y los datos reales de Shopify. <b>Nada se envía</b> hasta que tú lo apruebes.
+            </p>
+            <button onClick={loadDrafts} style={{
+              fontSize: 12, padding: "6px 12px", borderRadius: 8, cursor: "pointer",
+              background: C.card, border: `1px solid ${C.border}`, color: C.text,
+            }}>↻ Actualizar</button>
+          </div>
+
+          {draftMsg && (
+            <div style={{ fontSize: 13, padding: "8px 12px", borderRadius: 8, marginBottom: 12,
+              background: draftMsg.startsWith("✅") ? C.accentL : C.redL,
+              color: draftMsg.startsWith("✅") ? C.accent : C.red }}>
+              {draftMsg}
+            </div>
+          )}
+
+          {drafts.length === 0 && (
+            <div style={{ textAlign: "center", padding: 48, color: C.muted, fontSize: 14 }}>
+              No hay borradores pendientes. Cuando lleguen correos nuevos, aquí aparecerán listos para revisar.
+            </div>
+          )}
+
+          {drafts.map((d) => {
+            const edited = draftEdits[d.id] ?? d.aiDraft ?? "";
+            const conf   = Math.round((d.aiConfidence ?? 0) * 100);
+            const confColor = conf >= 75 ? C.accent : conf >= 50 ? C.yellow : C.red;
+            const isEsc  = d.status === "escalated" || d.status === "needs_attention";
+            return (
+              <div key={d.id} style={{
+                background: C.card, border: `1px solid ${isEsc ? C.yellow : C.border}`,
+                borderRadius: 12, padding: 18, marginBottom: 14,
+              }}>
+                {/* Cabecera */}
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 10 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <p style={{ fontWeight: 600, fontSize: 14, margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {d.subject || "(sin asunto)"}
+                    </p>
+                    <p style={{ fontSize: 12, color: C.muted, margin: "2px 0 0" }}>
+                      De: {d.fromName || d.fromEmail} · {d.fromEmail}
+                    </p>
+                  </div>
+                  <div style={{ display: "flex", gap: 6, flexShrink: 0, alignItems: "center" }}>
+                    {d.caseType && (
+                      <span style={{ fontSize: 10, fontWeight: 600, padding: "3px 8px", borderRadius: 20, background: "#F3F4F6", color: C.muted }}>
+                        {d.caseType}
+                      </span>
+                    )}
+                    <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 20, background: C.accentL, color: confColor }}>
+                      {conf}% conf.
+                    </span>
+                  </div>
+                </div>
+
+                {/* Aviso de escalado / datos faltantes */}
+                {isEsc && (
+                  <div style={{ fontSize: 12, background: C.yellowL, color: "#92400E", padding: "8px 12px", borderRadius: 8, marginBottom: 10 }}>
+                    ⚠️ La IA sugiere revisar esto a mano{Array.isArray(d.needsData) && d.needsData.length ? ` — falta: ${d.needsData.join(", ")}` : ""}.
+                  </div>
+                )}
+
+                {/* Correo entrante (colapsado) */}
+                <details style={{ marginBottom: 10 }}>
+                  <summary style={{ fontSize: 12, color: C.muted, cursor: "pointer" }}>Ver correo original</summary>
+                  <div style={{ fontSize: 12, color: C.text, background: C.bg, padding: 10, borderRadius: 8, marginTop: 6, whiteSpace: "pre-wrap" }}>
+                    {d.inboundText}
+                  </div>
+                </details>
+
+                {/* Borrador editable */}
+                <label style={{ fontSize: 11, fontWeight: 600, color: C.muted, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                  Respuesta (editable)
+                </label>
+                <textarea
+                  value={edited}
+                  onChange={(e) => setDraftEdits((p) => ({ ...p, [d.id]: e.target.value }))}
+                  rows={Math.min(14, Math.max(5, edited.split("\n").length + 1))}
+                  style={{
+                    width: "100%", boxSizing: "border-box", marginTop: 6, padding: 12,
+                    fontSize: 13, lineHeight: 1.5, borderRadius: 8, border: `1px solid ${C.border}`,
+                    fontFamily: "inherit", color: C.text, resize: "vertical",
+                  }}
+                />
+
+                {/* Acciones */}
+                <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                  <button
+                    onClick={() => sendDraft(d.id)}
+                    disabled={draftBusy === d.id || !edited.trim()}
+                    style={{
+                      fontSize: 13, fontWeight: 600, padding: "9px 18px", borderRadius: 8,
+                      background: C.accent, color: "#fff", border: "none",
+                      cursor: draftBusy === d.id ? "wait" : "pointer", opacity: edited.trim() ? 1 : 0.5,
+                    }}>
+                    {draftBusy === d.id ? "Enviando…" : "✓ Aprobar y enviar"}
+                  </button>
+                  <button
+                    onClick={() => discardDraft(d.id)}
+                    disabled={draftBusy === d.id}
+                    style={{
+                      fontSize: 13, padding: "9px 16px", borderRadius: 8,
+                      background: C.card, color: C.red, border: `1px solid ${C.border}`, cursor: "pointer",
+                    }}>
+                    Descartar
+                  </button>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 

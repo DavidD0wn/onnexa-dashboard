@@ -1,8 +1,15 @@
 import { NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import nodemailer from "nodemailer";
+import { generateDraft } from "@/lib/ai-responder";
+import { getOrderContext } from "@/lib/shopify-order-context";
 
 const prisma = new PrismaClient();
+
+// Marca según el buzón que recibe el correo
+function brandFromEmail(email: string): "Glowmmi" | "Balancea" {
+  return /glowmmi/i.test(email) ? "Glowmmi" : "Balancea";
+}
 
 /* ── SMTP (envío confiable, funciona en plan free) ─────────────── */
 function createTransporter() {
@@ -220,6 +227,62 @@ export async function GET() {
           const isEscalation =
             matched?.name?.startsWith("🚨") || matched?.name?.startsWith("⚠️");
 
+          // ── MODO IA: redactar borrador con el manual + datos reales de Shopify ──
+          // Se activa si hay GROQ_API_KEY. NO envía: deja el borrador para aprobar.
+          if (process.env.GROQ_API_KEY) {
+            try {
+              const brandName = brandFromEmail(config.emailAddress);
+              // Datos reales de Shopify (la IA NO debe inventar estados de envío)
+              const ctx = await getOrderContext(msg.fromAddress, fullText);
+              const draft = await generateDraft({
+                inbound:      fullText,
+                fromName:     msg.sender ?? null,
+                brandName,
+                orderContext: ctx.found ? ctx.text : null,
+              });
+
+              await prisma.zohoConversation.create({
+                data: {
+                  configId:     config.id,
+                  messageId:    msg.messageId,
+                  fromEmail:    msg.fromAddress,
+                  fromName:     msg.sender ?? null,
+                  subject:      msg.subject ?? "(sin asunto)",
+                  inboundText:  fullText,
+                  aiDraft:      draft.respuesta,
+                  caseType:     draft.caseType,
+                  aiConfidence: draft.confianza,
+                  needsData:    JSON.stringify(draft.faltanDatos),
+                  orderContext: ctx.found ? ctx.text : null,
+                  ruleMatched:  matched?.name ?? null,
+                  source:       "ai",
+                  // draft = pendiente de aprobar; escalated = mejor revisar a mano
+                  status:       draft.escalar ? "escalated" : "draft",
+                },
+              });
+              skipped++;   // "skipped" del envío automático: queda como borrador
+              continue;
+            } catch (aiErr: any) {
+              // Si la IA falla, guardar para atención manual (no perder el correo)
+              await prisma.zohoConversation.create({
+                data: {
+                  configId:    config.id,
+                  messageId:   msg.messageId,
+                  fromEmail:   msg.fromAddress,
+                  fromName:    msg.sender ?? null,
+                  subject:     msg.subject ?? "(sin asunto)",
+                  inboundText: fullText,
+                  status:      "needs_attention",
+                  source:      "ai",
+                  errorMsg:    `IA falló: ${aiErr.message}`.slice(0, 300),
+                },
+              });
+              errors++;
+              continue;
+            }
+          }
+
+          // ── MODO REGLAS (respaldo si no hay GROQ_API_KEY): plantilla fija + envío ──
           if (!matched) {
             await prisma.zohoConversation.create({
               data: {
