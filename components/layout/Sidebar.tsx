@@ -86,8 +86,7 @@ const GROUPS = [
     defaultOpen: false,
     items: [
       { label: "Bot Meta",  href: "/automatizaciones/meta", icon: Bot,  disabled: true },
-      { label: "Bot Zoho",  href: "/automatizaciones/zoho", icon: Mail, disabled: true },
-      { label: "Envío de Ebooks", href: "/automatizaciones/ebooks", icon: BookOpen },
+      { label: "Bot Zoho",  href: "/automatizaciones/zoho", icon: Mail },
     ],
   },
   {

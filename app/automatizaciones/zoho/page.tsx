@@ -110,6 +110,7 @@ export default function ZohoPage() {
   const [draftEdits,  setDraftEdits]  = useState<Record<string, string>>({});
   const [draftBusy,   setDraftBusy]   = useState<string>("");
   const [draftMsg,    setDraftMsg]    = useState<string>("");
+  const [brandFilter, setBrandFilter] = useState<string>("all");
 
   /* ── carga inicial ─────────────────────────────────── */
   const loadConfig = useCallback(async () => {
@@ -508,13 +509,35 @@ export default function ZohoPage() {
             </div>
           )}
 
+          {/* Filtro por tienda */}
+          {drafts.length > 0 && (
+            <div style={{ display: "flex", gap: 6, marginBottom: 14, alignItems: "center" }}>
+              <span style={{ fontSize: 11, color: C.muted, fontWeight: 600 }}>Tienda:</span>
+              {["all", "Glowmmi", "Balancea"].map((b) => {
+                const n = b === "all" ? drafts.length : drafts.filter((d) => d.brand === b).length;
+                const on = brandFilter === b;
+                return (
+                  <button key={b} onClick={() => setBrandFilter(b)} style={{
+                    fontSize: 12, fontWeight: on ? 700 : 500, padding: "5px 12px", borderRadius: 20,
+                    cursor: "pointer",
+                    border: `1px solid ${on ? (b === "Glowmmi" ? "#EC4899" : b === "Balancea" ? "#10B981" : C.accent) : C.border}`,
+                    background: on ? (b === "Glowmmi" ? "#FCE7F3" : b === "Balancea" ? "#D1FAE5" : C.accentL) : C.card,
+                    color: on ? (b === "Glowmmi" ? "#9D174D" : b === "Balancea" ? "#065F46" : C.accent) : C.muted,
+                  }}>
+                    {b === "all" ? "Todas" : b} ({n})
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
           {drafts.length === 0 && (
             <div style={{ textAlign: "center", padding: 48, color: C.muted, fontSize: 14 }}>
               No hay borradores pendientes. Cuando lleguen correos nuevos, aquí aparecerán listos para revisar.
             </div>
           )}
 
-          {drafts.map((d) => {
+          {drafts.filter((d) => brandFilter === "all" || d.brand === brandFilter).map((d) => {
             const edited = draftEdits[d.id] ?? d.aiDraft ?? "";
             const conf   = Math.round((d.aiConfidence ?? 0) * 100);
             const confColor = conf >= 75 ? C.accent : conf >= 50 ? C.yellow : C.red;
@@ -533,8 +556,22 @@ export default function ZohoPage() {
                     <p style={{ fontSize: 12, color: C.muted, margin: "2px 0 0" }}>
                       De: {d.fromName || d.fromEmail} · {d.fromEmail}
                     </p>
+                    {d.mailbox && (
+                      <p style={{ fontSize: 11, color: C.muted, margin: "3px 0 0" }}>
+                        Recibido en: <b style={{ color: d.brand === "Glowmmi" ? "#EC4899" : "#10B981" }}>{d.mailbox}</b>
+                      </p>
+                    )}
                   </div>
                   <div style={{ display: "flex", gap: 6, flexShrink: 0, alignItems: "center" }}>
+                    {d.brand && (
+                      <span style={{
+                        fontSize: 10, fontWeight: 700, padding: "3px 9px", borderRadius: 20,
+                        background: d.brand === "Glowmmi" ? "#FCE7F3" : "#D1FAE5",
+                        color:      d.brand === "Glowmmi" ? "#9D174D" : "#065F46",
+                      }}>
+                        {d.brand}
+                      </span>
+                    )}
                     {d.caseType && (
                       <span style={{ fontSize: 10, fontWeight: 600, padding: "3px 8px", borderRadius: 20, background: "#F3F4F6", color: C.muted }}>
                         {d.caseType}

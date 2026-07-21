@@ -15,12 +15,19 @@ export async function GET(req: NextRequest) {
     where,
     orderBy: { createdAt: "desc" },
     take: 100,
+    // Incluir el buzón que recibió el correo para saber si es Glowmmi o Balancea
+    include: { config: { select: { emailAddress: true } } },
   });
 
   return NextResponse.json({
-    drafts: drafts.map((d) => ({
-      ...d,
-      needsData: d.needsData ? JSON.parse(d.needsData) : [],
-    })),
+    drafts: drafts.map((d) => {
+      const mailbox = d.config?.emailAddress ?? "";
+      return {
+        ...d,
+        needsData: d.needsData ? JSON.parse(d.needsData) : [],
+        mailbox,
+        brand: /glowmmi/i.test(mailbox) ? "Glowmmi" : "Balancea",
+      };
+    }),
   });
 }
