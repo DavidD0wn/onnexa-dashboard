@@ -15,20 +15,25 @@ const AUTH_URL =
   `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`;
 
 export async function GET() {
-  const config = await prisma.zohoBotConfig.findFirst();
+  // Devolver TODAS las cuentas conectadas: el bot lee varios buzones
+  // (Glowmmi y Balancea) y la UI debe poder mostrarlos todos.
+  const all = await prisma.zohoBotConfig.findMany({ orderBy: { createdAt: "asc" } });
+
+  const shape = (c: (typeof all)[number]) => ({
+    id:               c.id,
+    emailAddress:     c.emailAddress,
+    displayName:      c.displayName,
+    autoReplyEnabled: c.autoReplyEnabled,
+    lastSyncAt:       c.lastSyncAt,
+    brand:            /glowmmi/i.test(c.emailAddress) ? "Glowmmi" : "Balancea",
+  });
 
   return NextResponse.json({
-    connected: !!config,
+    connected: all.length > 0,
     authUrl:   AUTH_URL,
-    config: config
-      ? {
-          id:               config.id,
-          emailAddress:     config.emailAddress,
-          displayName:      config.displayName,
-          autoReplyEnabled: config.autoReplyEnabled,
-          lastSyncAt:       config.lastSyncAt,
-        }
-      : null,
+    configs:   all.map(shape),
+    // `config` se mantiene por compatibilidad con la UI existente
+    config:    all.length ? shape(all[0]) : null,
   });
 }
 

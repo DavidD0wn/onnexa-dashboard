@@ -111,6 +111,7 @@ export default function ZohoPage() {
   const [draftBusy,   setDraftBusy]   = useState<string>("");
   const [draftMsg,    setDraftMsg]    = useState<string>("");
   const [brandFilter, setBrandFilter] = useState<string>("all");
+  const [configs,     setConfigs]     = useState<any[]>([]);
 
   /* ── carga inicial ─────────────────────────────────── */
   const loadConfig = useCallback(async () => {
@@ -119,6 +120,7 @@ export default function ZohoPage() {
     setConnected(data.connected);
     setAuthUrl(data.authUrl);
     setConfig(data.config ?? null);
+    setConfigs(data.configs ?? []);
     setLoading(false);
   }, []);
 
@@ -399,6 +401,43 @@ export default function ZohoPage() {
           {syncResult}
         </div>
       )}
+
+      {/* Buzones conectados — el bot puede leer Glowmmi y Balancea a la vez */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+        padding: "12px 16px", marginBottom: 16, borderRadius: 10,
+        background: C.card, border: `1px solid ${C.border}`,
+      }}>
+        <span style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+          Buzones conectados
+        </span>
+        {configs.map((c) => (
+          <span key={c.id} style={{
+            display: "inline-flex", alignItems: "center", gap: 6,
+            fontSize: 12, fontWeight: 600, padding: "5px 11px", borderRadius: 20,
+            background: c.brand === "Glowmmi" ? "#FCE7F3" : "#D1FAE5",
+            color:      c.brand === "Glowmmi" ? "#9D174D" : "#065F46",
+          }}>
+            ● {c.emailAddress}
+          </span>
+        ))}
+        {!configs.some((c) => c.brand === "Balancea") && (
+          <a href={authUrl} style={{
+            fontSize: 12, fontWeight: 600, padding: "5px 12px", borderRadius: 20,
+            border: `1px dashed ${C.border}`, color: C.muted, textDecoration: "none",
+          }}>
+            + Conectar Balancea
+          </a>
+        )}
+        {!configs.some((c) => c.brand === "Glowmmi") && (
+          <a href={authUrl} style={{
+            fontSize: 12, fontWeight: 600, padding: "5px 12px", borderRadius: 20,
+            border: `1px dashed ${C.border}`, color: C.muted, textDecoration: "none",
+          }}>
+            + Conectar Glowmmi
+          </a>
+        )}
+      </div>
 
       {/* Tabs */}
       <div style={{
