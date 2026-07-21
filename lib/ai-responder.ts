@@ -127,31 +127,50 @@ export async function generateDraft(input: {
     `CORREO ENTRANTE:\n"""\n${input.inbound.slice(0, 4000)}\n"""\n\n` +
     `Redacta la respuesta siguiendo el manual y devuelve solo el JSON.`;
 
-  const res = await fetch(GROQ_URL, {
-    method: "POST",
-    headers: {
-      Authorization:  `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model:           GROQ_MODEL,
-      temperature:     0.3,
-      max_tokens:      1200,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        { role: "user",   content: userMsg },
-      ],
-    }),
-    signal: AbortSignal.timeout(30000),
-  });
+  // Groq (plan free) limita peticiones por minuto → 429. Reintenta respetando
+  // el Retry-After que manda la API, y cae al modelo de respaldo si insiste.
+  const models = [GROQ_MODEL, "llama-3.3-70b-versatile"];
+  let data: any = null;
+  let lastErr = "";
 
-  if (!res.ok) {
-    const errText = await res.text().catch(() => "");
-    throw new Error(`Groq API error ${res.status}: ${errText.slice(0, 200)}`);
+  outer:
+  for (const model of models) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const res = await fetch(GROQ_URL, {
+        method: "POST",
+        headers: {
+          Authorization:  `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model,
+          temperature:     0.3,
+          max_tokens:      1200,
+          response_format: { type: "json_object" },
+          messages: [
+            { role: "system", content: SYSTEM_PROMPT },
+            { role: "user",   content: userMsg },
+          ],
+        }),
+        signal: AbortSignal.timeout(45000),
+      });
+
+      if (res.ok) { data = await res.json(); break outer; }
+
+      const errText = await res.text().catch(() => "");
+      lastErr = `${res.status}: ${errText.slice(0, 160)}`;
+
+      if (res.status === 429) {
+        // Espera lo que pida la API (o backoff), luego reintenta el mismo modelo
+        const retryAfter = parseFloat(res.headers.get("retry-after") ?? "") || (3 * (attempt + 1));
+        await new Promise((r) => setTimeout(r, Math.min(retryAfter, 20) * 1000));
+        continue;
+      }
+      break;   // otro error → probar el siguiente modelo
+    }
   }
 
-  const data = await res.json();
+  if (!data) throw new Error(`Groq API error ${lastErr}`);
   const raw  = data?.choices?.[0]?.message?.content ?? "{}";
 
   let parsed: any;

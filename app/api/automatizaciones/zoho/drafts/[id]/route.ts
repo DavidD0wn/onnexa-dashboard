@@ -1,10 +1,9 @@
 // app/api/automatizaciones/zoho/drafts/[id]/route.ts
 // ── Acciones sobre un borrador: aprobar+enviar, editar, o descartar ──
 import { NextRequest, NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
 import nodemailer from "nodemailer";
 
-const prisma = new PrismaClient();
 
 // Resuelve el remitente + contraseña SMTP según la marca del buzón.
 // Glowmmi ya está en el .env; Balancea requiere ZOHO_SMTP_PASSWORD_BALANCEA.

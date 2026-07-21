@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
 
-const prisma = new PrismaClient();
 
 const CLIENT_ID    = process.env.ZOHO_CLIENT_ID ?? "";
 const REDIRECT_URI = process.env.ZOHO_REDIRECT_URI ?? "http://localhost:3000/api/auth/zoho/callback";

@@ -1,9 +1,8 @@
 // app/api/automatizaciones/zoho/drafts/route.ts
 // ── Bandeja de borradores generados por la IA (pendientes de aprobar) ──
 import { NextRequest, NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
 
-const prisma = new PrismaClient();
 
 // GET: lista los borradores (draft) y escalados (escalated) no ocultos
 export async function GET(req: NextRequest) {

@@ -1,14 +1,36 @@
 import { NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
 import nodemailer from "nodemailer";
 import { generateDraft } from "@/lib/ai-responder";
 import { getOrderContext } from "@/lib/shopify-order-context";
 
-const prisma = new PrismaClient();
 
 // Marca según el buzón que recibe el correo
 function brandFromEmail(email: string): "Glowmmi" | "Balancea" {
   return /glowmmi/i.test(email) ? "Glowmmi" : "Balancea";
+}
+
+/* ── Filtro de ruido ────────────────────────────────────────────
+   Evita gastar cupo de IA (y llenar la bandeja) con correos que no
+   son de clientes: rebotes automáticos, notificaciones y publicidad.
+   Devuelve el motivo si es ruido, o null si es un correo real. */
+function noiseReason(fromAddress: string, subject: string): string | null {
+  const from = (fromAddress ?? "").toLowerCase();
+  const subj = (subject ?? "").toLowerCase();
+
+  // 1) Rebotes y remitentes automáticos
+  if (/mailer-daemon|postmaster|no-?reply|donotreply|bounce@|notifications?@/.test(from))
+    return "remitente automático";
+  if (/undelivered mail|delivery status notification|mail delivery (failed|subsystem)|returned to sender|failure notice/.test(subj))
+    return "rebote de correo";
+
+  // 2) Publicidad / newsletters de plataformas
+  if (/@(shop\.)?tiktok\.com|@e?mail\.tiktok|@shopify\.com|@meta\.com|@facebookmail\.com|@mailchimp|@sendgrid|@klaviyo/.test(from))
+    return "publicidad de plataforma";
+  if (/unsubscribe|newsletter|webinar|promoción exclusiva|black friday/.test(subj))
+    return "newsletter/publicidad";
+
+  return null;
 }
 
 /* ── SMTP (envío confiable, funciona en plan free) ─────────────── */
@@ -209,6 +231,25 @@ export async function GET() {
           const unread = msg.status === "0" || msg.status === 0;
           if (!unread) continue;
 
+          // Descartar ruido (rebotes, publicidad) ANTES de gastar cupo de IA
+          const noise = noiseReason(msg.fromAddress ?? "", msg.subject ?? "");
+          if (noise) {
+            await prisma.zohoConversation.create({
+              data: {
+                configId:    config.id,
+                messageId:   msg.messageId,
+                fromEmail:   msg.fromAddress ?? "(desconocido)",
+                fromName:    msg.sender ?? null,
+                subject:     msg.subject ?? "(sin asunto)",
+                inboundText: `[Descartado automáticamente: ${noise}]`,
+                status:      "skipped",
+                source:      "filter",
+              },
+            });
+            skipped++;
+            continue;
+          }
+
           processed++;
 
           let content = "";
@@ -261,6 +302,8 @@ export async function GET() {
                 },
               });
               skipped++;   // "skipped" del envío automático: queda como borrador
+              // Pausa breve entre correos: el plan free de Groq limita por minuto
+              await new Promise((r) => setTimeout(r, 1500));
               continue;
             } catch (aiErr: any) {
               // Si la IA falla, guardar para atención manual (no perder el correo)

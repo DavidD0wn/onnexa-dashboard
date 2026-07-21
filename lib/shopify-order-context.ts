@@ -10,7 +10,7 @@
 interface StoreCfg { key: "Glowmmi" | "Balancea"; shop: string; token: string; clientId: string; clientSecret: string; }
 
 function stores(): StoreCfg[] {
-  return [
+  const all: StoreCfg[] = [
     {
       key: "Glowmmi",
       shop:         process.env.SHOPIFY_GLOWMMI_SHOP          ?? "",
@@ -25,12 +25,20 @@ function stores(): StoreCfg[] {
       clientId:     process.env.SHOPIFY_BALANCEA_CLIENT_ID     ?? "",
       clientSecret: process.env.SHOPIFY_BALANCEA_CLIENT_SECRET ?? "",
     },
-  ].filter((s) => s.shop);
+  ];
+  return all.filter((s) => s.shop);
 }
 
-// Token client_credentials (los atkn_ del .env pueden expirar; esto es confiable)
+// Token fresco por client_credentials.
+// OJO: los `atkn_` guardados en .env EXPIRAN (devuelven 401) y hacían que el
+// bot creyera que los pedidos no existían — la IA respondía "no encontramos tu
+// pedido" a clientes con pedidos reales. Por eso siempre pedimos uno nuevo.
+const tokenCache: Record<string, { token: string; exp: number }> = {};
+
 async function getToken(s: StoreCfg): Promise<string> {
-  if (s.token && s.token.startsWith("atkn_")) return s.token;  // usar el fijo si existe
+  const cached = tokenCache[s.key];
+  if (cached && cached.exp > Date.now()) return cached.token;
+
   const res = await fetch(`https://${s.shop}/admin/oauth/access_token`, {
     method:  "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -41,7 +49,10 @@ async function getToken(s: StoreCfg): Promise<string> {
     }),
   });
   const data = await res.json();
-  if (!data.access_token) throw new Error(`No token ${s.key}`);
+  if (!data.access_token) throw new Error(`No token ${s.key}: ${JSON.stringify(data).slice(0, 120)}`);
+
+  // Cachear ~50 min (los tokens suelen durar 1h) para no pedir uno por correo
+  tokenCache[s.key] = { token: data.access_token, exp: Date.now() + 50 * 60 * 1000 };
   return data.access_token;
 }
 
@@ -64,7 +75,12 @@ async function fetchOrder(s: StoreCfg, token: string, params: string): Promise<a
   const url = `https://${s.shop}/admin/api/2024-10/orders.json?${params}&status=any&limit=5` +
     `&fields=id,name,email,phone,created_at,financial_status,fulfillment_status,customer,shipping_address,line_items,fulfillments`;
   const res = await fetch(url, { headers: { "X-Shopify-Access-Token": token } });
-  if (!res.ok) return null;
+  if (!res.ok) {
+    // No fallar en silencio: si Shopify rechaza, la IA respondería "no
+    // encontramos tu pedido" a un cliente que SÍ tiene pedido.
+    console.warn(`[order-context] Shopify ${s.key} respondió ${res.status} para ${params}`);
+    return null;
+  }
   const data = await res.json();
   return (data.orders && data.orders[0]) || null;
 }
