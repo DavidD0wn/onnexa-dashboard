@@ -171,11 +171,30 @@ export default function ZohoPage() {
       const res  = await fetch("/api/automatizaciones/zoho/process");
       const data = await res.json();
       if (!silent) {
-        const r = data.results?.[0];
-        if (r?.error) setSyncResult("❌ " + r.error);
-        else setSyncResult(`✅ Procesados: ${r?.processed ?? 0} | Respondidos: ${r?.replied ?? 0} | Atención: ${r?.skipped ?? 0}`);
+        const errs = (data.results ?? []).filter((r: any) => r.error);
+        if (errs.length) {
+          setSyncResult("❌ " + errs.map((e: any) => `${e.email}: ${e.error}`).join(" · "));
+        } else {
+          // Sumar todos los buzones (Glowmmi + Balancea)
+          const tot = (data.results ?? []).reduce(
+            (a: any, r: any) => ({
+              processed: a.processed + (r.processed ?? 0),
+              replied:   a.replied   + (r.replied   ?? 0),
+              skipped:   a.skipped   + (r.skipped   ?? 0),
+            }),
+            { processed: 0, replied: 0, skipped: 0 }
+          );
+          const detalle = (data.results ?? [])
+            .map((r: any) => `${r.email?.split("@")[1]?.split(".")[0] ?? r.email}: ${r.processed ?? 0}`)
+            .join(" · ");
+          const pend = data.pendientes
+            ? ` — quedan ${data.pendientes} sin procesar, vuelve a dar Sincronizar`
+            : "";
+          setSyncResult(`✅ Revisados ${tot.processed} correos (${detalle})${pend}`);
+        }
       }
       loadConfig();
+      loadDrafts();
       if (tab === "bandeja" || tab === "estado") loadConvs();
     } catch (e: any) {
       if (!silent) setSyncResult("❌ " + e.message);

@@ -210,6 +210,13 @@ export async function GET() {
     const fromEmail   = process.env.ZOHO_SMTP_EMAIL ?? "";
     const results = [];
 
+    // Tope de redacciones IA por tanda: cada una tarda varios segundos
+    // (Shopify + Groq + pausa). Sin tope, un buzón con 20+ correos dejaba la
+    // petición colgada varios minutos y el botón "Sincronizar" parecía trabado.
+    const MAX_AI_POR_TANDA = 8;
+    let aiUsadas = 0;
+    let pendientes = 0;   // correos que quedaron sin procesar en esta tanda
+
     for (const config of configs) {
       let processed = 0, replied = 0, skipped = 0, errors = 0;
 
@@ -271,6 +278,10 @@ export async function GET() {
           // ── MODO IA: redactar borrador con el manual + datos reales de Shopify ──
           // Se activa si hay GROQ_API_KEY. NO envía: deja el borrador para aprobar.
           if (process.env.GROQ_API_KEY) {
+            // Alcanzado el tope de la tanda: dejar el resto para el próximo sync
+            // (no se crea conversación, así se reprocesa después sin duplicar).
+            if (aiUsadas >= MAX_AI_POR_TANDA) { pendientes++; continue; }
+            aiUsadas++;
             try {
               const brandName = brandFromEmail(config.emailAddress);
               // Datos reales de Shopify (la IA NO debe inventar estados de envío)
@@ -395,7 +406,7 @@ export async function GET() {
       }
     }
 
-    return NextResponse.json({ ok: true, results });
+    return NextResponse.json({ ok: true, results, pendientes });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
