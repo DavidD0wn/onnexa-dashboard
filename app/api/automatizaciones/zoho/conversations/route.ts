@@ -9,7 +9,9 @@ export async function GET(req: NextRequest) {
   const offset = parseInt(searchParams.get("offset") ?? "0");
 
   const where: any = { hidden: false };
-  if (status) where.status = status;
+  // "pendiente" agrupa todo lo que espera acción tuya (borradores + escalados)
+  if (status === "pendiente")      where.status = { in: ["draft", "escalated", "needs_attention"] };
+  else if (status)                 where.status = status;
 
   const [items, total, stats] = await Promise.all([
     prisma.zohoConversation.findMany({
@@ -17,6 +19,8 @@ export async function GET(req: NextRequest) {
       orderBy: { createdAt: "desc" },
       take:    limit,
       skip:    offset,
+      // Incluir el buzón para saber si el correo llegó a Glowmmi o Balancea
+      include: { config: { select: { emailAddress: true } } },
     }),
     prisma.zohoConversation.count({ where }),
     prisma.zohoConversation.groupBy({
@@ -31,8 +35,18 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     total,
-    items,
+    items: items.map((c) => {
+      const mailbox = (c as any).config?.emailAddress ?? "";
+      return {
+        ...c,
+        mailbox,
+        brand: /glowmmi/i.test(mailbox) ? "Glowmmi" : "Balancea",
+        needsData: c.needsData ? JSON.parse(c.needsData) : [],
+      };
+    }),
     stats: {
+      pendiente:        (statusMap["draft"] ?? 0) + (statusMap["escalated"] ?? 0) + (statusMap["needs_attention"] ?? 0),
+      draft:            statusMap["draft"]            ?? 0,
       replied:          statusMap["replied"]          ?? 0,
       needs_attention:  statusMap["needs_attention"]  ?? 0,
       escalated:        statusMap["escalated"]        ?? 0,

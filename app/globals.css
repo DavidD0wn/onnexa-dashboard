@@ -262,3 +262,10 @@ body {
 }
 /* Except transforms and other properties that shouldn't transition */
 button, a { transition: all 0.15s ease; }
+
+/* Bandeja del bot Zoho: correo | respuesta lado a lado.
+   En pantallas angostas se apilan para que no se aplasten. */
+@media (max-width: 900px) {
+  .zoho-split { grid-template-columns: 1fr !important; }
+  .zoho-split > div:first-child { border-right: none !important; border-bottom: 1px solid var(--border); }
+}

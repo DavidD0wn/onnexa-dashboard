@@ -40,34 +40,42 @@ interface Rule {
 }
 
 /* ── colores ─────────────────────────────────────────────────── */
+// Paleta ligada al tema: usar variables CSS para que el modo oscuro funcione.
+// (Antes eran colores fijos y en oscuro el texto quedaba ilegible.)
 const C = {
-  bg:      "#F8FAFB",
-  card:    "#FFFFFF",
-  border:  "#E5E7EB",
-  text:    "#111827",
-  muted:   "#6B7280",
-  accent:  "#0E766E",
-  accentL: "#ECFDF5",
-  red:     "#EF4444",
-  redL:    "#FEF2F2",
-  yellow:  "#F59E0B",
-  yellowL: "#FFFBEB",
-  blue:    "#3B82F6",
-  blueL:   "#EFF6FF",
+  bg:      "var(--bg-2)",
+  card:    "var(--card)",
+  border:  "var(--border)",
+  text:    "var(--text)",
+  muted:   "var(--text-3)",
+  accent:  "var(--green)",
+  accentL: "var(--green-bg)",
+  red:     "var(--red)",
+  redL:    "var(--red-bg)",
+  yellow:  "var(--yellow)",
+  yellowL: "var(--yellow-bg)",
+  blue:    "var(--blue)",
+  blueL:   "var(--blue-bg)",
 };
+
+// Colores de marca que sí deben ser fijos, con fondo suave por tema
+const BRAND = {
+  Glowmmi:  { fg: "var(--glowmmi)",  bg: "var(--glowmmi-bg)"  },
+  Balancea: { fg: "var(--balancea)", bg: "var(--balancea-bg)" },
+} as const;
 
 const STATUS_LABEL: Record<string, { label: string; color: string; bg: string }> = {
   replied:          { label: "Respondido",     color: C.accent, bg: C.accentL },
   needs_attention:  { label: "Atención manual", color: C.yellow, bg: C.yellowL },
   escalated:        { label: "Escalado",        color: C.red,    bg: C.redL    },
-  skipped:          { label: "Omitido",         color: C.muted,  bg: "#F3F4F6" },
+  skipped:          { label: "Omitido",         color: C.muted,  bg: C.bg },
   error:            { label: "Error",           color: C.red,    bg: C.redL    },
   pending:          { label: "Pendiente",       color: C.blue,   bg: C.blueL   },
 };
 
 /* ── helpers ─────────────────────────────────────────────────── */
 function Badge({ status }: { status: string }) {
-  const s = STATUS_LABEL[status] ?? { label: status, color: C.muted, bg: "#F3F4F6" };
+  const s = STATUS_LABEL[status] ?? { label: status, color: C.muted, bg: C.bg };
   return (
     <span style={{
       fontSize: 11, fontWeight: 600, padding: "2px 8px",
@@ -101,12 +109,11 @@ export default function ZohoPage() {
   const [syncResult,  setSyncResult]  = useState<string>("");
   const [convs,       setConvs]       = useState<Conv[]>([]);
   const [stats,       setStats]       = useState<Record<string, number>>({});
-  const [convFilter,  setConvFilter]  = useState("all");
+  const [convFilter,  setConvFilter]  = useState("pendiente");
   const [expanded,    setExpanded]    = useState<Set<string>>(new Set());
   const [rules,       setRules]       = useState<Rule[]>([]);
   const [editRule,    setEditRule]    = useState<Rule | null>(null);
   const [newRule,     setNewRule]     = useState(false);
-  const [drafts,      setDrafts]      = useState<any[]>([]);
   const [draftEdits,  setDraftEdits]  = useState<Record<string, string>>({});
   const [draftBusy,   setDraftBusy]   = useState<string>("");
   const [draftMsg,    setDraftMsg]    = useState<string>("");
@@ -134,16 +141,13 @@ export default function ZohoPage() {
     setStats(data.stats ?? {});
   }, [convFilter]);
 
+  // Quita una conversación de la lista tras enviarla o descartarla
+  const dropConv = (id: string) => setConvs((cs) => cs.filter((c: any) => c.id !== id));
+
   const loadRules = useCallback(async () => {
     const res  = await fetch("/api/automatizaciones/zoho/rules");
     const data = await res.json();
     setRules(Array.isArray(data) ? data : []);
-  }, []);
-
-  const loadDrafts = useCallback(async () => {
-    const res  = await fetch("/api/automatizaciones/zoho/drafts");
-    const data = await res.json();
-    setDrafts(data.drafts ?? []);
   }, []);
 
   useEffect(() => { loadConfig(); }, [loadConfig]);
@@ -152,9 +156,8 @@ export default function ZohoPage() {
     if (!connected) return;
     if (tab === "bandeja")     loadConvs();
     if (tab === "reglas")      loadRules();
-    if (tab === "borradores")  loadDrafts();
-    if (tab === "estado")      { loadConvs(); loadRules(); loadDrafts(); }
-  }, [tab, connected, convFilter, loadConvs, loadRules, loadDrafts]);
+    if (tab === "estado")      { loadConvs(); loadRules(); }
+  }, [tab, connected, convFilter, loadConvs, loadRules]);
 
   /* ── auto-sync cada 5 min ──────────────────────────── */
   useEffect(() => {
@@ -194,7 +197,6 @@ export default function ZohoPage() {
         }
       }
       loadConfig();
-      loadDrafts();
       if (tab === "bandeja" || tab === "estado") loadConvs();
     } catch (e: any) {
       if (!silent) setSyncResult("❌ " + e.message);
@@ -272,8 +274,10 @@ export default function ZohoPage() {
     const data = await res.json();
     setDraftBusy("");
     if (data.error) { setDraftMsg("❌ " + data.error); return; }
-    setDraftMsg("✅ Enviado a " + (drafts.find((d) => d.id === id)?.fromEmail ?? ""));
-    setDrafts((ds) => ds.filter((d) => d.id !== id));
+    const dest = (convs.find((c: any) => c.id === id) as any)?.fromEmail ?? "";
+    setDraftMsg("✅ Enviado a " + dest);
+    dropConv(id);
+    loadConvs();
   };
 
   const discardDraft = async (id: string) => {
@@ -281,7 +285,8 @@ export default function ZohoPage() {
     setDraftBusy(id);
     await fetch(`/api/automatizaciones/zoho/drafts/${id}`, { method: "DELETE" });
     setDraftBusy("");
-    setDrafts((ds) => ds.filter((d) => d.id !== id));
+    dropConv(id);
+    loadConvs();
   };
 
   const toggleRule = async (r: Rule) => {
@@ -364,22 +369,21 @@ export default function ZohoPage() {
   }
 
   /* ── render: conectado ────────────────────────────── */
-  const tabs = ["estado", "borradores", "bandeja", "reglas", "instrucciones"];
+  const tabs = ["estado", "bandeja", "reglas", "instrucciones"];
+  const pendientes = stats["pendiente"] ?? 0;
   const tabLabels: Record<string, string> = {
-    estado: "Estado", borradores: `Borradores IA${drafts.length ? ` (${drafts.length})` : ""}`,
-    bandeja: "Bandeja", reglas: "Reglas", instrucciones: "Instrucciones",
+    estado: "Estado",
+    bandeja: `Bandeja${pendientes ? ` (${pendientes})` : ""}`,
+    reglas: "Reglas", instrucciones: "Instrucciones",
   };
 
   return (
-    <div style={{ padding: "24px 32px", maxWidth: 1000, fontFamily: "inherit" }}>
+    <div style={{ padding: "24px 32px", width: "100%", fontFamily: "inherit" }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <Mail size={24} color={C.accent} />
-          <div>
-            <h1 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>Bot Zoho Mail</h1>
-            <p style={{ fontSize: 12, color: C.muted, margin: 0 }}>{config?.emailAddress}</p>
-          </div>
+          <h1 style={{ fontSize: 20, fontWeight: 700, margin: 0, color: C.text }}>Bot Zoho Mail</h1>
           <span style={{
             fontSize: 11, fontWeight: 600, padding: "3px 10px",
             borderRadius: 20, background: C.accentL, color: C.accent,
@@ -434,8 +438,8 @@ export default function ZohoPage() {
           <span key={c.id} style={{
             display: "inline-flex", alignItems: "center", gap: 6,
             fontSize: 12, fontWeight: 600, padding: "5px 11px", borderRadius: 20,
-            background: c.brand === "Glowmmi" ? "#FCE7F3" : "#D1FAE5",
-            color:      c.brand === "Glowmmi" ? "#9D174D" : "#065F46",
+            background: BRAND[c.brand as keyof typeof BRAND]?.bg ?? C.bg,
+            color:      BRAND[c.brand as keyof typeof BRAND]?.fg ?? C.text,
           }}>
             ● {c.emailAddress}
           </span>
@@ -546,278 +550,220 @@ export default function ZohoPage() {
         </div>
       )}
 
-      {/* ── Tab: Borradores IA ────────────────────────── */}
-      {tab === "borradores" && (
+      {/* ── Tab: Bandeja unificada (correo + respuesta juntos) ────────── */}
+      {tab === "bandeja" && (
         <div>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-            <p style={{ fontSize: 13, color: C.muted, margin: 0 }}>
-              La IA redacta con tu manual y los datos reales de Shopify. <b>Nada se envía</b> hasta que tú lo apruebes.
-            </p>
-            <button onClick={loadDrafts} style={{
-              fontSize: 12, padding: "6px 12px", borderRadius: 8, cursor: "pointer",
-              background: C.card, border: `1px solid ${C.border}`, color: C.text,
+          {/* Barra de filtros */}
+          <div style={{
+            display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap",
+            marginBottom: 16, padding: "12px 16px", borderRadius: 10,
+            background: C.card, border: `1px solid ${C.border}`,
+          }}>
+            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.05em" }}>Estado</span>
+              {([["pendiente", "Pendientes"], ["replied", "Enviados"], ["skipped", "Descartados"], ["all", "Todos"]] as const).map(([v, label]) => (
+                <button key={v} onClick={() => setConvFilter(v)} style={{
+                  padding: "5px 13px", borderRadius: 20, fontSize: 12,
+                  fontWeight: convFilter === v ? 700 : 500, cursor: "pointer",
+                  border: `1px solid ${convFilter === v ? C.accent : C.border}`,
+                  background: convFilter === v ? C.accentL : "transparent",
+                  color: convFilter === v ? C.accent : C.muted,
+                }}>
+                  {label}{v !== "all" && stats[v] ? ` (${stats[v]})` : ""}
+                </button>
+              ))}
+            </div>
+
+            <div style={{ width: 1, height: 22, background: C.border }} />
+
+            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.05em" }}>Tienda</span>
+              {["all", "Glowmmi", "Balancea"].map((b) => {
+                const on = brandFilter === b;
+                const br = BRAND[b as keyof typeof BRAND];
+                return (
+                  <button key={b} onClick={() => setBrandFilter(b)} style={{
+                    padding: "5px 13px", borderRadius: 20, fontSize: 12,
+                    fontWeight: on ? 700 : 500, cursor: "pointer",
+                    border: `1px solid ${on ? (br?.fg ?? C.accent) : C.border}`,
+                    background: on ? (br?.bg ?? C.accentL) : "transparent",
+                    color: on ? (br?.fg ?? C.accent) : C.muted,
+                  }}>
+                    {b === "all" ? "Todas" : b}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div style={{ flex: 1 }} />
+            <button onClick={loadConvs} style={{
+              fontSize: 12, padding: "6px 13px", borderRadius: 8, cursor: "pointer",
+              background: "transparent", border: `1px solid ${C.border}`, color: C.text,
             }}>↻ Actualizar</button>
           </div>
 
           {draftMsg && (
-            <div style={{ fontSize: 13, padding: "8px 12px", borderRadius: 8, marginBottom: 12,
+            <div style={{
+              fontSize: 13, padding: "10px 14px", borderRadius: 8, marginBottom: 12,
               background: draftMsg.startsWith("✅") ? C.accentL : C.redL,
-              color: draftMsg.startsWith("✅") ? C.accent : C.red }}>
-              {draftMsg}
-            </div>
+              color:      draftMsg.startsWith("✅") ? C.accent  : C.red,
+            }}>{draftMsg}</div>
           )}
 
-          {/* Filtro por tienda */}
-          {drafts.length > 0 && (
-            <div style={{ display: "flex", gap: 6, marginBottom: 14, alignItems: "center" }}>
-              <span style={{ fontSize: 11, color: C.muted, fontWeight: 600 }}>Tienda:</span>
-              {["all", "Glowmmi", "Balancea"].map((b) => {
-                const n = b === "all" ? drafts.length : drafts.filter((d) => d.brand === b).length;
-                const on = brandFilter === b;
-                return (
-                  <button key={b} onClick={() => setBrandFilter(b)} style={{
-                    fontSize: 12, fontWeight: on ? 700 : 500, padding: "5px 12px", borderRadius: 20,
-                    cursor: "pointer",
-                    border: `1px solid ${on ? (b === "Glowmmi" ? "#EC4899" : b === "Balancea" ? "#10B981" : C.accent) : C.border}`,
-                    background: on ? (b === "Glowmmi" ? "#FCE7F3" : b === "Balancea" ? "#D1FAE5" : C.accentL) : C.card,
-                    color: on ? (b === "Glowmmi" ? "#9D174D" : b === "Balancea" ? "#065F46" : C.accent) : C.muted,
-                  }}>
-                    {b === "all" ? "Todas" : b} ({n})
-                  </button>
-                );
-              })}
-            </div>
-          )}
+          {(() => {
+            const list = convs.filter((c: any) => brandFilter === "all" || c.brand === brandFilter);
 
-          {drafts.length === 0 && (
-            <div style={{ textAlign: "center", padding: 48, color: C.muted, fontSize: 14 }}>
-              No hay borradores pendientes. Cuando lleguen correos nuevos, aquí aparecerán listos para revisar.
-            </div>
-          )}
-
-          {drafts.filter((d) => brandFilter === "all" || d.brand === brandFilter).map((d) => {
-            const edited = draftEdits[d.id] ?? d.aiDraft ?? "";
-            const conf   = Math.round((d.aiConfidence ?? 0) * 100);
-            const confColor = conf >= 75 ? C.accent : conf >= 50 ? C.yellow : C.red;
-            const isEsc  = d.status === "escalated" || d.status === "needs_attention";
-            return (
-              <div key={d.id} style={{
-                background: C.card, border: `1px solid ${isEsc ? C.yellow : C.border}`,
-                borderRadius: 12, padding: 18, marginBottom: 14,
+            if (list.length === 0) return (
+              <div style={{
+                background: C.card, border: `1px solid ${C.border}`, borderRadius: 12,
+                padding: 48, textAlign: "center", color: C.muted, fontSize: 14,
               }}>
-                {/* Cabecera */}
-                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 10 }}>
-                  <div style={{ minWidth: 0 }}>
-                    <p style={{ fontWeight: 600, fontSize: 14, margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                      {d.subject || "(sin asunto)"}
-                    </p>
-                    <p style={{ fontSize: 12, color: C.muted, margin: "2px 0 0" }}>
-                      De: {d.fromName || d.fromEmail} · {d.fromEmail}
-                    </p>
-                    {d.mailbox && (
-                      <p style={{ fontSize: 11, color: C.muted, margin: "3px 0 0" }}>
-                        Recibido en: <b style={{ color: d.brand === "Glowmmi" ? "#EC4899" : "#10B981" }}>{d.mailbox}</b>
-                      </p>
-                    )}
-                  </div>
-                  <div style={{ display: "flex", gap: 6, flexShrink: 0, alignItems: "center" }}>
-                    {d.brand && (
-                      <span style={{
-                        fontSize: 10, fontWeight: 700, padding: "3px 9px", borderRadius: 20,
-                        background: d.brand === "Glowmmi" ? "#FCE7F3" : "#D1FAE5",
-                        color:      d.brand === "Glowmmi" ? "#9D174D" : "#065F46",
-                      }}>
-                        {d.brand}
-                      </span>
-                    )}
-                    {d.caseType && (
-                      <span style={{ fontSize: 10, fontWeight: 600, padding: "3px 8px", borderRadius: 20, background: "#F3F4F6", color: C.muted }}>
-                        {d.caseType}
-                      </span>
-                    )}
-                    <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 20, background: C.accentL, color: confColor }}>
-                      {conf}% conf.
-                    </span>
-                  </div>
-                </div>
-
-                {/* Aviso de escalado / datos faltantes */}
-                {isEsc && (
-                  <div style={{ fontSize: 12, background: C.yellowL, color: "#92400E", padding: "8px 12px", borderRadius: 8, marginBottom: 10 }}>
-                    ⚠️ La IA sugiere revisar esto a mano{Array.isArray(d.needsData) && d.needsData.length ? ` — falta: ${d.needsData.join(", ")}` : ""}.
-                  </div>
-                )}
-
-                {/* Correo entrante (colapsado) */}
-                <details style={{ marginBottom: 10 }}>
-                  <summary style={{ fontSize: 12, color: C.muted, cursor: "pointer" }}>Ver correo original</summary>
-                  <div style={{ fontSize: 12, color: C.text, background: C.bg, padding: 10, borderRadius: 8, marginTop: 6, whiteSpace: "pre-wrap" }}>
-                    {d.inboundText}
-                  </div>
-                </details>
-
-                {/* Borrador editable */}
-                <label style={{ fontSize: 11, fontWeight: 600, color: C.muted, textTransform: "uppercase", letterSpacing: "0.04em" }}>
-                  Respuesta (editable)
-                </label>
-                <textarea
-                  value={edited}
-                  onChange={(e) => setDraftEdits((p) => ({ ...p, [d.id]: e.target.value }))}
-                  rows={Math.min(14, Math.max(5, edited.split("\n").length + 1))}
-                  style={{
-                    width: "100%", boxSizing: "border-box", marginTop: 6, padding: 12,
-                    fontSize: 13, lineHeight: 1.5, borderRadius: 8, border: `1px solid ${C.border}`,
-                    fontFamily: "inherit", color: C.text, resize: "vertical",
-                  }}
-                />
-
-                {/* Acciones */}
-                <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-                  <button
-                    onClick={() => sendDraft(d.id)}
-                    disabled={draftBusy === d.id || !edited.trim()}
-                    style={{
-                      fontSize: 13, fontWeight: 600, padding: "9px 18px", borderRadius: 8,
-                      background: C.accent, color: "#fff", border: "none",
-                      cursor: draftBusy === d.id ? "wait" : "pointer", opacity: edited.trim() ? 1 : 0.5,
-                    }}>
-                    {draftBusy === d.id ? "Enviando…" : "✓ Aprobar y enviar"}
-                  </button>
-                  <button
-                    onClick={() => discardDraft(d.id)}
-                    disabled={draftBusy === d.id}
-                    style={{
-                      fontSize: 13, padding: "9px 16px", borderRadius: 8,
-                      background: C.card, color: C.red, border: `1px solid ${C.border}`, cursor: "pointer",
-                    }}>
-                    Descartar
-                  </button>
-                </div>
+                No hay correos con estos filtros.
               </div>
             );
-          })}
-        </div>
-      )}
 
-      {/* ── Tab: Bandeja ──────────────────────────────── */}
-      {tab === "bandeja" && (
-        <div>
-          {/* Filtro */}
-          <div style={{ display: "flex", gap: 6, marginBottom: 16, flexWrap: "wrap" }}>
-            {["all", "needs_attention", "escalated", "replied", "error", "skipped"].map((s) => (
-              <button
-                key={s}
-                onClick={() => setConvFilter(s)}
-                style={{
-                  padding: "5px 14px", borderRadius: 20, border: `1px solid ${C.border}`,
-                  background: convFilter === s ? C.accent : C.card,
-                  color:      convFilter === s ? "#fff"   : C.muted,
-                  fontSize: 12, fontWeight: 500, cursor: "pointer",
-                }}
-              >
-                {s === "all" ? "Todos" : STATUS_LABEL[s]?.label ?? s}
-                {s !== "all" && stats[s] ? ` (${stats[s]})` : ""}
-              </button>
-            ))}
-          </div>
+            return (
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                {list.map((c: any) => {
+                  const pendiente = ["draft", "escalated", "needs_attention"].includes(c.status);
+                  const edited    = draftEdits[c.id] ?? c.aiDraft ?? "";
+                  const conf      = Math.round((c.aiConfidence ?? 0) * 100);
+                  const br        = BRAND[c.brand as keyof typeof BRAND];
+                  const st        = STATUS_LABEL[c.status] ?? { label: c.status, color: C.muted, bg: C.bg };
+                  const respuesta = c.outboundText ?? c.aiDraft ?? "";
 
-          {convs.length === 0 ? (
-            <div style={{
-              background: C.card, border: `1px solid ${C.border}`,
-              borderRadius: 12, padding: 40, textAlign: "center", color: C.muted, fontSize: 14,
-            }}>
-              No hay correos con este filtro.
-            </div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {convs.map((c) => {
-                const exp  = expanded.has(c.id);
-                const isAlert = c.status === "escalated" || c.status === "needs_attention";
-                return (
-                  <div
-                    key={c.id}
-                    style={{
+                  return (
+                    <div key={c.id} style={{
                       background: C.card,
-                      border: `1px solid ${isAlert ? (c.status === "escalated" ? C.red : C.yellow) : C.border}`,
-                      borderRadius: 10,
-                      overflow: "hidden",
-                    }}
-                  >
-                    {/* Fila principal */}
-                    <div
-                      style={{
-                        display: "flex", alignItems: "center", gap: 10,
-                        padding: "10px 14px", cursor: "pointer",
-                      }}
-                      onClick={() => toggleExpand(c.id)}
-                    >
-                      <Mail size={14} color={C.muted} style={{ flexShrink: 0 }} />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <p style={{ fontWeight: 600, fontSize: 13, margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                          {c.fromName ? `${c.fromName} <${c.fromEmail}>` : c.fromEmail}
-                        </p>
-                        <p style={{ fontSize: 12, color: C.muted, margin: "1px 0 0", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                          {c.subject}
-                        </p>
-                      </div>
-                      <Badge status={c.status} />
-                      {c.ruleMatched && (
-                        <span style={{ fontSize: 11, color: C.muted }}>{c.ruleMatched}</span>
-                      )}
-                      <span style={{ fontSize: 11, color: C.muted, flexShrink: 0 }}>
-                        {new Date(c.createdAt).toLocaleString("es-MX", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
-                      </span>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); hideConv(c.id, true); }}
-                        title="Ocultar"
-                        style={{ background: "none", border: "none", cursor: "pointer", padding: 4, color: C.muted }}
-                      >
-                        <EyeOff size={14} />
-                      </button>
-                      {exp ? <ChevronUp size={14} color={C.muted} /> : <ChevronDown size={14} color={C.muted} />}
-                    </div>
-
-                    {/* Detalle expandido */}
-                    {exp && (
-                      <div style={{ borderTop: `1px solid ${C.border}`, padding: "12px 14px", background: "#FAFAFA" }}>
-                        <div style={{ marginBottom: 10 }}>
-                          <p style={{ fontSize: 11, fontWeight: 700, color: C.muted, margin: "0 0 4px", textTransform: "uppercase" }}>
-                            Correo recibido
+                      border: `1px solid ${pendiente ? C.accent : C.border}`,
+                      borderRadius: 12, overflow: "hidden",
+                    }}>
+                      {/* Cabecera */}
+                      <div style={{
+                        display: "flex", alignItems: "flex-start", gap: 12,
+                        padding: "14px 18px", borderBottom: `1px solid ${C.border}`,
+                        flexWrap: "wrap",
+                      }}>
+                        <div style={{ flex: 1, minWidth: 220 }}>
+                          <p style={{ fontWeight: 600, fontSize: 14, margin: 0, color: C.text }}>
+                            {c.subject || "(sin asunto)"}
                           </p>
-                          <p style={{
-                            fontSize: 13, color: C.text, margin: 0,
-                            background: "#F3F4F6", borderRadius: 8, padding: "8px 12px",
-                            whiteSpace: "pre-wrap", lineHeight: 1.6,
-                          }}>
-                            {c.inboundText.slice(0, 800)}{c.inboundText.length > 800 ? "..." : ""}
+                          <p style={{ fontSize: 12, color: C.muted, margin: "3px 0 0" }}>
+                            {c.fromName ? `${c.fromName} · ` : ""}{c.fromEmail}
+                            {c.mailbox ? <> → <span style={{ color: br?.fg }}>{c.mailbox}</span></> : null}
                           </p>
                         </div>
-                        {c.outboundText && (
-                          <div>
-                            <p style={{ fontSize: 11, fontWeight: 700, color: C.accent, margin: "0 0 4px", textTransform: "uppercase" }}>
-                              Respuesta enviada
-                            </p>
-                            <p style={{
-                              fontSize: 13, color: C.text, margin: 0,
-                              background: C.accentL, borderRadius: 8, padding: "8px 12px",
-                              whiteSpace: "pre-wrap", lineHeight: 1.6,
-                            }}>
-                              {c.outboundText}
-                            </p>
-                          </div>
-                        )}
-                        {c.errorMsg && (
-                          <p style={{ fontSize: 12, color: C.red, margin: "8px 0 0" }}>
-                            ❌ {c.errorMsg}
-                          </p>
-                        )}
+                        <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                          {c.brand && (
+                            <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 9px", borderRadius: 20, background: br?.bg, color: br?.fg }}>
+                              {c.brand}
+                            </span>
+                          )}
+                          {c.caseType && (
+                            <span style={{ fontSize: 10, fontWeight: 600, padding: "3px 8px", borderRadius: 20, background: C.bg, color: C.muted }}>
+                              {c.caseType}
+                            </span>
+                          )}
+                          {conf > 0 && (
+                            <span style={{
+                              fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 20,
+                              background: C.bg, color: conf >= 75 ? C.accent : conf >= 50 ? C.yellow : C.red,
+                            }}>{conf}%</span>
+                          )}
+                          <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 9px", borderRadius: 20, background: st.bg, color: st.color }}>
+                            {st.label}
+                          </span>
+                        </div>
                       </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
+
+                      {/* Cuerpo: correo recibido | respuesta */}
+                      <div className="zoho-split" style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)" }}>
+                        {/* Correo del cliente */}
+                        <div style={{ padding: "14px 18px", borderRight: `1px solid ${C.border}`, minWidth: 0 }}>
+                          <p style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
+                            Correo recibido
+                          </p>
+                          <div style={{
+                            fontSize: 13, lineHeight: 1.55, color: C.text, whiteSpace: "pre-wrap",
+                            maxHeight: expanded.has(c.id) ? "none" : 150, overflow: "hidden",
+                          }}>
+                            {c.inboundText || "(sin contenido)"}
+                          </div>
+                          {(c.inboundText ?? "").length > 260 && (
+                            <button onClick={() => toggleExpand(c.id)} style={{
+                              marginTop: 6, fontSize: 12, background: "none", border: "none",
+                              color: C.accent, cursor: "pointer", padding: 0, fontWeight: 600,
+                            }}>
+                              {expanded.has(c.id) ? "Ver menos" : "Ver todo"}
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Respuesta */}
+                        <div style={{ padding: "14px 18px", minWidth: 0 }}>
+                          <p style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
+                            {pendiente ? "Respuesta sugerida (editable)" : "Respuesta enviada"}
+                          </p>
+
+                          {pendiente ? (
+                            <>
+                              {Array.isArray(c.needsData) && c.needsData.length > 0 && (
+                                <div style={{ fontSize: 12, background: C.yellowL, color: C.yellow, padding: "7px 11px", borderRadius: 8, marginBottom: 8 }}>
+                                  Falta: {c.needsData.join(", ")}
+                                </div>
+                              )}
+                              <textarea
+                                value={edited}
+                                onChange={(e) => setDraftEdits((p) => ({ ...p, [c.id]: e.target.value }))}
+                                rows={Math.min(14, Math.max(6, edited.split("\n").length + 1))}
+                                style={{
+                                  width: "100%", boxSizing: "border-box", padding: 11,
+                                  fontSize: 13, lineHeight: 1.55, borderRadius: 8,
+                                  border: `1px solid ${C.border}`, background: C.bg,
+                                  fontFamily: "inherit", color: C.text, resize: "vertical",
+                                }}
+                              />
+                              <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                                <button
+                                  onClick={() => sendDraft(c.id)}
+                                  disabled={draftBusy === c.id || !edited.trim()}
+                                  style={{
+                                    fontSize: 13, fontWeight: 600, padding: "9px 18px", borderRadius: 8,
+                                    background: C.accent, color: "#fff", border: "none",
+                                    cursor: draftBusy === c.id ? "wait" : "pointer",
+                                    opacity: edited.trim() ? 1 : 0.5,
+                                  }}>
+                                  {draftBusy === c.id ? "Enviando…" : "Aprobar y enviar"}
+                                </button>
+                                <button
+                                  onClick={() => discardDraft(c.id)}
+                                  disabled={draftBusy === c.id}
+                                  style={{
+                                    fontSize: 13, padding: "9px 16px", borderRadius: 8,
+                                    background: "transparent", color: C.red,
+                                    border: `1px solid ${C.border}`, cursor: "pointer",
+                                  }}>
+                                  Descartar
+                                </button>
+                              </div>
+                            </>
+                          ) : (
+                            <div style={{
+                              fontSize: 13, lineHeight: 1.55, color: respuesta ? C.text : C.muted,
+                              whiteSpace: "pre-wrap", background: C.bg, padding: 11, borderRadius: 8,
+                              border: `1px solid ${C.border}`,
+                            }}>
+                              {respuesta || "(sin respuesta — este correo se descartó o se omitió)"}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
         </div>
       )}
 
@@ -868,10 +814,10 @@ export default function ZohoPage() {
                 >
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                      <span style={{ fontWeight: 600, fontSize: 14 }}>{r.name}</span>
+                      <span style={{ fontWeight: 600, fontSize: 14, color: C.text }}>{r.name}</span>
                       <span style={{
                         fontSize: 10, padding: "1px 7px", borderRadius: 20,
-                        background: "#F3F4F6", color: C.muted,
+                        background: C.bg, color: C.muted,
                       }}>
                         Prioridad {r.priority}
                       </span>
