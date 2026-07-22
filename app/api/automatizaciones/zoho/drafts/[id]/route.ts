@@ -5,6 +5,26 @@ import { prisma } from "@/lib/prisma";
 import nodemailer from "nodemailer";
 
 
+// Transporters reutilizables (uno por buzón). Antes se creaba uno NUEVO por
+// cada envío y no se cerraba: al aprobar muchos borradores seguidos se
+// acumulaban conexiones a Zoho y el servidor se saturaba/caía.
+// Con pool: reusa una sola conexión y limita el ritmo (rateLimit correos/rateDelta).
+const transporters: Record<string, nodemailer.Transporter> = {};
+function getPooledTransporter(user: string, pass: string): nodemailer.Transporter {
+  if (!transporters[user]) {
+    transporters[user] = nodemailer.createTransport({
+      host: "smtp.zoho.com", port: 465, secure: true,
+      auth: { user, pass },
+      pool: true,
+      maxConnections: 1,     // una sola conexión reutilizada
+      maxMessages: 50,
+      rateDelta: 1000,       // ventana de 1 s
+      rateLimit: 1,          // máx 1 correo por segundo (respeta a Zoho)
+    });
+  }
+  return transporters[user];
+}
+
 // Resuelve el remitente + contraseña SMTP según la marca del buzón.
 // Glowmmi ya está en el .env; Balancea requiere ZOHO_SMTP_PASSWORD_BALANCEA.
 function smtpFor(email: string): { user: string; pass: string; name: string } {
@@ -63,10 +83,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }, { status: 400 });
   }
 
-  const transporter = nodemailer.createTransport({
-    host: "smtp.zoho.com", port: 465, secure: true,
-    auth: { user: smtp.user, pass: smtp.pass },
-  });
+  const transporter = getPooledTransporter(smtp.user, smtp.pass);
 
   const subject = conv.subject?.startsWith("Re:") ? conv.subject : `Re: ${conv.subject ?? ""}`;
 

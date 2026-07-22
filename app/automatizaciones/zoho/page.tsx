@@ -119,6 +119,8 @@ export default function ZohoPage() {
   const [draftMsg,    setDraftMsg]    = useState<string>("");
   const [brandFilter, setBrandFilter] = useState<string>("all");
   const [configs,     setConfigs]     = useState<any[]>([]);
+  const [rep,         setRep]         = useState<any>(null);
+  const [repDias,     setRepDias]     = useState(30);
 
   /* ── carga inicial ─────────────────────────────────── */
   const loadConfig = useCallback(async () => {
@@ -150,14 +152,21 @@ export default function ZohoPage() {
     setRules(Array.isArray(data) ? data : []);
   }, []);
 
+  const loadRep = useCallback(async () => {
+    const res  = await fetch(`/api/automatizaciones/zoho/reportes?dias=${repDias}`);
+    const data = await res.json();
+    setRep(data);
+  }, [repDias]);
+
   useEffect(() => { loadConfig(); }, [loadConfig]);
 
   useEffect(() => {
     if (!connected) return;
     if (tab === "bandeja")     loadConvs();
     if (tab === "reglas")      loadRules();
+    if (tab === "reportes")    loadRep();
     if (tab === "estado")      { loadConvs(); loadRules(); }
-  }, [tab, connected, convFilter, loadConvs, loadRules]);
+  }, [tab, connected, convFilter, loadConvs, loadRules, loadRep]);
 
   /* ── auto-sync cada 5 min ──────────────────────────── */
   useEffect(() => {
@@ -264,29 +273,41 @@ export default function ZohoPage() {
 
   /* ── acciones de borradores IA ─────────────────────── */
   const sendDraft = async (id: string) => {
+    // Bloqueo global: si ya hay un envío en curso, ignorar clics extra.
+    // Evita disparar 20 envíos en paralelo (lo que saturó y tumbó la app).
+    if (draftBusy) return;
     setDraftBusy(id); setDraftMsg("");
     const text = draftEdits[id];   // texto editado, si lo hay
-    const res  = await fetch(`/api/automatizaciones/zoho/drafts/${id}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body:   JSON.stringify(text !== undefined ? { text } : {}),
-    });
-    const data = await res.json();
-    setDraftBusy("");
-    if (data.error) { setDraftMsg("❌ " + data.error); return; }
-    const dest = (convs.find((c: any) => c.id === id) as any)?.fromEmail ?? "";
-    setDraftMsg("✅ Enviado a " + dest);
-    dropConv(id);
-    loadConvs();
+    try {
+      const res  = await fetch(`/api/automatizaciones/zoho/drafts/${id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body:   JSON.stringify(text !== undefined ? { text } : {}),
+      });
+      const data = await res.json();
+      if (data.error) { setDraftMsg("❌ " + data.error); return; }
+      const dest = (convs.find((c: any) => c.id === id) as any)?.fromEmail ?? "";
+      setDraftMsg("✅ Enviado a " + dest);
+      dropConv(id);
+      loadConvs();
+    } catch (e: any) {
+      setDraftMsg("❌ No se pudo enviar: " + (e?.message ?? "error de red"));
+    } finally {
+      setDraftBusy("");
+    }
   };
 
   const discardDraft = async (id: string) => {
+    if (draftBusy) return;
     if (!confirm("¿Descartar este borrador? No se enviará.")) return;
     setDraftBusy(id);
-    await fetch(`/api/automatizaciones/zoho/drafts/${id}`, { method: "DELETE" });
-    setDraftBusy("");
-    dropConv(id);
-    loadConvs();
+    try {
+      await fetch(`/api/automatizaciones/zoho/drafts/${id}`, { method: "DELETE" });
+      dropConv(id);
+      loadConvs();
+    } finally {
+      setDraftBusy("");
+    }
   };
 
   const toggleRule = async (r: Rule) => {
@@ -369,11 +390,12 @@ export default function ZohoPage() {
   }
 
   /* ── render: conectado ────────────────────────────── */
-  const tabs = ["estado", "bandeja", "reglas", "instrucciones"];
+  const tabs = ["estado", "bandeja", "reportes", "reglas", "instrucciones"];
   const pendientes = stats["pendiente"] ?? 0;
   const tabLabels: Record<string, string> = {
     estado: "Estado",
     bandeja: `Bandeja${pendientes ? ` (${pendientes})` : ""}`,
+    reportes: "Reportes",
     reglas: "Reglas", instrucciones: "Instrucciones",
   };
 
@@ -726,22 +748,24 @@ export default function ZohoPage() {
                               <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
                                 <button
                                   onClick={() => sendDraft(c.id)}
-                                  disabled={draftBusy === c.id || !edited.trim()}
+                                  disabled={!!draftBusy || !edited.trim()}
                                   style={{
                                     fontSize: 13, fontWeight: 600, padding: "9px 18px", borderRadius: 8,
                                     background: C.accent, color: "#fff", border: "none",
-                                    cursor: draftBusy === c.id ? "wait" : "pointer",
-                                    opacity: edited.trim() ? 1 : 0.5,
+                                    cursor: draftBusy ? "wait" : "pointer",
+                                    opacity: (draftBusy && draftBusy !== c.id) || !edited.trim() ? 0.5 : 1,
                                   }}>
                                   {draftBusy === c.id ? "Enviando…" : "Aprobar y enviar"}
                                 </button>
                                 <button
                                   onClick={() => discardDraft(c.id)}
-                                  disabled={draftBusy === c.id}
+                                  disabled={!!draftBusy}
                                   style={{
                                     fontSize: 13, padding: "9px 16px", borderRadius: 8,
                                     background: "transparent", color: C.red,
-                                    border: `1px solid ${C.border}`, cursor: "pointer",
+                                    border: `1px solid ${C.border}`,
+                                    cursor: draftBusy ? "not-allowed" : "pointer",
+                                    opacity: draftBusy ? 0.5 : 1,
                                   }}>
                                   Descartar
                                 </button>
@@ -764,6 +788,130 @@ export default function ZohoPage() {
               </div>
             );
           })()}
+        </div>
+      )}
+
+      {/* ── Tab: Reportes ─────────────────────────────── */}
+      {tab === "reportes" && (
+        <div>
+          {/* Rango */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.05em" }}>Período</span>
+            {[7, 30, 90].map((d) => (
+              <button key={d} onClick={() => setRepDias(d)} style={{
+                padding: "5px 13px", borderRadius: 20, fontSize: 12,
+                fontWeight: repDias === d ? 700 : 500, cursor: "pointer",
+                border: `1px solid ${repDias === d ? C.accent : C.border}`,
+                background: repDias === d ? C.accentL : "transparent",
+                color: repDias === d ? C.accent : C.muted,
+              }}>{d} días</button>
+            ))}
+          </div>
+
+          {!rep ? (
+            <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 48, textAlign: "center", color: C.muted }}>
+              Cargando reportes…
+            </div>
+          ) : (
+            <>
+              {/* Resumen */}
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
+                <Stat label="Correos recibidos" value={rep.total} />
+                <Stat label="De clientes reales" value={rep.reales} color={C.accent} />
+                <Stat label="Ruido filtrado" value={rep.ruido} color={C.muted} />
+                <Stat label="Glowmmi" value={rep.porMarca?.Glowmmi ?? 0} color="var(--glowmmi)" />
+                <Stat label="Balancea" value={rep.porMarca?.Balancea ?? 0} color="var(--balancea)" />
+              </div>
+
+              {/* De qué nos escriben */}
+              <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: "20px 24px", marginBottom: 16 }}>
+                <p style={{ fontSize: 15, fontWeight: 700, color: C.text, margin: "0 0 4px" }}>¿De qué nos escriben?</p>
+                <p style={{ fontSize: 12, color: C.muted, margin: "0 0 18px" }}>
+                  Motivo de cada correo, de mayor a menor. Lo de arriba es lo que más te cuesta tiempo.
+                </p>
+
+                {(rep.casos ?? []).length === 0 ? (
+                  <p style={{ fontSize: 13, color: C.muted }}>Aún no hay correos clasificados en este período.</p>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                    {rep.casos.map((c: any) => {
+                      const pct = rep.reales > 0 ? (c.total / rep.reales) * 100 : 0;
+                      return (
+                        <div key={c.caso}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 5 }}>
+                            <span style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{c.label}</span>
+                            <span style={{ fontSize: 12, color: C.muted }}>
+                              <b style={{ color: C.text, fontSize: 14 }}>{c.total}</b> · {pct.toFixed(0)}%
+                            </span>
+                          </div>
+                          {/* Barra apilada por tienda */}
+                          <div style={{ display: "flex", height: 9, borderRadius: 6, overflow: "hidden", background: C.bg }}>
+                            <div title={`Glowmmi: ${c.Glowmmi}`} style={{
+                              width: `${rep.reales > 0 ? (c.Glowmmi / rep.reales) * 100 : 0}%`,
+                              background: "var(--glowmmi)",
+                            }} />
+                            <div title={`Balancea: ${c.Balancea}`} style={{
+                              width: `${rep.reales > 0 ? (c.Balancea / rep.reales) * 100 : 0}%`,
+                              background: "var(--balancea)",
+                            }} />
+                          </div>
+                          <div style={{ display: "flex", gap: 12, marginTop: 4 }}>
+                            {c.Glowmmi > 0 && <span style={{ fontSize: 11, color: "var(--glowmmi)" }}>Glowmmi {c.Glowmmi}</span>}
+                            {c.Balancea > 0 && <span style={{ fontSize: 11, color: "var(--balancea)" }}>Balancea {c.Balancea}</span>}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16 }}>
+                {/* Volumen por día */}
+                <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: "20px 24px" }}>
+                  <p style={{ fontSize: 15, fontWeight: 700, color: C.text, margin: "0 0 14px" }}>Correos por día</p>
+                  {(rep.serie ?? []).length === 0 ? (
+                    <p style={{ fontSize: 13, color: C.muted }}>Sin datos.</p>
+                  ) : (
+                    <div style={{ display: "flex", alignItems: "flex-end", gap: 4, height: 110 }}>
+                      {rep.serie.map((d: any) => {
+                        const max = Math.max(...rep.serie.map((x: any) => x.n));
+                        return (
+                          <div key={d.fecha} title={`${d.fecha}: ${d.n}`} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                            <div style={{
+                              width: "100%", borderRadius: 3, background: C.accent,
+                              height: `${max > 0 ? (d.n / max) * 90 : 0}px`, minHeight: 3,
+                            }} />
+                            <span style={{ fontSize: 9, color: C.muted }}>{d.fecha.slice(8)}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Clientes que escriben varias veces */}
+                <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: "20px 24px" }}>
+                  <p style={{ fontSize: 15, fontWeight: 700, color: C.text, margin: "0 0 4px" }}>Escriben más de una vez</p>
+                  <p style={{ fontSize: 12, color: C.muted, margin: "0 0 14px" }}>
+                    Suele indicar que no quedaron conformes con la primera respuesta.
+                  </p>
+                  {(rep.repetidores ?? []).length === 0 ? (
+                    <p style={{ fontSize: 13, color: C.muted }}>Nadie escribió dos veces. 👌</p>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                      {rep.repetidores.map((r: any) => (
+                        <div key={r.email} style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
+                          <span style={{ color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.email}</span>
+                          <b style={{ color: r.n >= 3 ? C.red : C.yellow, flexShrink: 0, marginLeft: 10 }}>{r.n}×</b>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
         </div>
       )}
 
