@@ -95,15 +95,18 @@ function formatOrder(s: StoreCfg, o: any): OrderContext {
 
   // Estado de fulfillment REAL de Shopify (no inventar más allá de esto)
   const fulfillment = o.fulfillment_status ?? "unfulfilled";
+  // OJO: nada de esta redacción debe nombrar herramientas internas (Shopify,
+  // CJ, etc.). La IA repite lo que lee, y el cliente no debe saber qué usamos.
   const estadoTxt = {
-    fulfilled: "Marcado como ENVIADO en Shopify (tiene guía asignada).",
-    partial:   "Envío PARCIAL en Shopify.",
+    fulfilled: "Marcado como ENVIADO en nuestro sistema (tiene guía asignada).",
+    partial:   "Envío PARCIAL registrado.",
     restocked: "Reingresado a inventario (posible cancelación/devolución).",
-    unfulfilled: "AÚN NO marcado como enviado en Shopify.",
+    unfulfilled: "AÚN NO marcado como enviado en nuestro sistema.",
   }[fulfillment as string] ?? `Estado: ${fulfillment}`;
 
   const text =
     `Pedido: ${o.name} (tienda ${s.key})\n` +
+    `[INTERNO — no menciones nunca al cliente de dónde salen estos datos]\n` +
     `Cliente: ${[o.customer?.first_name, o.customer?.last_name].filter(Boolean).join(" ") || sa.name || "(s/d)"}\n` +
     `Correo: ${o.email ?? "(s/d)"}  ·  Tel: ${sa.phone ?? o.phone ?? "(s/d)"}\n` +
     `Productos: ${items || "(s/d)"}\n` +
@@ -111,11 +114,11 @@ function formatOrder(s: StoreCfg, o: any): OrderContext {
     `Pago: ${o.financial_status ?? "(s/d)"}\n` +
     `Fulfillment (real, Shopify): ${estadoTxt}\n` +
     `Guía / tracking: ${tracking}${trackCompany ? ` (${trackCompany})` : ""}\n` +
-    `--- Dirección registrada en Shopify ---\n` +
+    `--- Dirección registrada en el pedido ---\n` +
     `Address 1: ${sa.address1 ?? "(VACÍO)"}\n` +
     `Address 2: ${sa.address2 ?? "(vacío)"}\n` +
     `Ciudad: ${sa.city ?? "(VACÍO)"}  ·  Estado: ${sa.province ?? sa.province_code ?? "(s/d)"}  ·  CP: ${sa.zip ?? "(VACÍO)"}  ·  País: ${sa.country_code ?? "(s/d)"}\n` +
-    `NOTA: Shopify NO da estado de tránsito en vivo. Solo sabes si tiene guía asignada, no dónde va el paquete. No afirmes ubicaciones que no estén aquí.`;
+    `NOTA INTERNA: no hay estado de tránsito en vivo. Solo sabes si tiene guía asignada, no dónde va el paquete. No afirmes ubicaciones que no estén aquí.`;
 
   return { found: true, store: s.key, brandName: s.key, text };
 }

@@ -317,20 +317,29 @@ export async function GET() {
               await new Promise((r) => setTimeout(r, 1500));
               continue;
             } catch (aiErr: any) {
-              // Si la IA falla, guardar para atención manual (no perder el correo)
-              await prisma.zohoConversation.create({
-                data: {
-                  configId:    config.id,
-                  messageId:   msg.messageId,
-                  fromEmail:   msg.fromAddress,
-                  fromName:    msg.sender ?? null,
-                  subject:     msg.subject ?? "(sin asunto)",
-                  inboundText: fullText,
-                  status:      "needs_attention",
-                  source:      "ai",
-                  errorMsg:    `IA falló: ${aiErr.message}`.slice(0, 300),
-                },
-              });
+              // Si la IA falla, guardar para atención manual (no perder el correo).
+              // upsert y no create: si el messageId ya existe, un create lanzaría
+              // "Unique constraint failed" y abortaba TODO el buzón.
+              try {
+                await prisma.zohoConversation.upsert({
+                  where:  { messageId: msg.messageId },
+                  update: {
+                    status:   "needs_attention",
+                    errorMsg: `IA falló: ${aiErr.message}`.slice(0, 300),
+                  },
+                  create: {
+                    configId:    config.id,
+                    messageId:   msg.messageId,
+                    fromEmail:   msg.fromAddress,
+                    fromName:    msg.sender ?? null,
+                    subject:     msg.subject ?? "(sin asunto)",
+                    inboundText: fullText,
+                    status:      "needs_attention",
+                    source:      "ai",
+                    errorMsg:    `IA falló: ${aiErr.message}`.slice(0, 300),
+                  },
+                });
+              } catch { /* no romper el resto del buzón por un solo correo */ }
               errors++;
               continue;
             }

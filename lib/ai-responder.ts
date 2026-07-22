@@ -41,6 +41,25 @@ NUNCA prometas ni afirmes algo que no esté CONFIRMADO en el CONTEXTO_REAL que s
 - PERMITIDO: "Actualmente aparece en tránsito", "La última actualización indica...", "Por ahora no aparece como perdido ni devuelto", "Si se confirma algún inconveniente, revisaremos tu caso".
 Si NO tienes el dato real, NO lo inventes: di que se sigue revisando y, si hace falta, escala (escalar=true).
 
+═══ PROHIBIDO NOMBRAR HERRAMIENTAS INTERNAS ═══
+NUNCA menciones al cliente el nombre de ningún sistema o proveedor interno:
+Shopify, CJ, CJ Dropshipping, Kaching, Zoho, proveedor, dropshipping, China.
+El contexto que recibes viene de sistemas internos; el cliente NO debe saberlo.
+En su lugar di: "nuestra tienda", "nuestro sistema", "nuestro equipo de logística",
+"la paquetería" o "la transportadora".
+❌ "está marcado como enviado en Shopify" · "el proveedor en China"
+✅ "en nuestro sistema aparece como enviado" · "nuestro equipo de logística"
+
+═══ CONTEXTO DE TEMPORADA (Mundial 2026) ═══
+El Mundial 2026 se jugó en México, EE.UU. y Canadá, y generó saturación en
+aduanas y paqueterías de esos países. Es una causa REAL de demora y puedes
+mencionarla al explicar retrasos, con naturalidad y sin excusarte de más:
+✅ "Por el alto volumen de envíos durante el Mundial, las paqueterías y aduanas
+   han presentado retrasos y los tiempos de entrega se han extendido."
+Úsalo SOLO cuando el caso sea de demora/tránsito (CLIENTE_DONDE_PEDIDO,
+CLIENTE_REEMBOLSO, aduana). NO lo metas en casos de dirección ni en respuestas a CJ.
+No lo uses como excusa para evitar dar solución: primero informa el estado real.
+
 ═══ QUIÉN ESCRIBE ═══
 - Si el correo es de CJ / proveedor / paquetería pidiendo corregir dirección → respondes en INGLÉS, operativo y corto. La REFERENCIA siempre en español.
 - Si el correo es de un CLIENTE → respondes en ESPAÑOL, amable, empático y claro. Cierras con "Equipo Balancea" o "Equipo Glowmmi" según la marca.
@@ -187,6 +206,32 @@ export async function generateDraft(input: {
     escalar:    Boolean(parsed.escalar) || !parsed.respuesta,
     razon:      String(parsed.razon ?? "").trim(),
   };
+
+  // Guardarraíl: nunca dejar pasar nombres de sistemas internos al cliente.
+  // Si la IA los menciona, se reemplazan por lenguaje de marca y se marca para
+  // revisión (confianza tope 0.7) para que Fernanda lo lea antes de enviar.
+  const FUGAS: Array<[RegExp, string]> = [
+    [/\ben\s+shopify\b/gi,            "en nuestro sistema"],
+    [/\bshopify\b/gi,                 "nuestro sistema"],
+    [/\bcj\s*dropshipping\b/gi,       "nuestro equipo de logística"],
+    [/\bdropshipping\b/gi,            "nuestro equipo de logística"],
+    [/\bel\s+proveedor\b/gi,          "nuestro equipo de logística"],
+    [/\bkaching\b/gi,                 "nuestra tienda"],
+    [/\bzoho\b/gi,                    "nuestro correo"],
+    [/\bdesde\s+china\b/gi,           "desde nuestro centro de distribución"],
+  ];
+  let huboFuga = false;
+  for (const [re, repl] of FUGAS) {
+    if (re.test(draft.respuesta)) {
+      huboFuga = true;
+      draft.respuesta = draft.respuesta.replace(re, repl);
+    }
+  }
+  if (huboFuga) {
+    draft.confianza = Math.min(draft.confianza, 0.7);
+    draft.razon = (draft.razon ? draft.razon + " " : "") +
+      "[Se corrigió una mención a sistemas internos — revisar redacción.]";
+  }
 
   // Guardarraíl extra: si no hay contexto real y el caso depende de estado de envío,
   // forzar escalado aunque la IA diga lo contrario.
