@@ -310,6 +310,35 @@ export default function ZohoPage() {
     }
   };
 
+  const [regenBusy, setRegenBusy] = useState(false);
+  const regenerarBorradores = async () => {
+    if (regenBusy || draftBusy) return;
+    if (!confirm("Rehacer los borradores pendientes con las reglas actuales. Los que ya editaste se sobrescribirán. ¿Continuar?")) return;
+    setRegenBusy(true); setDraftMsg("");
+    try {
+      let total = 0, pend = 1;
+      // por tandas de 8 hasta terminar (respeta el límite de Groq)
+      while (pend > 0) {
+        const res  = await fetch("/api/automatizaciones/zoho/regenerar", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ limit: 8 }),
+        });
+        const data = await res.json();
+        if (data.error) { setDraftMsg("❌ " + data.error); break; }
+        total += data.regenerados ?? 0;
+        pend   = data.pendientes ?? 0;
+        setDraftMsg(`♻️ Regenerando… ${total} listos, faltan ${pend}`);
+        if ((data.regenerados ?? 0) === 0) break;   // seguridad anti-bucle
+      }
+      setDraftMsg(`✅ ${total} borradores regenerados con las reglas nuevas`);
+      loadConvs();
+    } catch (e: any) {
+      setDraftMsg("❌ " + (e?.message ?? "error"));
+    } finally {
+      setRegenBusy(false);
+    }
+  };
+
   const toggleRule = async (r: Rule) => {
     await fetch("/api/automatizaciones/zoho/rules", {
       method: "PUT",
@@ -618,6 +647,18 @@ export default function ZohoPage() {
             </div>
 
             <div style={{ flex: 1 }} />
+            <button
+              onClick={regenerarBorradores}
+              disabled={regenBusy || !!draftBusy}
+              title="Rehace los borradores pendientes con las reglas actuales de la IA"
+              style={{
+                fontSize: 12, fontWeight: 600, padding: "6px 13px", borderRadius: 8,
+                cursor: regenBusy ? "wait" : "pointer",
+                background: C.accentL, border: `1px solid ${C.accent}`, color: C.accent,
+                opacity: (regenBusy || draftBusy) ? 0.6 : 1,
+              }}>
+              {regenBusy ? "♻️ Regenerando…" : "♻️ Regenerar con IA"}
+            </button>
             <button onClick={loadConvs} style={{
               fontSize: 12, padding: "6px 13px", borderRadius: 8, cursor: "pointer",
               background: "transparent", border: `1px solid ${C.border}`, color: C.text,

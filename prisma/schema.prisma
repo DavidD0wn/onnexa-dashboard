@@ -367,6 +367,7 @@ model ZohoConversation {
   aiConfidence Float?        // 0..1 confianza de la IA
   needsData    String?       // JSON array: datos que faltan
   orderContext String?       // datos reales de Shopify inyectados (para auditoría)
+  rfcMessageId String?       // Message-ID real del correo (para enganchar el hilo al responder)
   source       String        @default("rule")  // "rule" | "ai"
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt

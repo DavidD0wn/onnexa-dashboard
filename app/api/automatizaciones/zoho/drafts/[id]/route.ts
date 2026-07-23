@@ -87,14 +87,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const subject = conv.subject?.startsWith("Re:") ? conv.subject : `Re: ${conv.subject ?? ""}`;
 
+  // Enganchar al hilo del cliente: usar el Message-ID REAL del correo
+  // (conv.messageId es el ID interno de Zoho y NO agrupa el hilo).
+  const threadHeaders = (conv as any).rfcMessageId
+    ? { inReplyTo: (conv as any).rfcMessageId, references: (conv as any).rfcMessageId }
+    : {};
+
   try {
     await transporter.sendMail({
       from:       `"${smtp.name}" <${smtp.user}>`,
       to:         conv.fromEmail,
       subject,
       text,
-      inReplyTo:  conv.messageId,
-      references: conv.messageId,
+      ...threadHeaders,
     });
   } catch (e: any) {
     await prisma.zohoConversation.update({

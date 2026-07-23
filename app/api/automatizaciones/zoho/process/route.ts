@@ -114,6 +114,23 @@ async function fetchMessages(config: any, token: string, folderId: string) {
   return data.data as any[];
 }
 
+/* ── Message-ID REAL (cabecera RFC) — para enganchar el hilo al responder ── */
+async function getRfcMessageId(config: any, token: string, folderId: string, messageId: string): Promise<string | null> {
+  try {
+    const res = await fetch(
+      `${config.apiDomain}/api/accounts/${config.accountId}/folders/${folderId}/messages/${messageId}/header`,
+      { headers: { Authorization: `Zoho-oauthtoken ${token}` } }
+    );
+    const data = await res.json();
+    // Zoho devuelve las cabeceras dentro de data.headerContent (string con \r\n)
+    const headers: string = data?.data?.headerContent ?? "";
+    const m = headers.match(/Message-I[dD]:\s*(<[^>]+>)/i);
+    return m ? m[1] : null;
+  } catch {
+    return null;
+  }
+}
+
 /* ── Contenido completo del mensaje ───────────────────────────── */
 async function getContent(config: any, token: string, folderId: string, messageId: string): Promise<string> {
   const res = await fetch(
@@ -137,15 +154,15 @@ function stripHtml(html: string): string {
 }
 
 /* ── Enviar respuesta vía SMTP ─────────────────────────────────── */
-async function sendReply(transporter: any, fromEmail: string, msg: any, replyText: string) {
+async function sendReply(transporter: any, fromEmail: string, msg: any, replyText: string, rfcMessageId?: string | null) {
   const subject = msg.subject?.startsWith("Re:") ? msg.subject : `Re: ${msg.subject ?? ""}`;
+  const thread = rfcMessageId ? { inReplyTo: rfcMessageId, references: rfcMessageId } : {};
   await transporter.sendMail({
     from:       `"Glowmmi" <${fromEmail}>`,
     to:         msg.fromAddress,
     subject,
     text:       replyText,
-    inReplyTo:  msg.messageId,
-    references: msg.messageId,
+    ...thread,
   });
 }
 
@@ -266,6 +283,9 @@ export async function GET() {
             content = stripHtml(msg.summary ?? "");
           }
 
+          // Message-ID real para que la respuesta se enganche al hilo del cliente
+          const rfcMessageId = await getRfcMessageId(config, token, msg.folderId ?? folderId, msg.messageId);
+
           const fullText = `${msg.subject ?? ""} ${content}`.trim();
 
           const matched = config.autoReplyEnabled
@@ -306,6 +326,7 @@ export async function GET() {
                   aiConfidence: draft.confianza,
                   needsData:    JSON.stringify(draft.faltanDatos),
                   orderContext: ctx.found ? ctx.text : null,
+                  rfcMessageId,
                   ruleMatched:  matched?.name ?? null,
                   source:       "ai",
                   // draft = pendiente de aprobar; escalated = mejor revisar a mano
@@ -374,6 +395,7 @@ export async function GET() {
               fromName:     msg.sender ?? null,
               subject:      msg.subject ?? "(sin asunto)",
               inboundText:  fullText,
+              rfcMessageId,
               outboundText: reply,
               ruleMatched:  matched.name,
               status:       "pending",
@@ -381,7 +403,7 @@ export async function GET() {
           });
 
           try {
-            await sendReply(transporter, fromEmail, msg, reply);
+            await sendReply(transporter, fromEmail, msg, reply, rfcMessageId);
             await markAsRead(config, token, msg.messageId);
 
             await prisma.zohoBotRule.update({
