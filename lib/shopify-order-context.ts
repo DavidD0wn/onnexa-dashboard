@@ -85,40 +85,80 @@ async function fetchOrder(s: StoreCfg, token: string, params: string): Promise<a
   return (data.orders && data.orders[0]) || null;
 }
 
+// Elige el fulfillment correcto: el MÁS RECIENTE con éxito (no el primero, que
+// puede ser un envío viejo/cancelado). Prefiere el que tenga guía.
+function pickFulfillment(fulfillments: any[]): any {
+  const list = (fulfillments ?? []).filter(Boolean);
+  if (list.length === 0) return {};
+  const exitosos = list.filter((f) => f.status === "success");
+  const pool = exitosos.length ? exitosos : list;
+  // ordenar por fecha desc; entre iguales, preferir el que tenga tracking
+  const ordenado = [...pool].sort((a, b) => {
+    const ta = new Date(a.updated_at ?? a.created_at ?? 0).getTime();
+    const tb = new Date(b.updated_at ?? b.created_at ?? 0).getTime();
+    if (tb !== ta) return tb - ta;
+    return (b.tracking_number ? 1 : 0) - (a.tracking_number ? 1 : 0);
+  });
+  return ordenado.find((f) => f.tracking_number) ?? ordenado[0] ?? {};
+}
+
+// Traduce shipment_status de la paquetería a algo claro (SIN nombrar sistemas).
+function estadoEnvio(shipmentStatus: string | null, fulfillment: string): { txt: string; entregado: boolean } {
+  const ss = (shipmentStatus ?? "").toLowerCase();
+  const map: Record<string, string> = {
+    delivered:          "ENTREGADO según la paquetería.",
+    out_for_delivery:   "EN REPARTO (salió a entregar hoy).",
+    in_transit:         "EN TRÁNSITO (en camino).",
+    attempted_delivery: "INTENTO DE ENTREGA FALLIDO (la paquetería no pudo entregar).",
+    ready_for_pickup:   "LISTO PARA RECOGER en punto de la paquetería.",
+    confirmed:          "CONFIRMADO por la paquetería, aún sin movimiento.",
+    label_printed:      "GUÍA GENERADA, aún no recogido por la paquetería.",
+    label_purchased:    "GUÍA GENERADA, aún no recogido por la paquetería.",
+    failure:            "PROBLEMA EN LA ENTREGA reportado por la paquetería.",
+  };
+  if (map[ss]) return { txt: map[ss], entregado: ss === "delivered" };
+  // sin shipment_status: caer al fulfillment_status del pedido
+  const base: Record<string, string> = {
+    fulfilled:   "Marcado como ENVIADO (tiene guía asignada). Sin estado de tránsito en vivo.",
+    partial:     "Envío PARCIAL registrado.",
+    restocked:   "Reingresado a inventario (posible cancelación/devolución).",
+    unfulfilled: "AÚN NO marcado como enviado.",
+  };
+  return { txt: base[fulfillment] ?? `Estado: ${fulfillment}`, entregado: false };
+}
+
 function formatOrder(s: StoreCfg, o: any): OrderContext {
   const sa = o.shipping_address ?? {};
-  const f  = (o.fulfillments ?? [])[0] ?? {};
+  const f  = pickFulfillment(o.fulfillments);
   const tracking = f.tracking_number ?? (f.tracking_numbers ?? [])[0] ?? "(sin guía aún)";
   const trackCompany = f.tracking_company ?? "";
   const items = (o.line_items ?? []).map((li: any) => `${li.quantity}x ${li.title}`).join(", ");
   const ageDays = o.created_at ? Math.floor((Date.now() - new Date(o.created_at).getTime()) / (24 * 3600 * 1000)) : null;
 
-  // Estado de fulfillment REAL de Shopify (no inventar más allá de esto)
   const fulfillment = o.fulfillment_status ?? "unfulfilled";
-  // OJO: nada de esta redacción debe nombrar herramientas internas (Shopify,
-  // CJ, etc.). La IA repite lo que lee, y el cliente no debe saber qué usamos.
-  const estadoTxt = {
-    fulfilled: "Marcado como ENVIADO en nuestro sistema (tiene guía asignada).",
-    partial:   "Envío PARCIAL registrado.",
-    restocked: "Reingresado a inventario (posible cancelación/devolución).",
-    unfulfilled: "AÚN NO marcado como enviado en nuestro sistema.",
-  }[fulfillment as string] ?? `Estado: ${fulfillment}`;
+  const { txt: estadoTxt, entregado } = estadoEnvio(f.shipment_status ?? null, fulfillment);
+
+  // Fecha de entrega si está disponible (para el caso "dice entregado pero no lo recibí")
+  const fechaEntrega = entregado ? (f.updated_at ?? "").slice(0, 10) : "";
 
   const text =
     `Pedido: ${o.name} (tienda ${s.key})\n` +
-    `[INTERNO — no menciones nunca al cliente de dónde salen estos datos]\n` +
+    `[INTERNO — no menciones nunca al cliente de dónde salen estos datos ni ningún sistema/proveedor]\n` +
     `Cliente: ${[o.customer?.first_name, o.customer?.last_name].filter(Boolean).join(" ") || sa.name || "(s/d)"}\n` +
     `Correo: ${o.email ?? "(s/d)"}  ·  Tel: ${sa.phone ?? o.phone ?? "(s/d)"}\n` +
     `Productos: ${items || "(s/d)"}\n` +
     `Fecha del pedido: ${(o.created_at ?? "").slice(0, 10)}${ageDays !== null ? ` (hace ${ageDays} días)` : ""}\n` +
     `Pago: ${o.financial_status ?? "(s/d)"}\n` +
-    `Fulfillment (real, Shopify): ${estadoTxt}\n` +
-    `Guía / tracking: ${tracking}${trackCompany ? ` (${trackCompany})` : ""}\n` +
+    `ESTADO DEL ENVÍO: ${estadoTxt}${fechaEntrega ? ` Fecha de entrega registrada: ${fechaEntrega}.` : ""}\n` +
+    `Guía / número de rastreo REAL (usa EXACTAMENTE este, no inventes otro): ${tracking}${trackCompany ? ` (paquetería: ${trackCompany})` : ""}\n` +
+    (entregado
+      ? `⚠️ CASO ESPECIAL: el pedido figura como ENTREGADO. Si el cliente dice que NO lo recibió, NO lo contradigas ni lo acuses. Reconoce que en el sistema aparece como entregado en esa fecha, discúlpate por la molestia, y dile que abriremos una investigación con la paquetería y le daremos seguimiento. Pídele confirmar si alguien más pudo recibirlo (vecino, portería, familiar).\n`
+      : "") +
     `--- Dirección registrada en el pedido ---\n` +
     `Address 1: ${sa.address1 ?? "(VACÍO)"}\n` +
     `Address 2: ${sa.address2 ?? "(vacío)"}\n` +
     `Ciudad: ${sa.city ?? "(VACÍO)"}  ·  Estado: ${sa.province ?? sa.province_code ?? "(s/d)"}  ·  CP: ${sa.zip ?? "(VACÍO)"}  ·  País: ${sa.country_code ?? "(s/d)"}\n` +
-    `NOTA INTERNA: no hay estado de tránsito en vivo. Solo sabes si tiene guía asignada, no dónde va el paquete. No afirmes ubicaciones que no estén aquí.`;
+    `NOTA INTERNA: usa SOLO el número de rastreo de arriba. No afirmes ubicaciones ni fechas que no estén aquí.`;
 
   return { found: true, store: s.key, brandName: s.key, text };
 }
