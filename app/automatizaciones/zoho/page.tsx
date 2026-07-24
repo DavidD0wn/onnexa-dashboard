@@ -339,6 +339,44 @@ export default function ZohoPage() {
     }
   };
 
+  const [envioMasivo, setEnvioMasivo] = useState(false);
+  const enviarTodos = async () => {
+    if (envioMasivo || regenBusy || draftBusy) return;
+    const nDraft = stats["draft"] ?? 0;
+    if (nDraft === 0) { setDraftMsg("No hay borradores listos para enviar."); return; }
+    if (!confirm(
+      `Se enviarán ${nDraft} respuestas a clientes reales, como respuesta a su correo.\n\n` +
+      `Los marcados para revisión manual NO se envían.\n\n¿Continuar?`
+    )) return;
+
+    setEnvioMasivo(true); setDraftMsg("");
+    let total = 0; const errores: string[] = [];
+    try {
+      let pend = nDraft;
+      while (pend > 0) {
+        const res  = await fetch("/api/automatizaciones/zoho/enviar-todos", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ limit: 10 }),
+        });
+        const data = await res.json();
+        if (data.error) { setDraftMsg("❌ " + data.error); break; }
+        total += data.enviados ?? 0;
+        (data.fallidos ?? []).forEach((f: any) => errores.push(`${f.email}: ${f.error}`));
+        pend = data.pendientes ?? 0;
+        setDraftMsg(`📤 Enviando… ${total} listos, faltan ${pend}`);
+        // si una tanda no envió nada y siguen quedando, cortar (evita bucle infinito)
+        if ((data.enviados ?? 0) === 0) break;
+      }
+      const resumen = `✅ ${total} respuestas enviadas`;
+      setDraftMsg(errores.length ? `${resumen} · ⚠️ ${errores.length} con error: ${errores.slice(0, 2).join(" | ")}` : resumen);
+      loadConvs();
+    } catch (e: any) {
+      setDraftMsg("❌ " + (e?.message ?? "error de red"));
+    } finally {
+      setEnvioMasivo(false);
+    }
+  };
+
   const toggleRule = async (r: Rule) => {
     await fetch("/api/automatizaciones/zoho/rules", {
       method: "PUT",
@@ -647,9 +685,23 @@ export default function ZohoPage() {
             </div>
 
             <div style={{ flex: 1 }} />
+            {(stats["draft"] ?? 0) > 0 && (
+              <button
+                onClick={enviarTodos}
+                disabled={envioMasivo || regenBusy || !!draftBusy}
+                title="Envía todas las respuestas listas, cada una como respuesta al correo del cliente"
+                style={{
+                  fontSize: 12, fontWeight: 700, padding: "6px 15px", borderRadius: 8,
+                  cursor: envioMasivo ? "wait" : "pointer",
+                  background: C.accent, border: `1px solid ${C.accent}`, color: "#fff",
+                  opacity: (envioMasivo || regenBusy || draftBusy) ? 0.6 : 1,
+                }}>
+                {envioMasivo ? "📤 Enviando…" : `📤 Enviar todos (${stats["draft"] ?? 0})`}
+              </button>
+            )}
             <button
               onClick={regenerarBorradores}
-              disabled={regenBusy || !!draftBusy}
+              disabled={regenBusy || !!draftBusy || envioMasivo}
               title="Rehace los borradores pendientes con las reglas actuales de la IA"
               style={{
                 fontSize: 12, fontWeight: 600, padding: "6px 13px", borderRadius: 8,

@@ -51,3 +51,6 @@ next-env.d.ts
 # Scripts desactivados (daemons buggy que corrompían datos — se conservan
 # en local con extensión .DESACTIVADO como referencia, no van al repo)
 scripts/*.DESACTIVADO
+
+# logs locales
+onnexa-next.log
