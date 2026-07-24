@@ -257,19 +257,44 @@ export function Sidebar() {
   const [alertCount,      setAlertCount]      = useState(0);
   const [zohoAlertCount,  setZohoAlertCount]  = useState(0);
 
+  // Avisos de los bots: se consultan 1 vez al abrir y luego cada 24 h.
+  // ANTES era cada 30 s → 17.000 consultas/día que mantenían la base
+  // despierta 24/7 y agotaban las horas del plan gratis de Neon.
+  // Además se cachea en localStorage para no consultar en cada navegación.
   useEffect(() => {
+    const CACHE_KEY = "onnexa_alerts_cache";
+    const UN_DIA    = 24 * 60 * 60 * 1000;
+
+    const pintarDesdeCache = (): number | null => {
+      try {
+        const raw = localStorage.getItem(CACHE_KEY);
+        if (!raw) return null;
+        const c = JSON.parse(raw);
+        setAlertCount(c.meta ?? 0);
+        setZohoAlertCount(c.zoho ?? 0);
+        return c.ts ?? null;
+      } catch { return null; }
+    };
+
     const load = async () => {
       try {
         const [meta, zoho] = await Promise.all([
           fetch("/api/automatizaciones/meta/alerts").then((r) => r.json()),
           fetch("/api/automatizaciones/zoho/alerts").then((r) => r.json()),
         ]);
-        setAlertCount(meta.total ?? 0);
-        setZohoAlertCount(zoho.total ?? 0);
+        const m = meta.total ?? 0, z = zoho.total ?? 0;
+        setAlertCount(m);
+        setZohoAlertCount(z);
+        try { localStorage.setItem(CACHE_KEY, JSON.stringify({ meta: m, zoho: z, ts: Date.now() })); } catch {}
       } catch {}
     };
-    load();
-    const interval = setInterval(load, 30000);
+
+    const ts = pintarDesdeCache();
+    const vencido = !ts || Date.now() - ts > UN_DIA;
+    if (vencido) load();
+
+    // Reintento diario por si la app queda abierta mucho tiempo
+    const interval = setInterval(load, UN_DIA);
     return () => clearInterval(interval);
   }, []);
 

@@ -168,12 +168,10 @@ export default function ZohoPage() {
     if (tab === "estado")      { loadConvs(); loadRules(); }
   }, [tab, connected, convFilter, loadConvs, loadRules, loadRep]);
 
-  /* ── auto-sync cada 5 min ──────────────────────────── */
-  useEffect(() => {
-    if (!connected) return;
-    const iv = setInterval(() => handleSync(true), 5 * 60 * 1000);
-    return () => clearInterval(iv);
-  }, [connected]);
+  /* ── Sin auto-sync ─────────────────────────────────────
+     Antes se sincronizaba solo cada 5 min: eso mantenía la base despierta
+     y gastaba horas del plan gratis de Neon. Ahora el sync es MANUAL:
+     solo cuando das clic en "Sincronizar". */
 
   /* ── acciones ──────────────────────────────────────── */
   const handleSync = async (silent = false) => {

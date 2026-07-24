@@ -20,7 +20,13 @@ const SESSION_KEY  = "onnexa_loaded_v2";
 // la limpieza de stale rows solo afecta fechas >= (hoy - 15 días). El sync es
 // "todo o nada": si no logra traer todo, no escribe nada (conserva lo bueno).
 // Se sincroniza UNA vez por sesión del navegador (al iniciar), no en cada recarga.
-const AUTO_SYNC_ENABLED = true;
+//
+// ⛔ DESACTIVADO (a petición de Fernanda): el auto-sync al abrir la app disparaba
+// Shopify (2 tiendas) + Meta Ads + rollup + respaldo cada 4 h. Eso mantenía la
+// base de Neon despierta y agotaba las horas del plan gratis.
+// Ahora TODO es manual: se actualiza con los botones "Actualizar" / "Sincronizar".
+// Para reactivarlo algún día, poner true.
+const AUTO_SYNC_ENABLED = false;
 
 // Marca de tiempo del último sync exitoso (persiste entre sesiones).
 const LAST_SYNC_KEY = "onnexa_last_sync_at";
