@@ -18,7 +18,7 @@ const p = new PrismaClient();
 
 function guessBrand(productName) {
   const n = productName.toLowerCase();
-  if (/holy basil|herbiotic|clearstem|cutting|deep collagen|debloted|flexi|inositol|mouthwash|smyle|astaxanthin|airi|curva|fertil|collar/i.test(n)) return "balancea";
+  if (/holy basil|herbiotic|clearstem|cutting|deep collagen|debloted|flexi|inositol|mouthwash|smyle|astaxanthin|airi|curva|fertil|collar|gomfit|creatine gummies|creatina/i.test(n)) return "balancea";
   return "glowmmi";
 }
 
