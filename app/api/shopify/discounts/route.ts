@@ -12,16 +12,16 @@ import { NextResponse } from "next/server";
 const STORES = {
   glowmmi: {
     shop: "glm-1694.myshopify.com",
-    clientId: "de9e81a11394aabe11272947a4da0da5",
-    clientSecret: "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",
+    clientId: process.env.SHOPIFY_GLOWMMI_CLIENT_ID ?? "",
+    clientSecret: process.env.SHOPIFY_GLOWMMI_CLIENT_SECRET ?? "",
     authType: "json" as const,
     label: "Glowmmi",
     currency: "USD",
   },
   balancea: {
     shop: "mp0vab-bw.myshopify.com",
-    clientId: "b06d2c272b5428556744aa476b8467f1",
-    clientSecret: "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",
+    clientId: process.env.SHOPIFY_BALANCEA_CLIENT_ID ?? "",
+    clientSecret: process.env.SHOPIFY_BALANCEA_CLIENT_SECRET ?? "",
     authType: "urlencoded" as const,
     label: "Balancea",
     currency: "MXN",
@@ -47,7 +47,7 @@ async function getToken(shop: string, clientId: string, clientSecret: string, au
 async function fetchPriceRules(shop: string, token: string): Promise<any[]> {
   const all: any[] = [];
   let url: string | null =
-    `https://${shop}/admin/api/2024-01/price_rules.json` +
+    `https://${shop}/admin/api/${process.env.SHOPIFY_API_VERSION || "2026-07"}/price_rules.json` +
     `?limit=250&fields=id,title,value_type,value,allocation_method,target_type,usage_count,starts_at,ends_at,status`;
 
   while (url) {
@@ -66,7 +66,7 @@ async function fetchPriceRules(shop: string, token: string): Promise<any[]> {
 
 async function fetchDiscountCodes(shop: string, token: string, priceRuleId: string): Promise<any[]> {
   const res: Response = await fetch(
-    `https://${shop}/admin/api/2024-01/price_rules/${priceRuleId}/discount_codes.json?limit=250`,
+    `https://${shop}/admin/api/${process.env.SHOPIFY_API_VERSION || "2026-07"}/price_rules/${priceRuleId}/discount_codes.json?limit=250`,
     { headers: { "X-Shopify-Access-Token": token } }
   );
   if (!res.ok) return [];

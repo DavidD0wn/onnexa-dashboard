@@ -230,12 +230,16 @@ export async function GET() {
     // Tope de redacciones IA por tanda: cada una tarda varios segundos
     // (Shopify + Groq + pausa). Sin tope, un buzón con 20+ correos dejaba la
     // petición colgada varios minutos y el botón "Sincronizar" parecía trabado.
-    const MAX_AI_POR_TANDA = 8;
-    let aiUsadas = 0;
+    // Cupo de redacciones IA POR BUZÓN (no compartido).
+    // BUG que esto arregla: antes el contador era global y el primer buzón
+    // (Balancea, con 49 sin leer) se comía las 8 plazas, así que Glowmmi
+    // nunca alcanzaba turno y sus correos no generaban borrador.
+    const MAX_AI_POR_BUZON = 6;
     let pendientes = 0;   // correos que quedaron sin procesar en esta tanda
 
     for (const config of configs) {
       let processed = 0, replied = 0, skipped = 0, errors = 0;
+      let aiUsadas = 0;   // ← cupo propio de ESTE buzón
 
       try {
         const token    = await getAccessToken(config);
@@ -251,9 +255,15 @@ export async function GET() {
           // Evitar loop con nuestros propios correos
           if (msg.fromAddress === config.emailAddress || msg.fromAddress === fromEmail) continue;
 
-          // Solo no leídos
-          const unread = msg.status === "0" || msg.status === 0;
-          if (!unread) continue;
+          // ⚠️ NO filtrar por "sin leer".
+          // Antes se saltaban los correos ya leídos: si Fernanda abría su bandeja
+          // en Zoho (algo normal), esos correos quedaban marcados como leídos y el
+          // bot los ignoraba PARA SIEMPRE (pasó con angi2012 y najoais).
+          // El control anti-duplicados real es `exists` (por messageId) de arriba.
+          // Solo se acota por antigüedad para no procesar el histórico completo.
+          const DIAS_MAX = 21;
+          const recibido = msg.receivedTime ? new Date(parseInt(msg.receivedTime)) : null;
+          if (recibido && Date.now() - recibido.getTime() > DIAS_MAX * 24 * 3600 * 1000) continue;
 
           // Descartar ruido (rebotes, publicidad) ANTES de gastar cupo de IA
           const noise = noiseReason(msg.fromAddress ?? "", msg.subject ?? "");
@@ -300,7 +310,7 @@ export async function GET() {
           if (process.env.GROQ_API_KEY) {
             // Alcanzado el tope de la tanda: dejar el resto para el próximo sync
             // (no se crea conversación, así se reprocesa después sin duplicar).
-            if (aiUsadas >= MAX_AI_POR_TANDA) { pendientes++; continue; }
+            if (aiUsadas >= MAX_AI_POR_BUZON) { pendientes++; continue; }
             aiUsadas++;
             try {
               const brandName = brandFromEmail(config.emailAddress);

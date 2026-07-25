@@ -34,6 +34,19 @@ type Totals = {
   netProfit: number; netMargin: number; roas: number | null;
 };
 
+type AdSpendReconciliation = {
+  ok: boolean;
+  sourceAdSpend: number;
+  allocatedAdSpend: number;
+  difference: number;
+  byBrand: Array<{
+    brandId: string;
+    sourceAdSpend: number;
+    allocatedAdSpend: number;
+    difference: number;
+  }>;
+};
+
 // Aggregated row for General view (collapses countries)
 type GeneralRow = Omit<ProductRow, "countryCode" | "countryName" | "storeKey" | "storeName" | "revenueLocal"> & {
   countries: string[]; stores: string[];
@@ -532,6 +545,8 @@ function CustomizeColsModal({
 export default function ProductAnalyticsPage() {
   const [rows,          setRows]          = useState<ProductRow[]>([]);
   const [totals,        setTotals]        = useState<Totals | null>(null);
+  const [adReconciliation, setAdReconciliation] =
+    useState<AdSpendReconciliation | null>(null);
   const [loading,       setLoading]       = useState(true);
   const [error,         setError]         = useState("");
   const [days,          setDays]          = useState(7);
@@ -628,8 +643,10 @@ export default function ProductAnalyticsPage() {
       }
       const res  = await fetch(`/api/products/analytics?${params}`);
       const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Error cargando datos");
       setRows(data.rows ?? []);
       setTotals(data.totals ?? null);
+      setAdReconciliation(data.adSpendReconciliation ?? null);
       const c: Record<string, number> = {};
       (data.rows ?? []).forEach((r: ProductRow) => { if (r.costPerUnit > 0) c[r.name] = r.costPerUnit; });
       setCosts(c);
@@ -1226,6 +1243,9 @@ export default function ProductAnalyticsPage() {
           <KPI label="Revenue total"  value={`$${usd(totals.revenueUsd)}`}  sub={`${totals.uniqueOrders ?? totals.orders} pedidos`} icon={TrendingUp} accent="#0E766E" />
           <KPI label="Ut. Bruta"      value={`$${usd(totals.grossProfit)}`} sub={pct(totals.grossMargin)} icon={DollarSign}  accent={totals.grossProfit >= 0 ? "#10B981" : "#EF4444"} />
           <KPI label="Ut. Neta"       value={`$${usd(totals.netProfit)}`}   sub={pct(totals.netMargin)}   icon={ShoppingCart} accent={totals.netProfit >= 0 ? "#10B981" : "#EF4444"} />
+          <KPI label="Ad Spend Meta"  value={`$${usd(totals.adSpendUsd)}`}
+               sub={adReconciliation?.ok ? "Conciliado con Meta" : `Diferencia $${usd(Math.abs(adReconciliation?.difference ?? 0))}`}
+               icon={DollarSign} accent={adReconciliation?.ok ? "#10B981" : "#EF4444"} />
           <KPI label="ROAS"           value={totals.roas != null ? `${totals.roas.toFixed(2)}x` : "N/A"} sub="Ads Meta" icon={Package} accent="#6366f1" />
           <KPI label={viewMode === "bystore" ? "Tiendas" : "Productos"}
                value={String(viewMode === "bystore" ? storeRows.length : viewMode === "general" ? generalRows.length : countryRows.length)}
@@ -1259,6 +1279,23 @@ export default function ProductAnalyticsPage() {
               <a href="/costos" style={{ color: "#fbbf24", textDecoration: "underline" }}>COGS / Costos</a>.
             </p>
           </div>
+        </div>
+      )}
+
+      {adReconciliation && (
+        <div style={{
+          padding: "10px 14px",
+          borderRadius: 10,
+          marginBottom: 16,
+          background: adReconciliation.ok ? "rgba(16,185,129,0.1)" : "rgba(239,68,68,0.1)",
+          border: `1px solid ${adReconciliation.ok ? "rgba(16,185,129,0.35)" : "rgba(239,68,68,0.35)"}`,
+          color: adReconciliation.ok ? "#6EE7B7" : "#FCA5A5",
+          fontSize: 12,
+          fontWeight: 600,
+        }}>
+          {adReconciliation.ok
+            ? `✓ Ad Spend conciliado: Meta $${usd(adReconciliation.sourceAdSpend)} = productos $${usd(adReconciliation.allocatedAdSpend)}`
+            : `⚠ Ad Spend sin conciliar: diferencia $${usd(Math.abs(adReconciliation.difference))}`}
         </div>
       )}
 

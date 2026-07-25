@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import {
+  getShopifyAccessToken,
+  getShopifyStore,
+} from "@/lib/integrations/shopify";
 import fs from "fs";
 import path from "path";
 
@@ -57,9 +61,10 @@ async function fetchHistoricalRates(from: string, to: string): Promise<Record<st
 
 const STORES = {
   glowmmi: {
+    key:          "glowmmi" as const,
     shop:         "glm-1694.myshopify.com",
-    clientId:     "de9e81a11394aabe11272947a4da0da5",
-    clientSecret: "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",
+    clientId:     process.env.SHOPIFY_GLOWMMI_CLIENT_ID ?? "",
+    clientSecret: process.env.SHOPIFY_GLOWMMI_CLIENT_SECRET ?? "",
     brandId:      "brand_glowmmi",
     brandName:    "Glowmmi",
     color:        "#EC4899",
@@ -67,9 +72,10 @@ const STORES = {
     exchangeRate: FALLBACK_RATE,  // overridden with live rate at request time
   },
   balancea: {
+    key:          "balancea" as const,
     shop:         "mp0vab-bw.myshopify.com",
-    clientId:     "b06d2c272b5428556744aa476b8467f1",
-    clientSecret: "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",
+    clientId:     process.env.SHOPIFY_BALANCEA_CLIENT_ID ?? "",
+    clientSecret: process.env.SHOPIFY_BALANCEA_CLIENT_SECRET ?? "",
     brandId:      "brand_balancea",
     brandName:    "Balancea",
     color:        "#10B981",
@@ -106,6 +112,25 @@ const CAMPAIGN_CODE_KEYWORDS: Record<string, string[]> = {
   "db01":  ["airi"],
 };
 
+// productId is assigned during the Meta sync from the campaign code. Prefer
+// this deterministic mapping over fuzzy text matching whenever it exists.
+const PRODUCT_ID_KEYWORDS: Record<string, string[]> = {
+  prod_glw_7966465949744: ["jiyu", "toner pads"],
+  prod_glw_7959152361520: ["glowfill"],
+  prod_glw_7909382848560: ["instantlift"],
+  prod_glw_7931502067760: ["deep collagen"],
+  prod_glw_7885424525360: ["retinal shot", "retinal"],
+  prod_glw_7901472784432: ["revivelift"],
+  prod_glw_7810722168880: ["mascarilla coreana"],
+  bal_holy_basil: ["holy basil"],
+  bal_herbiotic: ["herbiotic"],
+  bal_clearstem: ["clearstem"],
+  bal_cutting: ["cutting"],
+  bal_curva: ["curva"],
+  bal_fertil: ["fertil"],
+  bal_airi: ["airi"],
+};
+
 /**
  * Manual aliases: when the Shopify product name in orders differs from the URL handle.
  * Key = lowercase keyword from product name (partial match OK)
@@ -136,18 +161,10 @@ const COUNTRY_CFG: Record<string, {
   CL: { name: "Chile",   currency: "CLP", gatewayPct: 0.029, gatewayFixed: 0.30, shipping: 6.00, displayRate: 900   },
 };
 
-async function getToken(store: typeof STORES["glowmmi"]) {
-  const isBalancea = store.shop.includes("mp0vab");
-  const body = isBalancea
-    ? new URLSearchParams({ grant_type: "client_credentials", client_id: store.clientId, client_secret: store.clientSecret }).toString()
-    : JSON.stringify({ client_id: store.clientId, client_secret: store.clientSecret, grant_type: "client_credentials" });
-  const res = await fetch(`https://${store.shop}/admin/oauth/access_token`, {
-    method: "POST",
-    headers: { "Content-Type": isBalancea ? "application/x-www-form-urlencoded" : "application/json" },
-    body,
-  });
-  if (!res.ok) throw new Error(`Auth error ${store.shop}`);
-  return (await res.json()).access_token as string;
+type AnalyticsStore = (typeof STORES)[keyof typeof STORES];
+
+async function getToken(store: AnalyticsStore) {
+  return getShopifyAccessToken(getShopifyStore(store.key));
 }
 
 function bundleSize(name: string, variant: string): number {
@@ -201,12 +218,13 @@ ORDER BY sessions DESC
 LIMIT 500`;
 
   try {
-    const res = await fetch(`https://${shop}/admin/api/unstable/graphql.json`, {
+    const res = await fetch(`https://${shop}/admin/api/${process.env.SHOPIFY_API_VERSION || "2026-07"}/graphql.json`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
       body: JSON.stringify({
         query: `{ shopifyqlQuery(query: ${JSON.stringify(ql)}) { parseErrors tableData { columns { name } rows } } }`,
       }),
+      signal: AbortSignal.timeout(20_000),
     });
     if (!res.ok) {
       console.warn(`[funnel] ${shop} HTTP ${res.status}`);
@@ -271,18 +289,23 @@ async function fetchOrders(shop: string, token: string, since: string, until: st
   const all: any[] = [];
 
   let url: string | null =
-    `https://${shop}/admin/api/2024-01/orders.json` +
+    `https://${shop}/admin/api/${process.env.SHOPIFY_API_VERSION || "2026-07"}/orders.json` +
     `?status=any&financial_status=paid,partially_paid,partially_refunded` +
     `&created_at_min=${since}&created_at_max=${until}&limit=250` +
     `&fields=id,created_at,line_items,shipping_address,shipping_lines`;
+  let pages = 0;
   while (url) {
-    const res = await fetch(url, { headers: { "X-Shopify-Access-Token": token } });
-    if (!res.ok) break;
+    if (++pages > 100) throw new Error(`Paginación de órdenes anormal para ${shop}`);
+    const res: Response = await fetch(url, {
+      headers: { "X-Shopify-Access-Token": token },
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!res.ok) throw new Error(`Shopify ${shop} respondió HTTP ${res.status}`);
     const data = await res.json();
     for (const o of (data.orders ?? [])) {
       if (!seen.has(String(o.id))) { seen.add(String(o.id)); all.push(o); }
     }
-    const next = (res.headers.get("Link") ?? "").match(/<([^>]+)>;\s*rel="next"/);
+    const next: RegExpMatchArray | null = (res.headers.get("Link") ?? "").match(/<([^>]+)>;\s*rel="next"/);
     url = next ? next[1] : null;
   }
   return all;
@@ -299,10 +322,13 @@ async function fetchOrdersByIds(shop: string, token: string, ids: string[]): Pro
   for (let i = 0; i < ids.length; i += 50) {
     const chunk = ids.slice(i, i + 50).join(",");
     const url =
-      `https://${shop}/admin/api/2024-01/orders.json` +
+      `https://${shop}/admin/api/${process.env.SHOPIFY_API_VERSION || "2026-07"}/orders.json` +
       `?status=any&ids=${chunk}&limit=250` +
       `&fields=id,created_at,line_items,shipping_address,shipping_lines,total_price`;
-    const res = await fetch(url, { headers: { "X-Shopify-Access-Token": token } });
+    const res: Response = await fetch(url, {
+      headers: { "X-Shopify-Access-Token": token },
+      signal: AbortSignal.timeout(30_000),
+    });
     if (!res.ok) continue;
     const data = await res.json();
     out.push(...(data.orders ?? []));
@@ -320,10 +346,13 @@ async function fetchOrderUsdAmounts(
 ): Promise<Record<string, number>> {
   const map: Record<string, number> = {};
   let url: string | null =
-    `https://${shop}/admin/api/2024-01/shopify_payments/balance/transactions.json?limit=250`;
+    `https://${shop}/admin/api/${process.env.SHOPIFY_API_VERSION || "2026-07"}/shopify_payments/balance/transactions.json?limit=250`;
 
   while (url) {
-    const res = await fetch(url, { headers: { "X-Shopify-Access-Token": token } });
+    const res: Response = await fetch(url, {
+      headers: { "X-Shopify-Access-Token": token },
+      signal: AbortSignal.timeout(30_000),
+    });
     if (!res.ok) break;
     const data = await res.json();
     const txs: any[] = data.transactions ?? data.balance_transactions ?? [];
@@ -339,7 +368,7 @@ async function fetchOrderUsdAmounts(
       map[orderId] = (map[orderId] ?? 0) + parseFloat(tx.amount ?? "0");
     }
     if (pastRange) break;
-    const next = (res.headers.get("Link") ?? "").match(/<([^>]+)>;\s*rel="next"/);
+    const next: RegExpMatchArray | null = (res.headers.get("Link") ?? "").match(/<([^>]+)>;\s*rel="next"/);
     url = next ? next[1] : null;
   }
   return map;
@@ -485,7 +514,16 @@ function calcDataQuality(cogsUsd: number, adSpendUsd: number, isDigital: boolean
 // ─── GET ───────────────────────────────────────────────────────────────────────
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
-  const storeKey      = searchParams.get("store") ?? "all";
+  const requestedStore = searchParams.get("store");
+  const requestedBrand = searchParams.get("brandId");
+  const storeKey =
+    requestedStore && requestedStore !== "all"
+      ? requestedStore
+      : requestedBrand === "brand_glowmmi"
+        ? "glowmmi"
+        : requestedBrand === "brand_balancea"
+          ? "balancea"
+          : "all";
   const countryParam  = (searchParams.get("country") ?? "all").toUpperCase();
 
   const fromParam = searchParams.get("from");
@@ -515,6 +553,18 @@ export async function GET(req: NextRequest) {
     // (using -06:00 offset would make dateFrom = startMxT06:00Z, excluding the midnight UTC row)
     dateFrom = new Date(startMx + "T00:00:00Z");
     dateTo   = new Date(todayMx + "T23:59:59Z");
+  }
+
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+  } catch {
+    return NextResponse.json(
+      {
+        error:
+          "La base de datos no está disponible. Product Analytics no mostrará cifras parciales.",
+      },
+      { status: 503 },
+    );
   }
 
   const targetStores = storeKey === "all"
@@ -554,7 +604,7 @@ export async function GET(req: NextRequest) {
     countryCode: string; countryName: string;
     revenueUsd: number; revenueLocal: number;
     units: number; orders: number; lastSeen: string;
-    cogsUsd: number;
+    cogsUsd: number; unitPriceUsd: number;
   }> = {};
 
   // Revenue per brand+country for proportional ad spend distribution
@@ -565,26 +615,16 @@ export async function GET(req: NextRequest) {
   // from DailyMetric so totals match the dashboard exactly.
   // Key: productKey → { "brandId||YYYY-MM-DD||countryCode": revenueUsd }
   const productDayRevenue: Record<string, Record<string, number>> = {};
+  const storeErrors: Array<{ brandId: string; shop: string; error: string }> = [];
 
   for (const [, store] of targetStores) {
     try {
       const token  = await getToken(store);
-      const [ordersCreated, funnel, orderUsdMap] = await Promise.all([
+      const [orders, funnel] = await Promise.all([
         fetchOrders(store.shop, token, since, until),
         fetchFunnelData(store.shop, token, since, until),
-        // Actual USD settlement amounts from Balance Transactions (charges in the period).
-        // Used both to fix the exchange rate AND to find orders charged-today-created-earlier.
-        fetchOrderUsdAmounts(store.shop, token, fromDateStr, toDateStr),
       ]);
       funnelByStore[store.brandId] = funnel;
-
-      // Shopify Analytics attributes revenue to the CHARGE date. Some orders were
-      // created before the period but charged within it — pull those in by ID so
-      // our totals match Shopify (no missing/extra orders).
-      const createdIds = new Set(ordersCreated.map((o: any) => String(o.id)));
-      const chargedButMissing = Object.keys(orderUsdMap).filter(id => !createdIds.has(id));
-      const extraOrders = await fetchOrdersByIds(store.shop, token, chargedButMissing);
-      const orders = [...ordersCreated, ...extraOrders];
 
       for (const order of orders) {
         const rawCC = ((order.shipping_address?.country_code ?? "MX") as string).toUpperCase();
@@ -605,15 +645,9 @@ export async function GET(req: NextRequest) {
           ? (historicalRates[orderDate] ?? store.exchangeRate)
           : 1;
 
-        // USD settlement amount from Shopify Balance Transactions.
-        // This is the EXACT amount Shopify collected — no exchange rate error.
-        // Falls back to MXN total_price / market rate if not in balance txs.
-        const orderTotalMxn   = parseFloat(order.total_price ?? "0");
-        const orderSettledUsd = orderUsdMap[String(order.id)];
-        // If we have the settlement amount, compute an order-level rate for proportional distribution
-        const orderEffectiveRate = orderSettledUsd && orderTotalMxn > 0
-          ? orderTotalMxn / orderSettledUsd
-          : orderRate;
+        // Dashboard and Product Analytics both attribute by order creation date
+        // and use the same historical daily MXN/USD rate.
+        const orderEffectiveRate = orderRate;
 
         // Real shipping charged to customer for this order (converted to USD)
         const orderShippingUsd = (order.shipping_lines ?? []).reduce(
@@ -685,7 +719,23 @@ export async function GET(req: NextRequest) {
       }
     } catch (e: any) {
       console.error(`[product-analytics] ${store.shop}:`, e.message);
+      storeErrors.push({
+        brandId: store.brandId,
+        shop: store.shop,
+        error: e instanceof Error ? e.message : String(e),
+      });
     }
+  }
+
+  if (storeErrors.length > 0) {
+    return NextResponse.json(
+      {
+        error:
+          "No fue posible cargar todas las tiendas. Se descartó la respuesta parcial para evitar cifras incorrectas.",
+        stores: storeErrors,
+      },
+      { status: 502 },
+    );
   }
 
   // ── DailyMetric calibration — real fees, shipping, returns from the synced DB ──
@@ -737,8 +787,18 @@ export async function GET(req: NextRequest) {
   // ── Ad spend — per country when available ──────────────────────────────────
   const adRows   = await prisma.adSpend.findMany({
     where: { brandId: { in: brandIds }, platform: "facebook", date: { gte: dateFrom, lte: dateTo } },
-    select: { brandId: true, countryId: true, spend: true, purchases: true, conversionValue: true, campaignName: true, adsetName: true, adName: true },
+    select: { brandId: true, countryId: true, productId: true, spend: true, purchases: true, conversionValue: true, campaignName: true, adsetName: true, adName: true },
   });
+  const adCountryCode = (row: (typeof adRows)[number]): string | null => {
+    // Balancea is a single-country Shopify store. Meta campaigns can be tagged
+    // US/MX, but their spend belongs to the same MX product revenue rows.
+    if (row.brandId === "brand_balancea") return "MX";
+    return row.countryId ? (codeById[row.countryId] ?? null) : null;
+  };
+  const relevantAdRows =
+    countryParam === "ALL"
+      ? adRows
+      : adRows.filter((row) => adCountryCode(row) === countryParam);
 
   const productAdSpend: Record<string, number> = {};
   const productCampaignPurchases: Record<string, number> = {};
@@ -759,10 +819,16 @@ export async function GET(req: NextRequest) {
       const p = products[k];
       const norm = normalizeName(p.name);
       const kws  = norm.split(" ").filter((w: string) => w.length >= 4);
-      return { keywords: [norm, ...kws], key: k, brandId: p.brandId, countryCode: p.countryCode };
+      return {
+        normalizedName: norm,
+        keywords: [norm, ...kws],
+        key: k,
+        brandId: p.brandId,
+        countryCode: p.countryCode,
+      };
     });
 
-  for (const row of adRows) {
+  for (const row of relevantAdRows) {
     let adKws = extractAdKeywords(row);
     // If campaign contains a known product code (e.g. "INS01", "TP01"), expand adKws
     // with that product's name keywords so it can match product rows correctly.
@@ -771,35 +837,64 @@ export async function GET(req: NextRequest) {
       if (resolved) { adKws = [...adKws, ...resolved]; break; }
     }
     // Map countryId → code. If no countryId or not found → null (unspecified)
-    const cc: string | null = row.countryId ? (codeById[row.countryId] ?? null) : null;
+    const cc = adCountryCode(row);
     const bck = `${row.brandId}||${cc ?? "ALL"}`;
+    const deterministicKeywords = row.productId
+      ? PRODUCT_ID_KEYWORDS[row.productId] ?? []
+      : [];
+    const matchesProduct = (entry: (typeof nameToKey)[number]) => {
+      if (deterministicKeywords.length > 0) {
+        return deterministicKeywords.some((keyword) =>
+          entry.normalizedName.includes(normalizeName(keyword)),
+        );
+      }
+      return entry.keywords.some(
+        (keyword) =>
+          adKws.includes(keyword) ||
+          adKws.some(
+            (adKeyword) =>
+              adKeyword.includes(keyword) || keyword.includes(adKeyword),
+          ),
+      );
+    };
 
     if (cc) {
-      // ── Campaign has a specific country → assign to first matching product of that country ──
-      let matched = false;
-      for (const { keywords, key, brandId, countryCode } of nameToKey) {
-        if (brandId !== row.brandId) continue;
-        if (countryCode !== cc) continue;
-        if (keywords.some(kw => adKws.includes(kw) || adKws.some(ak => ak.includes(kw) || kw.includes(ak)))) {
-          productAdSpend[key] = (productAdSpend[key] ?? 0) + row.spend;
-          productCampaignPurchases[key] = (productCampaignPurchases[key] ?? 0) + (row.purchases ?? 0);
-          productCampaignConversionValue[key] = (productCampaignConversionValue[key] ?? 0) + (row.conversionValue ?? 0);
-          matched = true;
-          break;
+      // A country-specific campaign belongs to exactly one product row.
+      const matches = nameToKey.filter(
+        (entry) =>
+          entry.brandId === row.brandId &&
+          entry.countryCode === cc &&
+          matchesProduct(entry),
+      );
+      if (matches.length > 0) {
+        const matchRevenue = matches.reduce(
+          (sum, entry) => sum + (products[entry.key]?.revenueUsd ?? 0),
+          0,
+        );
+        for (const match of matches) {
+          const share =
+            matchRevenue > 0
+              ? (products[match.key]?.revenueUsd ?? 0) / matchRevenue
+              : 1 / matches.length;
+          productAdSpend[match.key] =
+            (productAdSpend[match.key] ?? 0) + row.spend * share;
+          productCampaignPurchases[match.key] =
+            (productCampaignPurchases[match.key] ?? 0) +
+            (row.purchases ?? 0) * share;
+          productCampaignConversionValue[match.key] =
+            (productCampaignConversionValue[match.key] ?? 0) +
+            (row.conversionValue ?? 0) * share;
         }
-      }
-      if (!matched) {
+      } else {
         unmatchedBrandCountrySpend[bck] = (unmatchedBrandCountrySpend[bck] ?? 0) + row.spend;
       }
     } else {
       // ── Campaign has NO country → distribute proportionally by revenue across ALL matching products ──
       // This prevents a single country from arbitrarily absorbing spend for global campaigns.
       const matchingKeys: string[] = [];
-      for (const { keywords, key, brandId } of nameToKey) {
-        if (brandId !== row.brandId) continue;
-        if (keywords.some(kw => adKws.includes(kw) || adKws.some(ak => ak.includes(kw) || kw.includes(ak)))) {
-          matchingKeys.push(key);
-        }
+      for (const entry of nameToKey) {
+        if (entry.brandId !== row.brandId) continue;
+        if (matchesProduct(entry)) matchingKeys.push(entry.key);
       }
       if (matchingKeys.length === 0) {
         unmatchedBrandCountrySpend[bck] = (unmatchedBrandCountrySpend[bck] ?? 0) + row.spend;
@@ -815,6 +910,23 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  const eligibleRevenueByBrandCountry: Record<string, number> = {};
+  const eligibleRevenueByBrand: Record<string, number> = {};
+  for (const product of Object.values(products)) {
+    if (
+      isDigitalProduct(product.name) ||
+      isUpsellProduct(product.name) ||
+      product.revenueUsd <= 0
+    ) {
+      continue;
+    }
+    const countryKey = `${product.brandId}||${product.countryCode}`;
+    eligibleRevenueByBrandCountry[countryKey] =
+      (eligibleRevenueByBrandCountry[countryKey] ?? 0) + product.revenueUsd;
+    eligibleRevenueByBrand[product.brandId] =
+      (eligibleRevenueByBrand[product.brandId] ?? 0) + product.revenueUsd;
+  }
+
   // ── Build final rows ────────────────────────────────────────────────────────
   const rows = Object.values(products).map(p => {
     const cogsUsd  = p.cogsUsd;
@@ -826,15 +938,27 @@ export async function GET(req: NextRequest) {
     const isDigital   = isDigitalProduct(p.name);
     const isUpsell    = !isDigital && isUpsellProduct(p.name);
 
-    // Proportional: unmatched for this brand+country PLUS unmatched with no country
+    // Proportional fallback uses only physical products. Country-specific and
+    // global unmatched pools have separate denominators so spend is never
+    // duplicated across countries or diluted into ebooks/upsells.
     const bck         = `${p.brandId}||${p.countryCode}`;
     const bckAll      = `${p.brandId}||ALL`;
-    const unmatched   = (unmatchedBrandCountrySpend[bck] ?? 0) + (unmatchedBrandCountrySpend[bckAll] ?? 0);
     const bcRevenue   = brandCountryRevenue[bck] ?? 0;
-    const revShare    = bcRevenue > 0 ? p.revenueUsd / bcRevenue : 0;
     // Digitales y upsells: 0 ad spend — no tienen campaña propia.
     const directSpend = (isDigital || isUpsell) ? 0 : (productAdSpend[key] ?? 0);
-    const proratSpend = (!isDigital && !isUpsell && p.orders > 1) ? unmatched * revShare : 0;
+    const countryEligibleRevenue = eligibleRevenueByBrandCountry[bck] ?? 0;
+    const brandEligibleRevenue = eligibleRevenueByBrand[p.brandId] ?? 0;
+    const countryProrated =
+      !isDigital && !isUpsell && countryEligibleRevenue > 0
+        ? (unmatchedBrandCountrySpend[bck] ?? 0) *
+          (p.revenueUsd / countryEligibleRevenue)
+        : 0;
+    const globalProrated =
+      !isDigital && !isUpsell && brandEligibleRevenue > 0
+        ? (unmatchedBrandCountrySpend[bckAll] ?? 0) *
+          (p.revenueUsd / brandEligibleRevenue)
+        : 0;
+    const proratSpend = countryProrated + globalProrated;
     const adSpendUsd  = directSpend + proratSpend;
 
     // ── Calibrate fees, shipping, returns from DailyMetric (effective rate approach) ──
@@ -977,6 +1101,24 @@ export async function GET(req: NextRequest) {
   // (totals.orders above counts product-line appearances, so an order with 3 products
   //  inflates it 3×. uniqueOrders is the real Shopify order count.)
   const uniqueOrders = Object.values(brandCountryOrderIds).reduce((s, set) => s + set.size, 0);
+  const allocationByBrand = brandIds.map((brandId) => {
+    const sourceAdSpend = relevantAdRows
+      .filter((row) => row.brandId === brandId)
+      .reduce((sum, row) => sum + row.spend, 0);
+    const allocatedAdSpend = rows
+      .filter((row) => row.brandId === brandId)
+      .reduce((sum, row) => sum + row.adSpendUsd, 0);
+    return {
+      brandId,
+      sourceAdSpend,
+      allocatedAdSpend,
+      difference: sourceAdSpend - allocatedAdSpend,
+    };
+  });
+  const allocationDifference = allocationByBrand.reduce(
+    (sum, brand) => sum + brand.difference,
+    0,
+  );
 
   return NextResponse.json({
     rows,
@@ -986,6 +1128,15 @@ export async function GET(req: NextRequest) {
       grossMargin: totals.revenueUsd > 0 ? (totals.grossProfit / totals.revenueUsd) * 100 : 0,
       netMargin:   totals.revenueUsd > 0 ? (totals.netProfit   / totals.revenueUsd) * 100 : 0,
       roas:        totals.adSpendUsd > 0 ? totals.revenueUsd / totals.adSpendUsd : null,
+    },
+    adSpendReconciliation: {
+      ok: allocationByBrand.every(
+        (brand) => Math.abs(brand.difference) < 0.01,
+      ),
+      sourceAdSpend: relevantAdRows.reduce((sum, row) => sum + row.spend, 0),
+      allocatedAdSpend: totals.adSpendUsd,
+      difference: allocationDifference,
+      byBrand: allocationByBrand,
     },
   });
 }

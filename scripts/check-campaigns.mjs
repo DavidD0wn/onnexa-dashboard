@@ -1,5 +1,8 @@
+import "dotenv/config";
+
 // Muestra campañas recientes de cada cuenta para inferir la marca
 const TOKEN = process.env.META_ADS_USER_TOKEN;
+const META_VERSION = process.env.META_GRAPH_API_VERSION || "v19.0";
 
 const ACCOUNTS = [
   "act_5751316951640293",
@@ -8,8 +11,8 @@ const ACCOUNTS = [
 ];
 
 for (const acc of ACCOUNTS) {
-  const url = `https://graph.facebook.com/v19.0/${acc}/campaigns?fields=name,status,effective_status&limit=15&access_token=${TOKEN}`;
-  const res = await fetch(url);
+  const url = `https://graph.facebook.com/${META_VERSION}/${acc}/campaigns?fields=name,status,effective_status&limit=15`;
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${TOKEN}` } });
   const data = await res.json();
   console.log(`\n══ ${acc} ══`);
   if (data.error) { console.log("  ❌", data.error.message); continue; }

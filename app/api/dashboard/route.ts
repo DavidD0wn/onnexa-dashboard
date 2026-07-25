@@ -9,7 +9,8 @@ function utcDayEnd(localDate: Date): Date {
 }
 
 export async function GET(req: Request) {
-  const { searchParams } = new URL(req.url);
+  try {
+    const { searchParams } = new URL(req.url);
   const brandId   = searchParams.get("brand");
   const countryId = searchParams.get("country");
 
@@ -206,17 +207,27 @@ export async function GET(req: Request) {
     byCountry[key].fees     += m.fees;
   }
 
-  return NextResponse.json({
-    totals: {
-      ...totals,
-      margin, realMargin, cpa, roas, mer, aov,
-      cpaBe, roasBe, profitPerOrder, realProfitPerOrder,
-      chargebacks: chargebackTotal,
-      realProfit,
-    },
-    chartData,
-    byBrand:   Object.values(byBrand),
-    byCountry: Object.values(byCountry),
-    tasks,
-  });
+    return NextResponse.json({
+      totals: {
+        ...totals,
+        margin, realMargin, cpa, roas, mer, aov,
+        cpaBe, roasBe, profitPerOrder, realProfitPerOrder,
+        chargebacks: chargebackTotal,
+        realProfit,
+      },
+      chartData,
+      byBrand:   Object.values(byBrand),
+      byCountry: Object.values(byCountry),
+      tasks,
+    });
+  } catch (error) {
+    console.error(
+      "[Dashboard API]",
+      error instanceof Error ? error.message : String(error),
+    );
+    return NextResponse.json(
+      { error: "No se pudieron cargar los indicadores. Intenta nuevamente." },
+      { status: 503 },
+    );
+  }
 }

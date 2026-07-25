@@ -3,8 +3,11 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  // En runtime (Vercel serverless) usa la conexión POOLED de Neon → no agota
+  // conexiones. Las migraciones usan la conexión DIRECTA (directUrl).
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model Brand {

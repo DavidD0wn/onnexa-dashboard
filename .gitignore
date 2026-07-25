@@ -54,3 +54,16 @@ scripts/*.DESACTIVADO
 
 # logs locales
 onnexa-next.log
+
+# Respuestas temporales de diagnostico
+/.next-log.txt
+/tmp*.json
+/dash*.json
+/d7.json
+
+# datos temporales de debug
+/d7.json
+/dash30.json
+/dash_check.json
+/*temppa*.json
+.next-log.txt

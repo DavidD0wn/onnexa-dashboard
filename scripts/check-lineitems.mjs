@@ -2,6 +2,9 @@
  * Verifica el formato real de los line items de Shopify (título + variante + qty)
  * para validar cómo el motor de COGS resuelve los costos por bundle.
  */
+import "dotenv/config";
+
+const SHOPIFY_VERSION = process.env.SHOPIFY_API_VERSION || "2026-07";
 const STORES = [
   { name: "Glowmmi", shop: "glm-1694.myshopify.com", clientId: process.env.SHOPIFY_GLOWMMI_CLIENT_ID, clientSecret: process.env.SHOPIFY_GLOWMMI_CLIENT_SECRET, authType: "json" },
   { name: "Balancea", shop: "mp0vab-bw.myshopify.com", clientId: process.env.SHOPIFY_BALANCEA_CLIENT_ID, clientSecret: process.env.SHOPIFY_BALANCEA_CLIENT_SECRET, authType: "urlencoded" },
@@ -20,7 +23,7 @@ for (const s of STORES) {
   const token = await getToken(s);
   const since = new Date(Date.now() - 14 * 864e5).toISOString();
   const res = await fetch(
-    `https://${s.shop}/admin/api/2024-01/orders.json?status=any&financial_status=paid&created_at_min=${since}&limit=30&fields=id,line_items`,
+    `https://${s.shop}/admin/api/${SHOPIFY_VERSION}/orders.json?status=any&financial_status=paid&created_at_min=${since}&limit=30&fields=id,line_items`,
     { headers: { "X-Shopify-Access-Token": token } }
   );
   const data = await res.json();

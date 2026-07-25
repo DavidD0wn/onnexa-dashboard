@@ -7,8 +7,8 @@ import { EBOOK_PRODUCTS, detectEbooks } from "@/lib/ebook-products";
 const prisma = new PrismaClient();
 
 const SHOP       = "mp0vab-bw.myshopify.com";
-const CLIENT_ID  = "b06d2c272b5428556744aa476b8467f1";
-const CLIENT_SEC = "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";
+const CLIENT_ID  = process.env.SHOPIFY_BALANCEA_CLIENT_ID ?? "";
+const CLIENT_SEC = process.env.SHOPIFY_BALANCEA_CLIENT_SECRET ?? "";
 
 // ── SMTP transporter ──────────────────────────────────────────
 function createTransporter() {
@@ -41,7 +41,7 @@ async function getShopifyToken(): Promise<string> {
 async function fetchOrdersForProduct(token: string, keyword: string): Promise<any[]> {
   const all: any[] = [];
   let url: string | null =
-    `https://${SHOP}/admin/api/2024-01/orders.json` +
+    `https://${SHOP}/admin/api/${process.env.SHOPIFY_API_VERSION || "2026-07"}/orders.json` +
     `?status=any&financial_status=paid,partially_paid,partially_refunded&limit=250` +
     `&fields=id,order_number,created_at,customer,email,line_items`;
 

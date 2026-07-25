@@ -14,16 +14,16 @@ import { prisma } from "@/lib/prisma";
 const STORES = {
   glowmmi: {
     shop: "glm-1694.myshopify.com",
-    clientId: "de9e81a11394aabe11272947a4da0da5",
-    clientSecret: "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",
+    clientId: process.env.SHOPIFY_GLOWMMI_CLIENT_ID ?? "",
+    clientSecret: process.env.SHOPIFY_GLOWMMI_CLIENT_SECRET ?? "",
     authType: "json" as const,
     brandId: "brand_glowmmi",
     supportsPayments: true,
   },
   balancea: {
     shop: "mp0vab-bw.myshopify.com",
-    clientId: "b06d2c272b5428556744aa476b8467f1",
-    clientSecret: "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",
+    clientId: process.env.SHOPIFY_BALANCEA_CLIENT_ID ?? "",
+    clientSecret: process.env.SHOPIFY_BALANCEA_CLIENT_SECRET ?? "",
     authType: "urlencoded" as const,
     brandId: "brand_balancea",
     supportsPayments: true,  // Balancea has Shopify Payments active
@@ -67,7 +67,7 @@ async function getToken(shop: string, clientId: string, clientSecret: string, au
 async function fetchDisputes(shop: string, token: string): Promise<any[]> {
   const all: any[] = [];
   let url: string | null =
-    `https://${shop}/admin/api/2024-01/shopify_payments/disputes.json?limit=250`;
+    `https://${shop}/admin/api/${process.env.SHOPIFY_API_VERSION || "2026-07"}/shopify_payments/disputes.json?limit=250`;
 
   while (url) {
     const res: Response = await fetch(url, { headers: { "X-Shopify-Access-Token": token } });

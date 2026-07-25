@@ -64,6 +64,13 @@ interface ProductAnalytics {
   costTiers: Array<{ qty: string; costUsd: number; landedUsd: number }>;
 }
 
+type AdSpendReconciliation = {
+  ok: boolean;
+  sourceAdSpend: number;
+  allocatedAdSpend: number;
+  difference: number;
+};
+
 /* ─── Helper ─────────────────────────────────────────────────── */
 function StatusBadge({ s }: { s: string }) {
   const cfg = STATUS_CFG[s] ?? STATUS_CFG["active"];
@@ -293,8 +300,13 @@ function ProductRow({ p, fmtC }: { p: ProductAnalytics; fmtC: (v: number) => str
 export default function ProductosPage() {
   const { fmtC } = useCurrency();
   const { days, isCustom, customFrom, customTo } = useFilters();
-  const [data, setData] = useState<{ products: ProductAnalytics[]; totals: any } | null>(null);
+  const [data, setData] = useState<{
+    products: ProductAnalytics[];
+    totals: any;
+    adSpendReconciliation: AdSpendReconciliation | null;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [selectedBrand, setSelectedBrand] = useState("all");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -305,6 +317,7 @@ export default function ProductosPage() {
 
   const load = useCallback(() => {
     setLoading(true);
+    setError("");
     const params = new URLSearchParams();
     if (isCustom && customFrom && customTo) {
       params.set("from", customFrom);
@@ -314,7 +327,11 @@ export default function ProductosPage() {
     }
     if (selectedBrand !== "all") params.set("brandId", selectedBrand);
     fetch(`/api/products/analytics?${params}`)
-      .then((r) => r.json())
+      .then(async (r) => {
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error ?? "Error cargando productos");
+        return data;
+      })
       .then((d) => {
         // API returns { rows, totals } — map to expected shape { products, totals }
         const rawRows = d.rows ?? d.products ?? [];
@@ -345,10 +362,21 @@ export default function ProductosPage() {
           hasData:      (r.revenueUsd ?? 0) > 0,
           costTiers:    r.costTiers   ?? [],
         }));
-        setData({ products, totals: d.totals ?? {} });
+        setData({
+          products,
+          totals: d.totals ?? {},
+          adSpendReconciliation: d.adSpendReconciliation ?? null,
+        });
         setLoading(false);
       })
-      .catch(() => setLoading(false));
+      .catch((loadError) => {
+        setError(
+          loadError instanceof Error
+            ? loadError.message
+            : "Error cargando productos",
+        );
+        setLoading(false);
+      });
   }, [days, selectedBrand, isCustom, customFrom, customTo]);
 
   useEffect(() => { load(); }, [load]);
@@ -437,13 +465,42 @@ export default function ProductosPage() {
 
       <div style={{ padding: "24px 32px", display: "flex", flexDirection: "column", gap: 20 }}>
 
+        {error && (
+          <div className="card" style={{
+            padding: "12px 16px",
+            borderColor: "#FCA5A5",
+            color: "#B91C1C",
+            fontSize: 12,
+            fontWeight: 700,
+          }}>
+            {error}
+          </div>
+        )}
+
         {/* ── KPI row ─────────────────────────────────────────── */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 14 }}>
           <KpiMini label="Revenue Total"  value={fmtC(data?.totals?.revenueUsd ?? data?.totals?.revenue ?? 0)} sub={`${fmtNum(total, 0)} productos`}  color="var(--blue)" />
           <KpiMini label="Utilidad Neta"  value={fmtC(data?.totals?.netProfit ?? data?.totals?.profit ?? 0)} sub="Revenue − COGS − Ads − Fees"       color={(data?.totals?.netProfit ?? data?.totals?.profit ?? 0) >= 0 ? "var(--green)" : "var(--red)"} />
+          <KpiMini label="Ad Spend Meta" value={fmtC(data?.totals?.adSpendUsd ?? 0)}
+            sub={data?.adSpendReconciliation?.ok ? "Conciliado con Meta" : "Revisar diferencia"}
+            color={data?.adSpendReconciliation?.ok ? "var(--green)" : "var(--red)"} />
           <KpiMini label="Margen Prom."   value={fmtPct(avgMargin, 1)}    sub={`${winners} ganadores · ${inTest} en test`} color={avgMargin >= 35 ? "var(--green)" : avgMargin >= 20 ? "var(--yellow)" : "var(--red)"} />
           <KpiMini label="COGS Total"     value={fmtC(data?.totals?.cogsUsd ?? 0)} sub={`${fisicos.length} físicos con costo`}  color="var(--yellow)" />
         </div>
+
+        {data?.adSpendReconciliation && (
+          <div className="card" style={{
+            padding: "10px 14px",
+            borderColor: data.adSpendReconciliation.ok ? "#6EE7B7" : "#FCA5A5",
+            color: data.adSpendReconciliation.ok ? "#047857" : "#B91C1C",
+            fontSize: 12,
+            fontWeight: 700,
+          }}>
+            {data.adSpendReconciliation.ok
+              ? `✓ Meta ${fmtC(data.adSpendReconciliation.sourceAdSpend)} = productos ${fmtC(data.adSpendReconciliation.allocatedAdSpend)}`
+              : `⚠ Diferencia de Ad Spend: ${fmtC(Math.abs(data.adSpendReconciliation.difference))}`}
+          </div>
+        )}
 
         {/* ── Breakdown físico / digital ───────────────────── */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>

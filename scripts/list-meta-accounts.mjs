@@ -1,8 +1,11 @@
+import "dotenv/config";
+
 // Lista TODAS las cuentas publicitarias a las que el token tiene acceso real
 const TOKEN = process.env.META_ADS_USER_TOKEN;
+const META_VERSION = process.env.META_GRAPH_API_VERSION || "v19.0";
 
-const url = `https://graph.facebook.com/v19.0/me/adaccounts?fields=id,name,currency,account_status&limit=100&access_token=${TOKEN}`;
-const res = await fetch(url);
+const url = `https://graph.facebook.com/${META_VERSION}/me/adaccounts?fields=id,name,currency,account_status&limit=100`;
+const res = await fetch(url, { headers: { Authorization: `Bearer ${TOKEN}` } });
 const data = await res.json();
 
 if (data.error) {

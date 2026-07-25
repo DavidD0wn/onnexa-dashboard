@@ -41,7 +41,7 @@ async function getToken(store: typeof STORES["glowmmi"]) {
 
 async function fetchOrders(shop: string, token: string, since: string, until: string) {
   const allOrders: any[] = [];
-  let url = `https://${shop}/admin/api/2024-01/orders.json?status=any&financial_status=paid,partially_paid&created_at_min=${since}&created_at_max=${until}&limit=250&fields=id,name,created_at,total_price,line_items,tags`;
+  let url = `https://${shop}/admin/api/${process.env.SHOPIFY_API_VERSION || "2026-07"}/orders.json?status=any&financial_status=paid,partially_paid&created_at_min=${since}&created_at_max=${until}&limit=250&fields=id,name,created_at,total_price,line_items,tags`;
 
   while (url) {
     const res = await fetch(url, { headers: { "X-Shopify-Access-Token": token } });

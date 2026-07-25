@@ -3,6 +3,7 @@ import { useEffect, useState, useCallback } from "react";
 import { fmtNum, localDateStr, daysAgoLocal } from "@/lib/utils";
 import { useFilters } from "@/lib/filters";
 import { useCurrency } from "@/lib/currency";
+import { fetchJsonSafe } from "@/lib/fetch-json";
 import { RefreshCw, BarChart3, TrendingUp } from "lucide-react";
 
 interface DashboardData {
@@ -65,14 +66,12 @@ export default function AdsPage() {
   const [lastSync, setLastSync] = useState<string | null>(null);
 
   // Load dashboard (cost data)
-  const loadDash = useCallback(() => {
+  const loadDash = useCallback(async () => {
     const params = new URLSearchParams();
     if (isCustom && customFrom && customTo) { params.set("from", customFrom); params.set("to", customTo); }
     else params.set("days", String(days));
-    fetch(`/api/dashboard?${params}`)
-      .then(r => r.json())
-      .then(d => setDash(d))
-      .catch(() => {});
+    const data = await fetchJsonSafe<DashboardData>(`/api/dashboard?${params}`);
+    if (data) setDash(data);
   }, [days, isCustom, customFrom, customTo]);
 
   // Load Meta Ads real data
@@ -82,8 +81,11 @@ export default function AdsPage() {
     const to    = isCustom && customTo ? customTo : today;
     const params = new URLSearchParams({ dateFrom: from, dateTo: to });
     if (brandFilter) params.set("brandId", brandFilter);
-    const res  = await fetch(`/api/meta-ads/insights?${params}`);
-    const data = await res.json();
+    const data = await fetchJsonSafe<{
+      totals?: MetaTotals;
+      campaigns?: MetaCampaign[];
+    }>(`/api/meta-ads/insights?${params}`);
+    if (!data) return;
     setMetaTot(data.totals ?? null);
     setCampaigns(data.campaigns ?? []);
   }, [days, isCustom, customFrom, customTo, brandFilter]);
@@ -94,23 +96,36 @@ export default function AdsPage() {
   }, [loadDash, loadMeta]);
 
   useEffect(() => {
-    fetch("/api/meta-ads/sync")
-      .then(r => r.json())
-      .then(d => { if (d.lastSync?.createdAt) setLastSync(new Date(d.lastSync.createdAt).toLocaleString("es-MX")); });
+    void fetchJsonSafe<{ lastSync?: { createdAt?: string } }>("/api/meta-ads/sync")
+      .then((data) => {
+        if (data?.lastSync?.createdAt) {
+          setLastSync(new Date(data.lastSync.createdAt).toLocaleString("es-MX"));
+        }
+      });
   }, []);
 
   async function doSync() {
     setSyncing(true);
-    const today = localDateStr();
-    const from  = daysAgoLocal(30);
-    const res   = await fetch("/api/meta-ads/sync", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ dateFrom: from, dateTo: today }),
-    });
-    const d = await res.json();
-    if (d.ok) { setLastSync(new Date().toLocaleString("es-MX")); await loadMeta(); }
-    else alert("Error: " + d.error);
-    setSyncing(false);
+    try {
+      const today = localDateStr();
+      const from  = daysAgoLocal(30);
+      const data = await fetchJsonSafe<{ ok?: boolean; error?: string }>(
+        "/api/meta-ads/sync",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ dateFrom: from, dateTo: today }),
+        },
+      );
+      if (data?.ok) {
+        setLastSync(new Date().toLocaleString("es-MX"));
+        await loadMeta();
+      } else {
+        alert("No se pudo completar la sincronización. Intenta nuevamente.");
+      }
+    } finally {
+      setSyncing(false);
+    }
   }
 
   const t   = dash?.totals;

@@ -14,14 +14,14 @@ import { prisma } from "@/lib/prisma";
 const STORES = {
   glowmmi: {
     shop: "glm-1694.myshopify.com",
-    clientId: "de9e81a11394aabe11272947a4da0da5",
-    clientSecret: "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",
+    clientId: process.env.SHOPIFY_GLOWMMI_CLIENT_ID ?? "",
+    clientSecret: process.env.SHOPIFY_GLOWMMI_CLIENT_SECRET ?? "",
     authType: "json" as const, key: "glowmmi", brandColor: "#EC4899",
   },
   balancea: {
     shop: "mp0vab-bw.myshopify.com",
-    clientId: "b06d2c272b5428556744aa476b8467f1",
-    clientSecret: "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",
+    clientId: process.env.SHOPIFY_BALANCEA_CLIENT_ID ?? "",
+    clientSecret: process.env.SHOPIFY_BALANCEA_CLIENT_SECRET ?? "",
     authType: "urlencoded" as const, key: "balancea", brandColor: "#10B981",
   },
 };
@@ -37,7 +37,7 @@ async function getToken(s: typeof STORES[keyof typeof STORES]) {
 
 async function fetchOrders(shop: string, token: string, params: string) {
   const all: any[] = [];
-  let url = `https://${shop}/admin/api/2024-01/orders.json?${params}&limit=250`;
+  let url = `https://${shop}/admin/api/${process.env.SHOPIFY_API_VERSION || "2026-07"}/orders.json?${params}&limit=250`;
   while (url) {
     const res  = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
     if (!res.ok) break;

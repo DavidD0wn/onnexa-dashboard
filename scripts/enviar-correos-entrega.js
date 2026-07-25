@@ -60,6 +60,7 @@ function buildEmail(nombre, num, guia, tipo) {
 const SHOP          = process.env.SHOPIFY_GLOWMMI_SHOP          || "glm-1694.myshopify.com";
 const CLIENT_ID     = process.env.SHOPIFY_GLOWMMI_CLIENT_ID;
 const CLIENT_SECRET = process.env.SHOPIFY_GLOWMMI_CLIENT_SECRET;
+const SHOPIFY_VERSION = process.env.SHOPIFY_API_VERSION || "2026-07";
 if (!CLIENT_ID || !CLIENT_SECRET) { console.error("❌ Faltan SHOPIFY_GLOWMMI_CLIENT_ID / SHOPIFY_GLOWMMI_CLIENT_SECRET en .env"); process.exit(1); }
 
 async function getToken() {
@@ -74,7 +75,7 @@ async function getToken() {
 async function fetchOrdersByNumber(token, numbers) {
   const want = new Set(numbers);
   const found = {};
-  let url = `https://${SHOP}/admin/api/2024-01/orders.json?status=any&limit=250&fields=order_number,email,customer,shipping_address`;
+  let url = `https://${SHOP}/admin/api/${SHOPIFY_VERSION}/orders.json?status=any&limit=250&fields=order_number,email,customer,shipping_address`;
   while (url) {
     const r = await fetch(url, { headers: { "X-Shopify-Access-Token": token } });
     if (!r.ok) break;

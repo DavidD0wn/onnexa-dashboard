@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { startOfDay } from "date-fns";
+import {
+  fetchShopifyPaginated,
+  getShopifyStore,
+  shopifyRestUrl,
+  type ShopifyStoreConfig,
+} from "@/lib/integrations/shopify";
+import { calculateProfit } from "@/lib/metrics";
 
 // ─── Exchange rate helpers (MXN → USD) ───────────────────────────────────────
 // The peso/dollar rate moves ±5% over a 30-day window, so using a single
@@ -107,45 +113,6 @@ function fillGaps(rates: Record<string, number>, from: string, to: string): Reco
   return filled;
 }
 
-// ─── Store configs ───────────────────────────────────────────────────────────
-const STORES = {
-  glowmmi: {
-    shop: "glm-1694.myshopify.com",
-    clientId: "de9e81a11394aabe11272947a4da0da5",
-    clientSecret: "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",
-    authType: "json" as const,
-    brandId: "brand_glowmmi",
-    countryId: "country_us",   // default — overridden per-order when splitByCountry=true
-    storeId: "store_glowmmi_us",
-    currency: "USD",
-    // glm-1694 shop default currency is MXN → Shopify API returns amounts in MXN → divide by live rate to store USD.
-    shopCurrencyRate: FALLBACK_MXN_RATE,  // overridden with live rate at sync time
-    gatewayPct: 0.029,
-    gatewayFixed: 0.30,
-    splitByCountry: true,      // Glowmmi sells US + MX + CL → split into country rows
-    // Store timezone offset in hours from UTC (Mexico City = UTC-6 CDT, UTC-5 CST)
-    // Used to bucket orders by LOCAL date (matching Shopify Analytics date attribution)
-    storeUtcOffset: -6,
-  },
-  balancea: {
-    shop: "mp0vab-bw.myshopify.com",
-    clientId: "b06d2c272b5428556744aa476b8467f1",
-    clientSecret: "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",
-    authType: "urlencoded" as const,
-    brandId: "brand_balancea",
-    countryId: "country_mx",
-    storeId: "store_balancea_mx",
-    currency: "MXN",
-    shopCurrencyRate: FALLBACK_MXN_RATE,  // overridden with live rate at sync time
-    // gatewayFixed was 3.0 USD (wrong — that's ~MX$56 per order).
-    // Set to 0: real fees come from the Shopify Payments payouts sync.
-    gatewayPct: 0.036,
-    gatewayFixed: 0.0,
-    splitByCountry: false,
-    storeUtcOffset: -6,
-  },
-};
-
 // Country code → DB IDs (used when splitByCountry=true)
 const COUNTRY_ID_MAP: Record<string, { countryId: string; storeId: string }> = {
   US: { countryId: "country_us", storeId: "store_glowmmi_us" },
@@ -154,107 +121,18 @@ const COUNTRY_ID_MAP: Record<string, { countryId: string; storeId: string }> = {
   // fallback for unknown countries → US bucket
 };
 
-// ─── Types ───────────────────────────────────────────────────────────────────
-type StoreConfig = {
-  shop: string; clientId: string; clientSecret: string;
-  authType: "json" | "urlencoded";
-  brandId: string; countryId: string; storeId: string;
-  currency: string; shopCurrencyRate: number;
-  gatewayPct: number; gatewayFixed: number;
-  splitByCountry: boolean;
-  storeUtcOffset: number;  // hours from UTC; used to derive local date from UTC timestamp
-};
-
-// ─── Auth ────────────────────────────────────────────────────────────────────
-async function getToken(store: StoreConfig): Promise<string> {
-  const url = `https://${store.shop}/admin/oauth/access_token`;
-  let body: string;
-  let contentType: string;
-
-  if (store.authType === "urlencoded") {
-    const qs = new URLSearchParams({
-      grant_type: "client_credentials",
-      client_id: store.clientId,
-      client_secret: store.clientSecret,
-    });
-    body = qs.toString();
-    contentType = "application/x-www-form-urlencoded";
-  } else {
-    body = JSON.stringify({
-      client_id: store.clientId,
-      client_secret: store.clientSecret,
-      grant_type: "client_credentials",
-    });
-    contentType = "application/json";
-  }
-
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": contentType },
-    body,
-  });
-
-  if (!res.ok) {
-    const txt = await res.text();
-    throw new Error(`Auth error ${store.shop} (${res.status}): ${txt.slice(0, 200)}`);
-  }
-
-  const data = await res.json();
-  if (!data.access_token) throw new Error(`No access_token in response: ${JSON.stringify(data).slice(0, 200)}`);
-  return data.access_token;
-}
-
-// ─── Fetch paginated helper ───────────────────────────────────────────────────
-// "TODO O NADA": si la paginación no llega al final (rate limit persistente,
-// error de red, error de servidor), LANZA un error. El caller aborta el sync sin
-// escribir nada, conservando los datos buenos en vez de corromperlos con datos
-// parciales. NUNCA devuelve un resultado incompleto silenciosamente.
-async function fetchPaginated(startUrl: string, token: string, key: string): Promise<any[]> {
-  const all: any[] = [];
-  let url: string | null = startUrl;
-  while (url) {
-    let res: Response | null = null;
-    let attempt = 0;
-    // Reintentar ESTA página con backoff exponencial hasta lograrla.
-    while (true) {
-      try {
-        res = await fetch(url, { headers: { "X-Shopify-Access-Token": token } });
-      } catch (e: any) {
-        // Error de red — backoff y reintentar
-        if (++attempt > 8) throw new Error(`Red falló tras ${attempt} intentos: ${e.message}`);
-        await new Promise((r) => setTimeout(r, Math.min(1000 * 2 ** attempt, 20000)));
-        continue;
-      }
-      // Rate limit (429) o error de servidor (5xx): esperar y reintentar la MISMA página.
-      if (res.status === 429 || res.status >= 500) {
-        if (++attempt > 8) throw new Error(`Shopify ${res.status} persistente tras ${attempt} intentos — sync abortado para no perder datos`);
-        const retryAfter = parseFloat(res.headers.get("Retry-After") ?? "0");
-        const wait = retryAfter > 0 ? retryAfter * 1000 : Math.min(1000 * 2 ** attempt, 20000);
-        await new Promise((r) => setTimeout(r, wait));
-        continue;
-      }
-      if (!res.ok) throw new Error(`Shopify respondió ${res.status} — sync abortado`);
-      break; // página OK
-    }
-    const data: any = await res!.json();
-    all.push(...(data[key] ?? []));
-    const next: RegExpMatchArray | null = (res!.headers.get("Link") ?? "").match(/<([^>]+)>;\s*rel="next"/);
-    url = next ? next[1] : null;
-    // Pausa entre páginas para respetar el bucket de Shopify (2 req/s).
-    if (url) await new Promise((r) => setTimeout(r, 400));
-  }
-  return all;
-}
+type StoreConfig = ShopifyStoreConfig & { shopCurrencyRate: number };
 
 // ─── Fetch paid orders (revenue) ─────────────────────────────────────────────
-async function fetchOrders(shop: string, token: string, since: string): Promise<any[]> {
-  return fetchPaginated(
-    `https://${shop}/admin/api/2024-01/orders.json` +
+async function fetchOrders(store: StoreConfig, since: string): Promise<any[]> {
+  return fetchShopifyPaginated(
+    store,
+    shopifyRestUrl(store, "orders.json") +
     `?status=any&financial_status=paid,partially_paid,partially_refunded,authorized,refunded` +
     `&created_at_min=${since}&limit=250` +
     // line_items para contar unidades físicas reales (qty × bundle_size)
     `&fields=id,created_at,total_price,total_discounts,total_tax,shipping_lines,shipping_address,line_items`,
-    token, "orders"
+    "orders",
   );
 }
 
@@ -269,13 +147,14 @@ function calcBundleSize(title: string, variantTitle: string): number {
 }
 
 // ─── Fetch refunded orders (returns) ─────────────────────────────────────────
-async function fetchRefunds(shop: string, token: string, since: string): Promise<any[]> {
-  return fetchPaginated(
-    `https://${shop}/admin/api/2024-01/orders.json` +
+async function fetchRefunds(store: StoreConfig, since: string): Promise<any[]> {
+  return fetchShopifyPaginated(
+    store,
+    shopifyRestUrl(store, "orders.json") +
     `?status=any&financial_status=refunded,partially_refunded` +
     `&updated_at_min=${since}&limit=250` +
     `&fields=id,created_at,updated_at,refunds`,
-    token, "orders"
+    "orders",
   );
 }
 
@@ -528,8 +407,15 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
   const { store = "glowmmi", days = 30 } = body as { store?: string; days?: number };
 
-  const baseCfg = STORES[store as keyof typeof STORES] as StoreConfig | undefined;
-  if (!baseCfg) return NextResponse.json({ error: "Tienda no válida. Usa 'glowmmi' o 'balancea'" }, { status: 400 });
+  let baseCfg: ShopifyStoreConfig;
+  try {
+    baseCfg = getShopifyStore(store);
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : String(error) },
+      { status: 400 },
+    );
+  }
 
   // ── Exchange rates: fetch live rate (fallback) + historical per-day rates ────
   // We start with the live rate as safety net, then try to get per-day history.
@@ -540,8 +426,7 @@ export async function POST(req: Request) {
 
   const [liveMxnRate, dailyRates] = await Promise.all([
     fetchLiveMxnRate(),
-    // Only fetch historical rates for MXN stores — USD stores don't need conversion
-    baseCfg.shopCurrencyRate !== 1 ? fetchHistoricalRates(dateFrom, dateTo) : Promise.resolve({} as Record<string, number>),
+    fetchHistoricalRates(dateFrom, dateTo),
   ]);
 
   // Stamp today's live rate into dailyRates for any orders placed today
@@ -552,11 +437,10 @@ export async function POST(req: Request) {
   console.log(`[sync:${store}] Exchange rates: live=${liveMxnRate} | historical=${rateCount} days loaded`);
 
   try {
-    const token = await getToken(cfg);
     const since = sinceForRates.toISOString();
     const [orders, refundOrders, costsByCountry] = await Promise.all([
-      fetchOrders(cfg.shop, token, since),
-      fetchRefunds(cfg.shop, token, since),
+      fetchOrders(cfg, since),
+      fetchRefunds(cfg, since),
       loadCostsByCountry(),
     ]);
 
@@ -575,8 +459,6 @@ export async function POST(req: Request) {
     for (const [bucketKey, metrics] of Object.entries(byKey)) {
       const aov        = metrics.ordersCount > 0 ? metrics.grossRevenue / metrics.ordersCount : 0;
       const netRevenue = metrics.grossRevenue - metrics.discounts - metrics.returns;
-      const netProfit  = netRevenue - metrics.fees;
-      const netMargin  = metrics.grossRevenue > 0 ? (netProfit / metrics.grossRevenue) * 100 : 0;
 
       // Unique ID for upsert: embed country so each bucket gets its own row
       const dateStr   = metrics.date.toISOString().slice(0, 10);
@@ -610,7 +492,6 @@ export async function POST(req: Request) {
         // suben máximo unas pocas órdenes al día.
         const prevShopifyRow = await prisma.dailyMetric.findUnique({
           where: { id: shopifyId },
-          select: { ordersCount: true, grossRevenue: true },
         });
         if (prevShopifyRow && prevShopifyRow.ordersCount > 0) {
           const dropRatio = 1 - (metrics.ordersCount / prevShopifyRow.ordersCount);
@@ -620,6 +501,18 @@ export async function POST(req: Request) {
             continue;
           }
         }
+
+        const currentMetric = existing ?? prevShopifyRow;
+        const profit = calculateProfit({
+          netRevenue,
+          cogs: metrics.cogs,
+          shippingCost: metrics.shippingCharged,
+          fees: metrics.fees,
+          handlingFees: currentMetric?.handlingFees ?? 0,
+          taxes: metrics.taxes,
+          otherCosts: currentMetric?.otherCosts ?? 0,
+          adSpend: currentMetric?.adSpend ?? 0,
+        });
 
         const updatePayload = {
           ordersCount:  metrics.ordersCount,
@@ -632,8 +525,8 @@ export async function POST(req: Request) {
           fees:         metrics.fees,
           taxes:        metrics.taxes,
           cogs:         metrics.cogs,
-          netProfit,
-          netMargin,
+          netProfit:     profit.netProfit,
+          netMargin:     profit.netMargin,
           aov,
           notes: `Shopify sync — ${metrics.ordersCount} órdenes`,
         };
@@ -688,7 +581,7 @@ export async function POST(req: Request) {
       },
     });
 
-    const base = process.env.NEXT_PUBLIC_BASE_URL ?? "http://localhost:3000";
+    const base = process.env.NEXT_PUBLIC_BASE_URL ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
 
     // ── Override estimated fees with REAL Shopify Balance Transaction fees ──
     // Uses processed_at per transaction (= order date), NOT payout date.

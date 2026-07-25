@@ -31,7 +31,7 @@ if "%NODE_PATH%"=="" (
 )
 
 set TASK_NAME=OnneXa-Shopify-Sync
-set DAEMON_SCRIPT=%~dp0scripts\daemon.js
+set DAEMON_SCRIPT=%~dp0scripts\sync.mjs
 set WORKING_DIR=%~dp0
 
 echo.
@@ -41,7 +41,7 @@ schtasks /Delete /TN "%TASK_NAME%" /F >nul 2>&1
 echo  Creando tarea en el Programador de Tareas...
 schtasks /Create ^
   /TN "%TASK_NAME%" ^
-  /TR "\"%NODE_PATH%\" \"%DAEMON_SCRIPT%\"" ^
+  /TR "\"%NODE_PATH%\" \"%DAEMON_SCRIPT%\" --apply --days=3" ^
   /SC ONLOGON ^
   /DELAY 0001:00 ^
   /RL HIGHEST ^
@@ -62,8 +62,8 @@ if %ERRORLEVEL% EQU 0 (
   echo.
   echo  Iniciando el daemon ahora mismo para la primera sync...
   echo.
-  start "Onnexa Sync Daemon" /min "%NODE_PATH%" "%DAEMON_SCRIPT%"
-  echo  Daemon iniciado en segundo plano.
+  start "Onnexa Sync" /min "%NODE_PATH%" "%DAEMON_SCRIPT%" --apply --days=3
+  echo  Primera sincronizacion iniciada en segundo plano.
 ) else (
   echo.
   echo  AVISO: No se pudo registrar en el Programador de Tareas.

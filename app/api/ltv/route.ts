@@ -64,7 +64,7 @@ async function fetchCustomerOrders(
 ): Promise<any[]> {
   const all: any[] = [];
   let url =
-    `https://${shop}/admin/api/2024-01/orders.json` +
+    `https://${shop}/admin/api/${process.env.SHOPIFY_API_VERSION || "2026-07"}/orders.json` +
     `?status=any&financial_status=paid,partially_paid` +
     `&created_at_min=${since}&created_at_max=${until}` +
     `&limit=250&fields=id,created_at,customer,total_price`;

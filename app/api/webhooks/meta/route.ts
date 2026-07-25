@@ -234,10 +234,10 @@ async function sendReply(opts: {
   let bodyData: Record<string, string>;
 
   if (opts.type === "comment" && opts.commentId) {
-    url      = `https://graph.facebook.com/v19.0/${opts.commentId}/replies`;
+    url      = `https://graph.facebook.com/${process.env.META_GRAPH_API_VERSION || "v19.0"}/${opts.commentId}/replies`;
     bodyData = { message: opts.replyText, access_token: token };
   } else {
-    url      = `https://graph.facebook.com/v19.0/me/messages`;
+    url      = `https://graph.facebook.com/${process.env.META_GRAPH_API_VERSION || "v19.0"}/me/messages`;
     bodyData = {
       recipient:    JSON.stringify({ id: opts.senderId }),
       message:      JSON.stringify({ text: opts.replyText }),

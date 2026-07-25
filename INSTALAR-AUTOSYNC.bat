@@ -18,7 +18,7 @@ pause > nul
 
 set PROJECT_DIR=%~dp0
 set NODE_PATH=node
-set SCRIPT=%PROJECT_DIR%scripts\autosync.js
+set SCRIPT=%PROJECT_DIR%scripts\sync.mjs
 
 echo.
 echo  Instalando tareas...
@@ -28,7 +28,7 @@ echo.
 schtasks /delete /tn "Onnexa-Sync-Hourly" /f >nul 2>&1
 schtasks /create ^
   /tn "Onnexa-Sync-Hourly" ^
-  /tr "cmd /c cd /d \"%PROJECT_DIR%\" && %NODE_PATH% scripts\autosync.js 3 >> \"%PROJECT_DIR%logs\autosync.log\" 2>&1" ^
+  /tr "cmd /c cd /d \"%PROJECT_DIR%\" && %NODE_PATH% scripts\sync.mjs --apply --days=3 >> \"%PROJECT_DIR%logs\autosync.log\" 2>&1" ^
   /sc HOURLY ^
   /mo 1 ^
   /st 00:00 ^
@@ -45,7 +45,7 @@ if %ERRORLEVEL% EQU 0 (
 schtasks /delete /tn "Onnexa-Sync-Daily" /f >nul 2>&1
 schtasks /create ^
   /tn "Onnexa-Sync-Daily" ^
-  /tr "cmd /c cd /d \"%PROJECT_DIR%\" && %NODE_PATH% scripts\autosync.js 30 >> \"%PROJECT_DIR%logs\autosync.log\" 2>&1" ^
+  /tr "cmd /c cd /d \"%PROJECT_DIR%\" && %NODE_PATH% scripts\sync.mjs --apply --days=30 >> \"%PROJECT_DIR%logs\autosync.log\" 2>&1" ^
   /sc DAILY ^
   /st 07:00 ^
   /ru "%USERNAME%" ^

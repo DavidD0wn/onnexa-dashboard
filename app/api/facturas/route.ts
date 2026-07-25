@@ -11,14 +11,14 @@ import * as XLSX from "xlsx";
 const STORES = {
   glowmmi: {
     shop: "glm-1694.myshopify.com",
-    clientId: "de9e81a11394aabe11272947a4da0da5",
-    clientSecret: "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",
+    clientId: process.env.SHOPIFY_GLOWMMI_CLIENT_ID ?? "",
+    clientSecret: process.env.SHOPIFY_GLOWMMI_CLIENT_SECRET ?? "",
     authType: "json" as const,
   },
   balancea: {
     shop: "mp0vab-bw.myshopify.com",
-    clientId: "b06d2c272b5428556744aa476b8467f1",
-    clientSecret: "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",
+    clientId: process.env.SHOPIFY_BALANCEA_CLIENT_ID ?? "",
+    clientSecret: process.env.SHOPIFY_BALANCEA_CLIENT_SECRET ?? "",
     authType: "urlencoded" as const,
   },
 };
@@ -69,7 +69,7 @@ async function fetchShopifyOrdersBulk(
     }
   }`;
 
-  const res = await fetch(`https://${shop}/admin/api/2024-01/graphql.json`, {
+  const res = await fetch(`https://${shop}/admin/api/${process.env.SHOPIFY_API_VERSION || "2026-07"}/graphql.json`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify({ query: gql }),

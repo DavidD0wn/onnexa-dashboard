@@ -74,7 +74,7 @@ export async function POST() {
           edges { node { app { title id } } }
         }
       }`;
-      const res = await fetch(`https://${store.shop}/admin/api/2024-01/graphql.json`, {
+      const res = await fetch(`https://${store.shop}/admin/api/${process.env.SHOPIFY_API_VERSION || "2026-07"}/graphql.json`, {
         method:  "POST",
         headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
         body:    JSON.stringify({ query: gql }),

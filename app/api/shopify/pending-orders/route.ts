@@ -7,16 +7,16 @@ import { NextResponse } from "next/server";
 const STORES = {
   glowmmi: {
     shop: "glm-1694.myshopify.com",
-    clientId: "de9e81a11394aabe11272947a4da0da5",
-    clientSecret: "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",
+    clientId: process.env.SHOPIFY_GLOWMMI_CLIENT_ID ?? "",
+    clientSecret: process.env.SHOPIFY_GLOWMMI_CLIENT_SECRET ?? "",
     authType: "json" as const,
     brandColor: "#EC4899",
     key: "glowmmi",
   },
   balancea: {
     shop: "mp0vab-bw.myshopify.com",
-    clientId: "b06d2c272b5428556744aa476b8467f1",
-    clientSecret: "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",
+    clientId: process.env.SHOPIFY_BALANCEA_CLIENT_ID ?? "",
+    clientSecret: process.env.SHOPIFY_BALANCEA_CLIENT_SECRET ?? "",
     authType: "urlencoded" as const,
     brandColor: "#10B981",
     key: "balancea",
@@ -48,7 +48,7 @@ export async function GET(req: Request) {
     try {
       const token = await getToken(store);
       // Fetch unfulfilled paid orders
-      let url = `https://${store.shop}/admin/api/2024-01/orders.json?fulfillment_status=unfulfilled&financial_status=paid&status=open&limit=250&fields=id,name,created_at,total_price,currency,customer,email,shipping_address,line_items,fulfillment_status,financial_status`;
+      let url = `https://${store.shop}/admin/api/${process.env.SHOPIFY_API_VERSION || "2026-07"}/orders.json?fulfillment_status=unfulfilled&financial_status=paid&status=open&limit=250&fields=id,name,created_at,total_price,currency,customer,email,shipping_address,line_items,fulfillment_status,financial_status`;
 
       while (url) {
         const res  = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });

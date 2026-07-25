@@ -23,16 +23,16 @@ import path from "path";
 const STORES = [
   {
     shop:         "glm-1694.myshopify.com",
-    clientId:     "de9e81a11394aabe11272947a4da0da5",
-    clientSecret: "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",
+    clientId:     process.env.SHOPIFY_GLOWMMI_CLIENT_ID ?? "",
+    clientSecret: process.env.SHOPIFY_GLOWMMI_CLIENT_SECRET ?? "",
     authType:     "json" as const,
     brandId:      "brand_glowmmi",
     shopRate:     18.7,  // MXN → USD
   },
   {
     shop:         "mp0vab-bw.myshopify.com",
-    clientId:     "b06d2c272b5428556744aa476b8467f1",
-    clientSecret: "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",
+    clientId:     process.env.SHOPIFY_BALANCEA_CLIENT_ID ?? "",
+    clientSecret: process.env.SHOPIFY_BALANCEA_CLIENT_SECRET ?? "",
     authType:     "urlencoded" as const,
     brandId:      "brand_balancea",
     shopRate:     18.7,
@@ -57,7 +57,7 @@ async function getToken(s: typeof STORES[number]): Promise<string> {
 // ─── Fetch orders with line_items ─────────────────────────────────────────────
 async function fetchOrders(shop: string, token: string, since: string, until: string) {
   const all: any[] = [];
-  let url = `https://${shop}/admin/api/2024-01/orders.json?status=any&financial_status=paid,partially_paid&created_at_min=${since}&created_at_max=${until}&limit=250&fields=id,created_at,line_items`;
+  let url = `https://${shop}/admin/api/${process.env.SHOPIFY_API_VERSION || "2026-07"}/orders.json?status=any&financial_status=paid,partially_paid&created_at_min=${since}&created_at_max=${until}&limit=250&fields=id,created_at,line_items`;
   while (url) {
     const res  = await fetch(url, { headers: { "X-Shopify-Access-Token": token } });
     if (!res.ok) break;

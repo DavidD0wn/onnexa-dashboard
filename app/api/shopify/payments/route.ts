@@ -6,7 +6,7 @@
  * ✅ Cada transacción tiene su processed_at (fecha de la orden, NO fecha del payout)
  *    → fees asignados al día correcto, nunca en batches semanales
  *
- * Endpoint: GET /admin/api/2024-01/shopify_payments/balance/transactions.json
+ * Endpoint: GET /admin/api/{SHOPIFY_API_VERSION}/shopify_payments/balance/transactions.json
  *   type=charge  → fee de cada venta
  *   type=refund  → fee de cada devolución (reduce fees del día)
  *
@@ -49,25 +49,35 @@ async function fetchHistoricalRates(from: string, to: string): Promise<Record<st
 }
 
 // ─── Store configs ────────────────────────────────────────────────────────────
-const STORES = {
+type PaymentStoreConfig = {
+  shop: string;
+  clientId: string;
+  clientSecret: string;
+  authType: "json" | "urlencoded";
+  brandId: string;
+  feesCurrency: "USD" | "MXN";
+  splitByCountry: boolean;
+};
+
+const STORES: Record<"glowmmi" | "balancea", PaymentStoreConfig> = {
   glowmmi: {
     shop:           "glm-1694.myshopify.com",
-    clientId:       "de9e81a11394aabe11272947a4da0da5",
-    clientSecret:   "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",
+    clientId:       process.env.SHOPIFY_GLOWMMI_CLIENT_ID ?? "",
+    clientSecret:   process.env.SHOPIFY_GLOWMMI_CLIENT_SECRET ?? "",
     authType:       "json" as const,
     brandId:        "brand_glowmmi",
     // Shopify Payments balance transactions report fees in the store's PAYOUT currency (USD)
     // even when orders are placed in MXN — no conversion needed
-    feesCurrency:   "USD" as const,
+    feesCurrency:   "USD",
     splitByCountry: true,
   },
   balancea: {
     shop:           "mp0vab-bw.myshopify.com",
-    clientId:       "b06d2c272b5428556744aa476b8467f1",
-    clientSecret:   "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",
+    clientId:       process.env.SHOPIFY_BALANCEA_CLIENT_ID ?? "",
+    clientSecret:   process.env.SHOPIFY_BALANCEA_CLIENT_SECRET ?? "",
     authType:       "urlencoded" as const,
     brandId:        "brand_balancea",
-    feesCurrency:   "USD" as const,   // Balancea Shopify Payments settles in USD
+    feesCurrency:   "USD",   // Balancea Shopify Payments settles in USD
     splitByCountry: false,
   },
 };
@@ -106,7 +116,7 @@ async function fetchBalanceTxs(
   const all: Array<{ date: string; fee: number; amount: number; type: string }> = [];
 
   let url: string | null =
-    `https://${shop}/admin/api/2024-01/shopify_payments/balance/transactions.json?limit=250`;
+    `https://${shop}/admin/api/${process.env.SHOPIFY_API_VERSION || "2026-07"}/shopify_payments/balance/transactions.json?limit=250`;
 
   while (url) {
     const res: Response = await fetch(url, { headers: { "X-Shopify-Access-Token": token } });

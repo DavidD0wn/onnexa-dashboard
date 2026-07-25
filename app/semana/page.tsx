@@ -2,6 +2,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { fmtNum, fmtPct } from "@/lib/utils";
 import { useCurrency } from "@/lib/currency";
+import { fetchJsonSafe } from "@/lib/fetch-json";
 import { RefreshCw, TrendingUp, TrendingDown, Calendar, ChevronDown, X } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -196,10 +197,9 @@ export default function KPIsPage() {
   }
 
   const fetchPeriod = useCallback(async (from: string, to: string): Promise<PeriodData | null> => {
-    try {
-      const r = await fetch(`/api/dashboard?from=${from}&to=${to}`);
-      return r.json();
-    } catch { return null; }
+    return fetchJsonSafe<PeriodData>(
+      `/api/dashboard?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+    );
   }, []);
 
   const load = useCallback(async () => {
