@@ -2,10 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { calculateProfit } from "@/lib/metrics";
 
-const SINGLE_COUNTRY_BRAND: Record<string, string> = {
-  brand_balancea: "country_mx",
-};
-
 function dayKey(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
@@ -99,9 +95,7 @@ export async function GET(req: NextRequest) {
 
     const sourceByKey = new Map<string, number>();
     for (const row of adRows) {
-      const targetCountry =
-        SINGLE_COUNTRY_BRAND[row.brandId] ?? row.countryId;
-      const key = metricKey(row.brandId, targetCountry, row.date);
+      const key = metricKey(row.brandId, row.countryId, row.date);
       sourceByKey.set(key, (sourceByKey.get(key) ?? 0) + row.spend);
     }
 

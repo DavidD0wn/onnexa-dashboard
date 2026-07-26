@@ -114,22 +114,39 @@ function fillGaps(rates: Record<string, number>, from: string, to: string): Reco
 }
 
 // Country code → DB IDs (used when splitByCountry=true)
-const COUNTRY_ID_MAP: Record<string, { countryId: string; storeId: string }> = {
-  US: { countryId: "country_us", storeId: "store_glowmmi_us" },
-  MX: { countryId: "country_mx", storeId: "store_glowmmi_mx" },
-  CL: { countryId: "country_cl", storeId: "store_glowmmi_cl" },
-  // fallback for unknown countries → US bucket
+const COUNTRY_ID_MAP: Record<string, string> = {
+  US: "country_us",
+  MX: "country_mx",
+  CL: "country_cl",
 };
 
 type StoreConfig = ShopifyStoreConfig & { shopCurrencyRate: number };
 
+function locationFor(
+  cfg: StoreConfig,
+  rawCountryCode: string,
+): { countryId: string; storeId: string; countryCode: string } {
+  const countryCode = COUNTRY_ID_MAP[rawCountryCode] ? rawCountryCode : "MX";
+  return {
+    countryCode,
+    countryId: COUNTRY_ID_MAP[countryCode],
+    storeId: `store_${cfg.key}_${countryCode.toLowerCase()}`,
+  };
+}
+
 // ─── Fetch paid orders (revenue) ─────────────────────────────────────────────
-async function fetchOrders(store: StoreConfig, since: string): Promise<any[]> {
+async function fetchOrders(
+  store: StoreConfig,
+  since: string,
+  until?: string,
+): Promise<any[]> {
   return fetchShopifyPaginated(
     store,
     shopifyRestUrl(store, "orders.json") +
-    `?status=any&financial_status=paid,partially_paid,partially_refunded,authorized,refunded` +
-    `&created_at_min=${since}&limit=250` +
+    `?status=any&financial_status=paid,partially_paid,partially_refunded,refunded` +
+    `&created_at_min=${encodeURIComponent(since)}` +
+    (until ? `&created_at_max=${encodeURIComponent(until)}` : "") +
+    `&limit=250` +
     // line_items para contar unidades físicas reales (qty × bundle_size)
     `&fields=id,created_at,total_price,total_discounts,total_tax,shipping_lines,shipping_address,line_items`,
     "orders",
@@ -147,12 +164,18 @@ function calcBundleSize(title: string, variantTitle: string): number {
 }
 
 // ─── Fetch refunded orders (returns) ─────────────────────────────────────────
-async function fetchRefunds(store: StoreConfig, since: string): Promise<any[]> {
+async function fetchRefunds(
+  store: StoreConfig,
+  since: string,
+  until?: string,
+): Promise<any[]> {
   return fetchShopifyPaginated(
     store,
     shopifyRestUrl(store, "orders.json") +
     `?status=any&financial_status=refunded,partially_refunded` +
-    `&updated_at_min=${since}&limit=250` +
+    `&updated_at_min=${encodeURIComponent(since)}` +
+    (until ? `&updated_at_max=${encodeURIComponent(until)}` : "") +
+    `&limit=250` +
     `&fields=id,created_at,updated_at,refunds`,
     "orders",
   );
@@ -301,7 +324,7 @@ function groupByDate(
     const bucketKey = cfg.splitByCountry ? `${dateKey}||${countryCode}` : dateKey;
     if (!byKey[bucketKey]) {
       const loc = cfg.splitByCountry
-        ? (COUNTRY_ID_MAP[countryCode] ?? COUNTRY_ID_MAP["US"])
+        ? locationFor(cfg, countryCode)
         : { countryId: cfg.countryId, storeId: cfg.storeId };
       // Always use UTC midnight so the date matches CSV-imported rows (stored at 00:00:00Z)
       const [y, m, d] = dateKey.split("-").map(Number);
@@ -405,7 +428,18 @@ function groupByDate(
 // ─── POST — sync a specific store ────────────────────────────────────────────
 export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
-  const { store = "glowmmi", days = 30 } = body as { store?: string; days?: number };
+  const {
+    store = "glowmmi",
+    days = 30,
+    from: requestedFrom,
+    to: requestedTo,
+  } = body as {
+    store?: string;
+    days?: number;
+    from?: string;
+    to?: string;
+  };
+  const isExplicitRange = Boolean(requestedFrom && requestedTo);
 
   let baseCfg: ShopifyStoreConfig;
   try {
@@ -420,9 +454,25 @@ export async function POST(req: Request) {
   // ── Exchange rates: fetch live rate (fallback) + historical per-day rates ────
   // We start with the live rate as safety net, then try to get per-day history.
   // Both run in parallel so historical fetch doesn't slow down the sync.
-  const sinceForRates = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-  const dateFrom = sinceForRates.toISOString().slice(0, 10);
-  const dateTo   = new Date().toISOString().slice(0, 10);
+  const nowMxMs = Date.now() - 6 * 60 * 60 * 1000;
+  const todayMx = new Date(nowMxMs).toISOString().slice(0, 10);
+  const defaultFrom = new Date(
+    nowMxMs - (Math.max(1, days) - 1) * 86_400_000,
+  ).toISOString().slice(0, 10);
+  const dateFrom = requestedFrom ?? defaultFrom;
+  const dateTo = requestedTo ?? todayMx;
+  const rangeFrom = new Date(dateFrom + "T00:00:00Z");
+  const rangeTo = new Date(dateTo + "T23:59:59Z");
+  if (
+    Number.isNaN(rangeFrom.getTime()) ||
+    Number.isNaN(rangeTo.getTime()) ||
+    rangeFrom > rangeTo
+  ) {
+    return NextResponse.json(
+      { error: "Rango de fechas inválido" },
+      { status: 400 },
+    );
+  }
 
   const [liveMxnRate, dailyRates] = await Promise.all([
     fetchLiveMxnRate(),
@@ -437,10 +487,11 @@ export async function POST(req: Request) {
   console.log(`[sync:${store}] Exchange rates: live=${liveMxnRate} | historical=${rateCount} days loaded`);
 
   try {
-    const since = sinceForRates.toISOString();
+    const since = `${dateFrom}T00:00:00-06:00`;
+    const until = `${dateTo}T23:59:59-06:00`;
     const [orders, refundOrders, costsByCountry] = await Promise.all([
-      fetchOrders(cfg, since),
-      fetchRefunds(cfg, since),
+      fetchOrders(cfg, since, until),
+      fetchRefunds(cfg, since, until),
       loadCostsByCountry(),
     ]);
 
@@ -493,7 +544,7 @@ export async function POST(req: Request) {
         const prevShopifyRow = await prisma.dailyMetric.findUnique({
           where: { id: shopifyId },
         });
-        if (prevShopifyRow && prevShopifyRow.ordersCount > 0) {
+        if (!isExplicitRange && prevShopifyRow && prevShopifyRow.ordersCount > 0) {
           const dropRatio = 1 - (metrics.ordersCount / prevShopifyRow.ordersCount);
           if (dropRatio > 0.5) {
             console.warn(`[sync:${store}] SKIP defensivo ${bucketKey}: nuevo=${metrics.ordersCount} ord vs existente=${prevShopifyRow.ordersCount} (bajada ${(dropRatio*100).toFixed(0)}%)`);
@@ -557,22 +608,35 @@ export async function POST(req: Request) {
       }
     }
 
-    // ── Stale deletion DESACTIVADA (jun 20 2026) ──
-    // Antes: se borraban filas shopify_* dentro del rango sincronizado que no
-    // estaban en `syncedKeys`. Causaba que si el sync no traía una orden por
-    // rate limit/timezone/error transitorio, se borrara una orden REAL existente.
-    // Resultado: dashboards se descuadraban cada vez que el AppLoader corría.
-    //
-    // Ahora: el sync solo agrega/actualiza vía upsert. Si una orden se cancela
-    // en Shopify, sus datos siguen en BD hasta una sincronización explícita.
-    // Trade-off intencional: datos ligeramente inflados >> datos faltantes.
-    const staleToDelete: { id: string }[] = [];
+    // Con un rango explícito y una descarga completa, cualquier bucket
+    // shopify_* ausente es realmente obsoleto. Se elimina para que cancelaciones,
+    // cambios de país y días sin ventas no dejen cifras fantasma.
+    let staleToDelete: { id: string }[] = [];
+    if (isExplicitRange && errors.length === 0) {
+      const candidates = await prisma.dailyMetric.findMany({
+        where: {
+          brandId: cfg.brandId,
+          id: { startsWith: `shopify_${store}_` },
+          date: { gte: rangeFrom, lte: rangeTo },
+        },
+        select: { id: true, date: true, countryId: true },
+      });
+      staleToDelete = candidates.filter((row) => {
+        const key = `${row.date.toISOString().slice(0, 10)}|${row.countryId}`;
+        return !syncedKeys.has(key);
+      });
+      if (staleToDelete.length > 0) {
+        await prisma.dailyMetric.deleteMany({
+          where: { id: { in: staleToDelete.map((row) => row.id) } },
+        });
+      }
+    }
 
     // Log the sync in Import table
     await prisma.import.create({
       data: {
         type: "shopify",
-        filename: `${cfg.shop} — ${days}d`,
+        filename: `${cfg.shop} — ${dateFrom} a ${dateTo}`,
         status: errors.length === 0 ? "success" : "partial",
         totalRows: Object.keys(byKey).length,
         importedRows: synced,
@@ -591,18 +655,17 @@ export async function POST(req: Request) {
       const pr = await fetch(`${base}/api/shopify/payments`, {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ store, days }),
+        body:    JSON.stringify({ store, days, from: dateFrom, to: dateTo }),
       });
       paymentsResult = await pr.json().catch(() => null);
     } catch { /* non-critical — estimated fees remain if this fails */ }
 
     // ── Auto: rollup Meta Ads adSpend → DailyMetric ──
     try {
-      const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
       await fetch(`${base}/api/meta-ads/rollup`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ from: since, to: new Date().toISOString().slice(0, 10) }),
+        body: JSON.stringify({ from: dateFrom, to: dateTo }),
       });
     } catch { /* non-critical */ }
 
@@ -610,8 +673,11 @@ export async function POST(req: Request) {
       store: cfg.shop,
       ordersTotal: orders.length,
       refundOrdersTotal: refundOrders.length,
+      synced,
       daysSynced: synced,
       days,
+      from: dateFrom,
+      to: dateTo,
       mxnRateUsed: liveMxnRate,
       historicalRateDays: rateCount,
       paymentsSync: paymentsResult ? { daysUpdated: paymentsResult.daysUpdated } : null,

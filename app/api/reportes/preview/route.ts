@@ -6,7 +6,10 @@ export async function GET(req: Request) {
   const period = parseInt(searchParams.get("period") ?? "30");
   const brand  = searchParams.get("brand") ?? "all";
 
-  const from = new Date(Date.now() - (period - 1) * 864e5);
+  const start = new Date(Date.now() - (period - 1) * 864e5)
+    .toISOString()
+    .slice(0, 10);
+  const from = new Date(`${start}T00:00:00Z`);
   const where: any = { date: { gte: from } };
   if (brand !== "all") where.brandId = `brand_${brand}`;
 
@@ -20,7 +23,18 @@ export async function GET(req: Request) {
   const net      = metrics.reduce((s, m) => s + m.netRevenue,   0);
   const orders   = metrics.reduce((s, m) => s + m.ordersCount,  0);
   const adSpend  = adRows.reduce((s, r) => s + (r._sum.spend ?? 0), 0);
-  const profit   = metrics.reduce((s, m) => s + m.netProfit,    0) - adSpend;
+  const costs = metrics.reduce(
+    (sum, metric) =>
+      sum +
+      metric.cogs +
+      metric.shippingCost +
+      metric.fees +
+      metric.handlingFees +
+      metric.taxes +
+      metric.otherCosts,
+    0,
+  );
+  const profit   = net - costs - adSpend;
   const margin   = net > 0 ? (profit / net) * 100 : 0;
   const roas     = adSpend > 0 ? net / adSpend : null;
 

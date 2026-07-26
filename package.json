@@ -9,6 +9,7 @@
     "lint": "eslint",
     "sync:check": "node scripts/sync.mjs",
     "sync": "node scripts/sync.mjs --apply",
+    "audit:finance": "node scripts/audit-financial-consistency.mjs",
     "db:seed": "npx ts-node --compiler-options '{\"module\":\"CommonJS\"}' prisma/seed.ts",
     "db:studio": "npx prisma studio"
   },

@@ -94,11 +94,19 @@ function aggregate(
     .reduce((s: number, r: any) => s + r.amount, 0);
 
   const netRevenue   = t.revenue - t.discounts - t.returns;
-  // Gross Profit = Revenue − COGS − Shipping − Fees − Handling
-  const grossProfit  = netRevenue - t.cogs - t.shipping - t.fees - t.handling;
+  // Gross Profit = Net Revenue − COGS. Operating costs are shown below it.
+  const grossProfit  = netRevenue - t.cogs;
   const customCosts  = t.taxes + t.other;
-  // Net Profit (from stored field, adjusted for chargebacks)
-  const netProfit    = t.netProfit - cb;
+  const netProfit    =
+    netRevenue -
+    t.cogs -
+    t.shipping -
+    t.fees -
+    t.handling -
+    t.adSpend -
+    t.taxes -
+    t.other -
+    cb;
   const grossMargin  = netRevenue > 0 ? (grossProfit / netRevenue) * 100 : 0;
   const netMargin    = netRevenue > 0 ? (netProfit   / netRevenue) * 100 : 0;
   const aov          = t.orders > 0 ? netRevenue / t.orders : 0;

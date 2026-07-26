@@ -176,19 +176,10 @@ function bundleSize(name: string, variant: string): number {
 }
 
 function isSkippableItem(item: any): boolean {
-  const price = parseFloat(item.price ?? "0");
-  const name  = (item.title ?? "").toLowerCase();
-  // Skip $0 items (free add-ons, complimentary gifts, etc.)
-  if (price <= 0) return true;
-  // Skip items that are explicitly free/bonus/non-product even if priced nominally
-  if (
-    name.includes("gratis")               || name.includes("free")               ||
-    name.includes("regalo")               || name.includes("gift")               ||
-    name.includes("bonus")                ||
-    name.includes("protección de pedido") || name.includes("proteccion de pedido")
-  ) return true;
-  // Allow all other items (including paid digital products, supplements, etc.)
-  return false;
+  // Dashboard y Shopify cuentan todas las líneas: regalos, productos digitales
+  // y protección de pedido incluidos. Excluirlas aquí descuadraba unidades,
+  // revenue y utilidad por producto. Solo ignoramos líneas inválidas.
+  return (parseInt(item.quantity) || 0) <= 0;
 }
 
 function extractAdKeywords(row: { campaignName?: string | null; adsetName?: string | null; adName?: string | null }): string[] {
@@ -290,7 +281,7 @@ async function fetchOrders(shop: string, token: string, since: string, until: st
 
   let url: string | null =
     `https://${shop}/admin/api/${process.env.SHOPIFY_API_VERSION || "2026-07"}/orders.json` +
-    `?status=any&financial_status=paid,partially_paid,partially_refunded` +
+    `?status=any&financial_status=paid,partially_paid,partially_refunded,refunded` +
     `&created_at_min=${since}&created_at_max=${until}&limit=250` +
     `&fields=id,created_at,line_items,shipping_address,shipping_lines`;
   let pages = 0;
@@ -757,11 +748,18 @@ export async function GET(req: NextRequest) {
   // Use netRevenue (already discounted) as the denominator for effective rates,
   // since PA revenueUsd ≈ netRevenue (both post-discount), so applying the rate
   // to PA revenue gives totals that match the dashboard.
-  const calibTotals: Record<string, { fees: number; shipping: number; returns: number; taxes: number; netRevenue: number }> = {};
+  const calibTotals: Record<string, {
+    fees: number; shipping: number; returns: number; taxes: number;
+    cogs: number; netRevenue: number;
+  }> = {};
   try {
     const dmRows = await prisma.dailyMetric.findMany({
       where: { brandId: { in: brandIds }, date: { gte: dateFrom, lte: dateTo } },
-      select: { date: true, brandId: true, countryId: true, grossRevenue: true, netRevenue: true, fees: true, shippingCost: true, returns: true, taxes: true },
+      select: {
+        date: true, brandId: true, countryId: true, grossRevenue: true,
+        netRevenue: true, fees: true, shippingCost: true, returns: true,
+        taxes: true, cogs: true,
+      },
     });
     for (const dm of dmRows) {
       const dateStr  = dm.date.toISOString().slice(0, 10);
@@ -775,11 +773,17 @@ export async function GET(req: NextRequest) {
 
       // Period-level totals — use netRevenue as denominator
       const bck = `${dm.brandId}||${cc}`;
-      if (!calibTotals[bck]) calibTotals[bck] = { fees: 0, shipping: 0, returns: 0, taxes: 0, netRevenue: 0 };
+      if (!calibTotals[bck]) {
+        calibTotals[bck] = {
+          fees: 0, shipping: 0, returns: 0, taxes: 0, cogs: 0,
+          netRevenue: 0,
+        };
+      }
       calibTotals[bck].fees       += dm.fees        ?? 0;
       calibTotals[bck].shipping   += dm.shippingCost ?? 0;
       calibTotals[bck].returns    += dm.returns      ?? 0;
       calibTotals[bck].taxes      += dm.taxes        ?? 0;
+      calibTotals[bck].cogs       += dm.cogs         ?? 0;
       calibTotals[bck].netRevenue += dm.netRevenue   ?? 0;
     }
   } catch { /* non-critical — falls back to estimates */ }
@@ -790,9 +794,6 @@ export async function GET(req: NextRequest) {
     select: { brandId: true, countryId: true, productId: true, spend: true, purchases: true, conversionValue: true, campaignName: true, adsetName: true, adName: true },
   });
   const adCountryCode = (row: (typeof adRows)[number]): string | null => {
-    // Balancea is a single-country Shopify store. Meta campaigns can be tagged
-    // US/MX, but their spend belongs to the same MX product revenue rows.
-    if (row.brandId === "brand_balancea") return "MX";
     return row.countryId ? (codeById[row.countryId] ?? null) : null;
   };
   const relevantAdRows =
@@ -912,7 +913,11 @@ export async function GET(req: NextRequest) {
 
   const eligibleRevenueByBrandCountry: Record<string, number> = {};
   const eligibleRevenueByBrand: Record<string, number> = {};
+  const cogsByBrandCountry: Record<string, number> = {};
   for (const product of Object.values(products)) {
+    const countryKey = `${product.brandId}||${product.countryCode}`;
+    cogsByBrandCountry[countryKey] =
+      (cogsByBrandCountry[countryKey] ?? 0) + product.cogsUsd;
     if (
       isDigitalProduct(product.name) ||
       isUpsellProduct(product.name) ||
@@ -920,7 +925,6 @@ export async function GET(req: NextRequest) {
     ) {
       continue;
     }
-    const countryKey = `${product.brandId}||${product.countryCode}`;
     eligibleRevenueByBrandCountry[countryKey] =
       (eligibleRevenueByBrandCountry[countryKey] ?? 0) + product.revenueUsd;
     eligibleRevenueByBrand[product.brandId] =
@@ -929,8 +933,6 @@ export async function GET(req: NextRequest) {
 
   // ── Build final rows ────────────────────────────────────────────────────────
   const rows = Object.values(products).map(p => {
-    const cogsUsd  = p.cogsUsd;
-    const costPerUnit = p.units > 0 ? cogsUsd / p.units : 0;
     const cCfg     = COUNTRY_CFG[p.countryCode] ?? COUNTRY_CFG.MX;
 
     const key         = `${p.name}||${p.variant}||${p.brandId}||${p.countryCode}`;
@@ -966,24 +968,25 @@ export async function GET(req: NextRequest) {
     // This avoids the per-day share mismatch where PA post-discount revenue < DailyMetric
     // pre-discount grossRevenue, which caused calibrated fees to come out too low.
     const ct = calibTotals[bck];
-    // Use netRevenue as denominator: PA revenueUsd ≈ netRevenue (both post-discount),
-    // so applying the rate to PA revenue gives calibrated totals ≈ dashboard totals.
     const calibHasData = !!(ct && ct.netRevenue > 0);
+    const revenueScale =
+      calibHasData && bcRevenue > 0 ? ct!.netRevenue / bcRevenue : 1;
+    const netRevenueUsd = Math.max(0, p.revenueUsd * revenueScale);
+    const rawCountryCogs = cogsByBrandCountry[bck] ?? 0;
+    const cogsScale =
+      ct && rawCountryCogs > 0 ? ct.cogs / rawCountryCogs : 1;
+    const cogsUsd = p.cogsUsd * cogsScale;
+    const costPerUnit = p.units > 0 ? cogsUsd / p.units : 0;
+
     const effectiveFeeRate      = calibHasData ? ct!.fees     / ct!.netRevenue : cCfg.gatewayPct;
     const effectiveShippingRate = calibHasData ? ct!.shipping / ct!.netRevenue : 0;
-    const effectiveReturnRate   = calibHasData ? ct!.returns  / ct!.netRevenue : 0;
     const effectiveTaxRate      = calibHasData ? ct!.taxes    / ct!.netRevenue : 0;
 
-    const feesUsd    = p.revenueUsd * effectiveFeeRate;
-    const shippingUsd = p.revenueUsd * effectiveShippingRate;
-    const returnsUsd  = p.revenueUsd * effectiveReturnRate;
-    const taxesUsd    = p.revenueUsd * effectiveTaxRate;
-
-    const bcRevShare    = bcRevenue > 0 ? p.revenueUsd / bcRevenue : 0;
-
-    // Net revenue = gross - returns (consistent with dashboard's netRevenue = grossRevenue - discounts - returns)
-    // Note: discounts are already subtracted from p.revenueUsd (via discount_allocations)
-    const netRevenueUsd = Math.max(0, p.revenueUsd - returnsUsd);
+    const feesUsd      = netRevenueUsd * effectiveFeeRate;
+    const shippingUsd  = netRevenueUsd * effectiveShippingRate;
+    const taxesUsd     = netRevenueUsd * effectiveTaxRate;
+    const returnsUsd   =
+      ct && bcRevenue > 0 ? ct.returns * (p.revenueUsd / bcRevenue) : 0;
 
     const aov              = p.orders > 0 ? netRevenueUsd / p.orders : 0;
     const cogsPerOrder     = p.orders > 0 ? cogsUsd / p.orders : 0;
@@ -1002,8 +1005,9 @@ export async function GET(req: NextRequest) {
     const campaignConversionValue = productCampaignConversionValue[key] ?? 0;
     const cpaAds  = adSpendUsd > 0 && campaignPurchases > 0 ? adSpendUsd / campaignPurchases : null;
     const roasAds = adSpendUsd > 0 && campaignConversionValue > 0 ? campaignConversionValue / adSpendUsd : null;
-    // totalCost = COGS + AdSpend + Fees + Shipping + Returns + Taxes (all-in, consistent with dashboard)
-    const totalCost    = cogsUsd + adSpendUsd + feesUsd + shippingUsd + returnsUsd + taxesUsd;
+    // revenueUsd ya queda neto de devoluciones; no incluimos returns otra vez
+    // en totalCost para evitar descontarlas dos veces.
+    const totalCost    = cogsUsd + adSpendUsd + feesUsd + shippingUsd + taxesUsd;
     const status       = calcStatus(netProfit, netMargin, cogsUsd, adSpendUsd, cpa, cpaBE, isDigital, isUpsell);
     const dataQuality  = calcDataQuality(cogsUsd, adSpendUsd, isDigital, isUpsell);
 
@@ -1074,8 +1078,11 @@ export async function GET(req: NextRequest) {
 
     return {
       ...p,
+      revenueUsd: netRevenueUsd,
+      revenueLocal: netRevenueUsd * cCfg.displayRate,
       priceUsd: p.unitPriceUsd,   // unit selling price for products table display
-      costPerUnit, cogsUsd, adSpendUsd, totalCost,
+      costPerUnit, cogsUsd, adSpendUsd, feesUsd, shippingUsd, taxesUsd,
+      totalCost, returnsUsd,
       aov, cpaBE, isDigital, isUpsell,
       productType: isDigital ? "digital" : isUpsell ? "upsell" : "físico",
       grossProfit, grossMargin,
@@ -1092,10 +1099,17 @@ export async function GET(req: NextRequest) {
     orders:      acc.orders      + r.orders,
     cogsUsd:     acc.cogsUsd     + r.cogsUsd,
     adSpendUsd:  acc.adSpendUsd  + r.adSpendUsd,
+    feesUsd:     acc.feesUsd     + r.feesUsd,
+    shippingUsd: acc.shippingUsd + r.shippingUsd,
+    taxesUsd:    acc.taxesUsd    + r.taxesUsd,
     totalCost:   acc.totalCost   + r.totalCost,
     grossProfit: acc.grossProfit + r.grossProfit,
     netProfit:   acc.netProfit   + r.netProfit,
-  }), { revenueUsd: 0, units: 0, orders: 0, cogsUsd: 0, adSpendUsd: 0, totalCost: 0, grossProfit: 0, netProfit: 0 });
+  }), {
+    revenueUsd: 0, units: 0, orders: 0, cogsUsd: 0, adSpendUsd: 0,
+    feesUsd: 0, shippingUsd: 0, taxesUsd: 0, totalCost: 0,
+    grossProfit: 0, netProfit: 0,
+  });
 
   // Unique order count — sum of distinct order IDs across all brand+country buckets.
   // (totals.orders above counts product-line appearances, so an order with 3 products

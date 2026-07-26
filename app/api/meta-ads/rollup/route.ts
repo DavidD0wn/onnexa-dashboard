@@ -2,16 +2,6 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { calculateProfit } from "@/lib/metrics";
 
-const SINGLE_COUNTRY_BRAND: Record<
-  string,
-  { countryId: string; storeId: string }
-> = {
-  brand_balancea: {
-    countryId: "country_mx",
-    storeId: "store_balancea_mx",
-  },
-};
-
 const BRAND_DEFAULTS: Record<
   string,
   { storeId: string; countryId: string }
@@ -25,6 +15,19 @@ const BRAND_DEFAULTS: Record<
     countryId: "country_mx",
   },
 };
+
+function storeIdFor(brandId: string, countryId: string): string | null {
+  const brand =
+    brandId === "brand_glowmmi"
+      ? "glowmmi"
+      : brandId === "brand_balancea"
+        ? "balancea"
+        : null;
+  const country = countryId.replace(/^country_/, "").toLowerCase();
+  return brand && ["mx", "us", "cl"].includes(country)
+    ? `store_${brand}_${country}`
+    : null;
+}
 
 function utcDay(date: Date): Date {
   return new Date(
@@ -97,16 +100,7 @@ export async function POST(req: Request) {
       where: { date: { gte: from, lte: to } },
     });
 
-    if (grouped.length === 0) {
-      return NextResponse.json({
-        ok: true,
-        updated: 0,
-        message: "Sin registros de AdSpend en ese rango",
-      });
-    }
-
-    // Primero consolidamos. Esto evita que dos países de Balancea sobrescriban
-    // sucesivamente la misma fila country_mx.
+    // Consolidar por país real mantiene separados MX, US y CL.
     const consolidated = new Map<
       string,
       { brandId: string; countryId: string; date: Date; adSpend: number }
@@ -117,8 +111,7 @@ export async function POST(req: Request) {
       const adSpend = row._sum.spend ?? 0;
       sourceSpend += adSpend;
       const date = utcDay(row.date);
-      const targetCountry =
-        SINGLE_COUNTRY_BRAND[row.brandId]?.countryId ?? row.countryId;
+      const targetCountry = row.countryId;
       const key = `${row.brandId}|${targetCountry}|${date.toISOString()}`;
       const current = consolidated.get(key);
       if (current) {
@@ -138,44 +131,42 @@ export async function POST(req: Request) {
     let skipped = 0;
     let duplicateRowsCleared = 0;
     let appliedSpend = 0;
+    let staleSpendCleared = 0;
+
+    // Empezar desde cero evita conservar pauta vieja cuando una campaña/día
+    // desaparece del rango recién sincronizado.
+    const previousMetrics = await prisma.dailyMetric.findMany({
+      where: {
+        date: { gte: from, lte: to },
+        OR: [{ adSpendFacebook: { not: 0 } }, { adSpend: { not: 0 } }],
+      },
+    });
+    for (const metric of previousMetrics) {
+      const nonFacebookSpend =
+        metric.adSpendGoogle +
+        metric.adSpendSnapchat +
+        metric.adSpendTiktok;
+      const profit = profitForMetric(metric, 0);
+      await prisma.dailyMetric.update({
+        where: { id: metric.id },
+        data: {
+          adSpend: nonFacebookSpend,
+          adSpendFacebook: 0,
+          netProfit: profit.netProfit,
+          netMargin: profit.netMargin,
+          roas: 0,
+          cpa: null,
+        },
+      });
+      staleSpendCleared++;
+    }
 
     for (const row of consolidated.values()) {
       const dayStart = row.date;
       const dayEnd = new Date(row.date.getTime() + 86_400_000 - 1);
-      const singleCountry = SINGLE_COUNTRY_BRAND[row.brandId];
 
       const result = await prisma.$transaction(
         async (tx) => {
-          if (singleCountry) {
-            const staleMetrics = await tx.dailyMetric.findMany({
-              where: {
-                brandId: row.brandId,
-                countryId: { not: row.countryId },
-                date: { gte: dayStart, lte: dayEnd },
-                adSpend: { not: 0 },
-              },
-            });
-
-            for (const stale of staleMetrics) {
-              const profit = profitForMetric(stale, 0);
-              const nonFacebookSpend =
-                stale.adSpendGoogle +
-                stale.adSpendSnapchat +
-                stale.adSpendTiktok;
-              await tx.dailyMetric.update({
-                where: { id: stale.id },
-                data: {
-                  adSpend: nonFacebookSpend,
-                  adSpendFacebook: 0,
-                  netProfit: profit.netProfit,
-                  netMargin: profit.netMargin,
-                  roas: 0,
-                  cpa: null,
-                },
-              });
-            }
-          }
-
           const metrics = await tx.dailyMetric.findMany({
             where: {
               brandId: row.brandId,
@@ -187,14 +178,17 @@ export async function POST(req: Request) {
 
           if (metrics.length === 0) {
             const defaults = BRAND_DEFAULTS[row.brandId];
-            if (!defaults) return { status: "skipped" as const, duplicates: 0 };
+            const storeId = storeIdFor(row.brandId, row.countryId);
+            if (!defaults || !storeId) {
+              return { status: "skipped" as const, duplicates: 0 };
+            }
 
             await tx.dailyMetric.create({
               data: {
                 date: dayStart,
                 brandId: row.brandId,
                 countryId: row.countryId,
-                storeId: singleCountry?.storeId ?? defaults.storeId,
+                storeId,
                 adSpend: row.adSpend,
                 adSpendFacebook: row.adSpend,
                 netProfit: -row.adSpend,
@@ -313,6 +307,7 @@ export async function POST(req: Request) {
       created,
       skipped,
       duplicateRowsCleared,
+      staleSpendCleared,
       profitRowsRecalculated,
       sourceSpend,
       appliedSpend,

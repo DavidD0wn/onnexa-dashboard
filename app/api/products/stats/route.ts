@@ -1,92 +1,132 @@
 /**
- * GET /api/products/stats?from=YYYY-MM-DD&to=YYYY-MM-DD&brand=all
- * Devuelve top productos y detalle diario por producto del Sheet5
+ * Compatibilidad para las tarjetas antiguas de producto.
+ * La fuente canónica es Product Analytics; ProductDailyStat queda fuera del
+ * cálculo porque era una importación histórica incompleta.
  */
-import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { NextRequest, NextResponse } from "next/server";
+import { GET as getProductAnalytics } from "@/app/api/products/analytics/route";
+import { GET as getDailyProducts } from "@/app/api/shopify/daily-products/route";
 
-export async function GET(req: Request) {
-  const { searchParams } = new URL(req.url);
-  const from  = searchParams.get("from")
-    ? new Date(searchParams.get("from")! + "T00:00:00Z")
-    : new Date("2026-01-01");
-  const to    = searchParams.get("to")
-    ? new Date(searchParams.get("to")! + "T23:59:59Z")
-    : new Date();
-  const brand = searchParams.get("brand") ?? "all";
+export async function GET(req: NextRequest) {
+  try {
+    const sourceUrl = new URL(req.url);
+    const analyticsUrl = new URL("/api/products/analytics", sourceUrl.origin);
+    const dailyUrl = new URL("/api/shopify/daily-products", sourceUrl.origin);
 
-  const where: Record<string, any> = { date: { gte: from, lte: to } };
-  if (brand !== "all") where.brandId = brand;
+    for (const name of ["from", "to"]) {
+      const value = sourceUrl.searchParams.get(name);
+      if (value) {
+        analyticsUrl.searchParams.set(name, value);
+        dailyUrl.searchParams.set(name, value);
+      }
+    }
 
-  // ── Top productos agregados ────────────────────────────────────────────
-  const topRaw = await prisma.productDailyStat.groupBy({
-    by: ["productCode", "productName", "brandId"],
-    where,
-    _sum: {
-      revenueUsd: true, profitUsd: true, orders: true,
-      adSpendUsd: true, cogsUsd: true, feesUsd: true,
-    },
-    _avg: { roas: true, cpaReal: true },
-    orderBy: { _sum: { revenueUsd: "desc" } },
-    take: 20,
-  });
+    const brand = sourceUrl.searchParams.get("brand") ?? "all";
+    const store =
+      brand === "brand_glowmmi"
+        ? "glowmmi"
+        : brand === "brand_balancea"
+          ? "balancea"
+          : "all";
+    analyticsUrl.searchParams.set("store", store);
+    dailyUrl.searchParams.set("store", store);
 
-  const topProducts = topRaw.map(p => ({
-    code:    p.productCode,
-    name:    p.productName,
-    brandId: p.brandId,
-    revenue: p._sum.revenueUsd ?? 0,
-    profit:  p._sum.profitUsd  ?? 0,
-    orders:  p._sum.orders     ?? 0,
-    adSpend: p._sum.adSpendUsd ?? 0,
-    cogs:    p._sum.cogsUsd    ?? 0,
-    fees:    p._sum.feesUsd    ?? 0,
-    avgRoas: p._avg.roas,
-    avgCpa:  p._avg.cpaReal,
-    margin:  (p._sum.revenueUsd ?? 0) > 0
-               ? ((p._sum.profitUsd ?? 0) / (p._sum.revenueUsd ?? 1)) * 100
-               : 0,
-  }));
+    const [analyticsResponse, dailyResponse] = await Promise.all([
+      getProductAnalytics(new NextRequest(analyticsUrl)),
+      getDailyProducts(new NextRequest(dailyUrl)),
+    ]);
+    if (!analyticsResponse.ok) return analyticsResponse;
+    if (!dailyResponse.ok) return dailyResponse;
 
-  // ── Detalle diario (qué se vendió cada día) ────────────────────────────
-  const allRows = await prisma.productDailyStat.findMany({
-    where,
-    orderBy: { date: "desc" },
-    take: 600,
-    select: {
-      date: true, productCode: true, productName: true, brandId: true,
-      orders: true, revenueUsd: true, adSpendUsd: true, cogsUsd: true,
-      profitUsd: true, roas: true, cpaReal: true, isProfit: true,
-    },
-  });
+    const analytics = await analyticsResponse.json();
+    const dailyProducts = await dailyResponse.json();
+    const aggregate = new Map<string, any>();
 
-  // Agrupar por fecha
-  const byDate: Record<string, { date: string; products: any[] }> = {};
-  for (const r of allRows) {
-    if (r.orders === 0 && r.revenueUsd === 0) continue;
-    const d = r.date.toISOString().slice(0, 10);
-    if (!byDate[d]) byDate[d] = { date: d, products: [] };
-    byDate[d].products.push({
-      code:     r.productCode,
-      name:     r.productName,
-      brandId:  r.brandId,
-      orders:   r.orders,
-      revenue:  r.revenueUsd,
-      adSpend:  r.adSpendUsd,
-      cogs:     r.cogsUsd,
-      profit:   r.profitUsd,
-      roas:     r.roas,
-      cpa:      r.cpaReal,
-      isProfit: r.isProfit,
-    });
-  }
+    for (const row of analytics.rows ?? []) {
+      const key = `${row.brandId}|${row.name}`;
+      const current = aggregate.get(key) ?? {
+        code: row.name,
+        name: row.name,
+        brandId: row.brandId,
+        revenue: 0,
+        profit: 0,
+        orders: 0,
+        adSpend: 0,
+        cogs: 0,
+        fees: 0,
+      };
+      current.revenue += row.revenueUsd ?? 0;
+      current.profit += row.netProfit ?? 0;
+      current.orders += row.orders ?? 0;
+      current.adSpend += row.adSpendUsd ?? 0;
+      current.cogs += row.cogsUsd ?? 0;
+      current.fees +=
+        (row.feesUsd ?? 0) +
+        (row.shippingUsd ?? 0) +
+        (row.taxesUsd ?? 0);
+      aggregate.set(key, current);
+    }
 
-  const daily = Object.values(byDate)
-    .sort((a, b) => b.date.localeCompare(a.date))
-    .map(d => ({
-      ...d,
-      products: d.products.sort((a: any, b: any) => b.revenue - a.revenue),
+    const topProducts = [...aggregate.values()]
+      .map((product) => ({
+        ...product,
+        avgRoas:
+          product.adSpend > 0 ? product.revenue / product.adSpend : null,
+        avgCpa:
+          product.adSpend > 0 && product.orders > 0
+            ? product.adSpend / product.orders
+            : null,
+        margin:
+          product.revenue > 0
+            ? (product.profit / product.revenue) * 100
+            : 0,
+      }))
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 20);
+
+    const profitability = new Map(
+      topProducts.map((product) => [
+        `${product.brandId}|${product.name}`,
+        product.profit >= 0,
+      ]),
+    );
+    const daily = (dailyProducts.days ?? []).map((day: any) => ({
+      date: day.date,
+      products: day.products.map((product: any) => {
+        const brandId =
+          product.brandName === "Glowmmi"
+            ? "brand_glowmmi"
+            : "brand_balancea";
+        return {
+          code: product.name,
+          name: product.name,
+          brandId,
+          orders: product.orderCount,
+          revenue: product.revenueUsd,
+          adSpend: 0,
+          cogs: 0,
+          profit: 0,
+          roas: null,
+          cpa: null,
+          isProfit: profitability.get(`${brandId}|${product.name}`) ?? false,
+        };
+      }),
     }));
 
-  return NextResponse.json({ topProducts, daily });
+    return NextResponse.json({
+      topProducts,
+      daily,
+      totals: analytics.totals,
+      reconciliation: analytics.adSpendReconciliation,
+    });
+  } catch (error) {
+    console.error(
+      "[Product Stats]",
+      error instanceof Error ? error.message : String(error),
+    );
+    return NextResponse.json(
+      { error: "No se pudieron cargar las estadísticas de producto." },
+      { status: 502 },
+    );
+  }
 }

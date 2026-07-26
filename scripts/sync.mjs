@@ -80,7 +80,7 @@ if (!apply) {
     for (const store of ["glowmmi", "balancea"]) {
       const result = await request("/api/shopify/sync", {
         method: "POST",
-        body: JSON.stringify({ store, days }),
+        body: JSON.stringify({ store, days, from: dateFrom, to: dateTo }),
       });
       line(`Shopify ${store}`, `${result.synced || 0} días sincronizados`);
     }

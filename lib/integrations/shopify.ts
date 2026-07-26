@@ -84,7 +84,7 @@ export function getShopifyStores(): Record<ShopifyStoreKey, ShopifyStoreConfig> 
       payoutCurrency: "USD",
       gatewayPct: 0.036,
       gatewayFixed: 0,
-      splitByCountry: false,
+      splitByCountry: true,
       storeUtcOffset: -6,
       color: "#10B981",
     },

@@ -45,19 +45,22 @@ export async function POST(req: Request) {
     const cogs     = metrics.reduce((s, m) => s + m.cogs,         0);
     const fees     = metrics.reduce((s, m) => s + m.fees,         0);
     const shipping = metrics.reduce((s, m) => s + m.shippingCost, 0);
+    const handling = metrics.reduce((s, m) => s + m.handlingFees, 0);
+    const taxes    = metrics.reduce((s, m) => s + m.taxes,        0);
+    const other    = metrics.reduce((s, m) => s + m.otherCosts,   0);
     const adSpend  = adRows.reduce((s, r) => s + (r._sum.spend ?? 0), 0);
-    const profit   = net - cogs - fees - shipping - adSpend;
+    const profit   = net - cogs - fees - shipping - handling - taxes - other - adSpend;
     const margin   = net > 0 ? (profit / net) * 100 : 0;
     const roas     = adSpend > 0 ? net / adSpend : null;
     const cpa      = orders > 0 && adSpend > 0 ? adSpend / orders : null;
-    const aov      = orders > 0 ? revenue / orders : 0;
+    const aov      = orders > 0 ? net / orders : 0;
 
     // ── Daily chart data ──────────────────────────────────────────────────────
     const byDate: Record<string, { revenue: number; profit: number; orders: number; adSpend: number }> = {};
     for (const m of metrics) {
       const d = m.date.toISOString().slice(0, 10);
       if (!byDate[d]) byDate[d] = { revenue: 0, profit: 0, orders: 0, adSpend: 0 };
-      byDate[d].revenue += m.grossRevenue;
+      byDate[d].revenue += m.netRevenue;
       byDate[d].profit  += m.netProfit;
       byDate[d].orders  += m.ordersCount;
     }
@@ -72,7 +75,7 @@ export async function POST(req: Request) {
     for (const m of metrics) {
       const k = m.brand.name;
       if (!byBrand[k]) byBrand[k] = { name: k, revenue: 0, orders: 0, adSpend: 0 };
-      byBrand[k].revenue += m.grossRevenue;
+      byBrand[k].revenue += m.netRevenue;
       byBrand[k].orders  += m.ordersCount;
     }
     for (const r of products) {
@@ -202,7 +205,7 @@ export async function POST(req: Request) {
       <thead><tr><th>Fecha</th><th style="text-align:right">Revenue</th><th style="text-align:right">Órdenes</th><th style="text-align:right">Ad Spend</th><th style="text-align:right">Profit est.</th></tr></thead>
       <tbody>
         ${chartDays.slice(-7).reverse().map(([date, v]) => {
-          const dayProfit = v.profit - v.adSpend;
+          const dayProfit = v.profit;
           return `<tr>
             <td>${date}</td>
             <td class="num">${fmt(v.revenue)}</td>
@@ -225,6 +228,8 @@ export async function POST(req: Request) {
         <tr><td>— COGS (costo producto)</td><td class="num bad">−${fmt(cogs)}</td></tr>
         <tr><td>— Shipping</td><td class="num bad">−${fmt(shipping)}</td></tr>
         <tr><td>— Fees pasarela</td><td class="num bad">−${fmt(fees)}</td></tr>
+        <tr><td>— Manejo y fulfillment</td><td class="num bad">−${fmt(handling)}</td></tr>
+        <tr><td>— Impuestos y otros costos</td><td class="num bad">−${fmt(taxes + other)}</td></tr>
         <tr><td>— Ad Spend</td><td class="num bad">−${fmt(adSpend)}</td></tr>
         <tr style="background:#f8fafc;font-weight:700"><td><strong>Ganancia Neta</strong></td><td class="num ${profit >= 0 ? "good" : "bad"}"><strong>${fmt(profit)}</strong></td></tr>
         <tr><td style="color:#64748b">Margen neto</td><td class="num ${margin >= 15 ? "good" : margin >= 5 ? "" : "bad"}">${fmtPct(margin)}</td></tr>

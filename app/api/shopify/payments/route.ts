@@ -10,7 +10,7 @@
  *   type=charge  → fee de cada venta
  *   type=refund  → fee de cada devolución (reduce fees del día)
  *
- * Body: { store?: "glowmmi"|"balancea", days?: number }
+ * Body: { store?: "glowmmi"|"balancea", days?: number, from?: string, to?: string }
  */
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
@@ -78,7 +78,7 @@ const STORES: Record<"glowmmi" | "balancea", PaymentStoreConfig> = {
     authType:       "urlencoded" as const,
     brandId:        "brand_balancea",
     feesCurrency:   "USD",   // Balancea Shopify Payments settles in USD
-    splitByCountry: false,
+    splitByCountry: true,
   },
 };
 
@@ -157,19 +157,37 @@ function localStr(d: Date): string {
 // ─── POST ─────────────────────────────────────────────────────────────────────
 export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
-  const { store = "glowmmi", days = 30 } = body as { store?: string; days?: number };
+  const {
+    store = "glowmmi",
+    days = 30,
+    from: requestedFrom,
+    to: requestedTo,
+  } = body as {
+    store?: string;
+    days?: number;
+    from?: string;
+    to?: string;
+  };
 
   const cfg = STORES[store as keyof typeof STORES];
   if (!cfg) return NextResponse.json({ error: "Tienda no válida" }, { status: 400 });
 
   try {
     const token    = await getToken(cfg.shop, cfg.clientId, cfg.clientSecret, cfg.authType);
-    const today    = localStr(new Date());
-    const fromD    = new Date(); fromD.setDate(fromD.getDate() - days);
-    const dateFrom = localStr(fromD);
+    const dateTo = requestedTo ?? localStr(new Date());
+    const fromD = new Date(`${dateTo}T12:00:00Z`);
+    fromD.setUTCDate(fromD.getUTCDate() - Math.max(1, days) + 1);
+    const dateFrom = requestedFrom ?? fromD.toISOString().slice(0, 10);
+    if (
+      !/^\d{4}-\d{2}-\d{2}$/.test(dateFrom) ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(dateTo) ||
+      dateFrom > dateTo
+    ) {
+      return NextResponse.json({ error: "Rango de fechas inválido" }, { status: 400 });
+    }
 
     // ── Fetch all charge + refund transactions ──
-    const txs = await fetchBalanceTxs(cfg.shop, token, dateFrom, today);
+    const txs = await fetchBalanceTxs(cfg.shop, token, dateFrom, dateTo);
 
     // ── Group fees by date (sum charges, subtract refunds) ──
     // fee on a "refund" tx is the refund processing fee (usually negative or zero)
@@ -181,7 +199,7 @@ export async function POST(req: Request) {
     // ── Load daily exchange rates for MXN→USD conversion if needed ──
     let ratesByDate: Record<string, number> = {};
     if (cfg.feesCurrency === "MXN") {
-      ratesByDate = await fetchHistoricalRates(dateFrom, today);
+      ratesByDate = await fetchHistoricalRates(dateFrom, dateTo);
     }
     const getRate = (d: string) => ratesByDate[d] ?? FALLBACK_MXN_RATE;
 
@@ -239,7 +257,7 @@ export async function POST(req: Request) {
       rowsUpdated:     updated,
       datesSkipped:    skipped,
       dateFrom,
-      dateTo:          today,
+      dateTo,
       preview,
     });
   } catch (err: any) {
