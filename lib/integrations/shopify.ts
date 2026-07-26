@@ -203,6 +203,7 @@ export async function shopifyFetch(
   const url = assertStoreUrl(store, input);
   let token = await getShopifyAccessToken(store);
   let lastError = "";
+  let staticTokenTried = token === store.staticToken;
 
   for (let attempt = 0; attempt < 8; attempt++) {
     let response: Response | null = null;
@@ -221,6 +222,15 @@ export async function shopifyFetch(
       if (response.status === 401 && attempt === 0) {
         tokenCache.delete(store.key);
         token = await getShopifyAccessToken(store);
+        continue;
+      }
+      if (
+        response.status === 401 &&
+        store.staticToken &&
+        !staticTokenTried
+      ) {
+        token = store.staticToken;
+        staticTokenTried = true;
         continue;
       }
 

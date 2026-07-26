@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
+  fetchShopifyPaginated,
   getShopifyAccessToken,
   getShopifyStore,
+  shopifyRestUrl,
 } from "@/lib/integrations/shopify";
 import fs from "fs";
 import path from "path";
@@ -275,31 +277,17 @@ LIMIT 500`;
   }
 }
 
-async function fetchOrders(shop: string, token: string, since: string, until: string) {
-  const seen = new Set<string>();
-  const all: any[] = [];
-
-  let url: string | null =
-    `https://${shop}/admin/api/${process.env.SHOPIFY_API_VERSION || "2026-07"}/orders.json` +
+async function fetchOrders(store: AnalyticsStore, since: string, until: string) {
+  const sharedStore = getShopifyStore(store.key);
+  return fetchShopifyPaginated<any>(
+    sharedStore,
+    shopifyRestUrl(sharedStore, "orders.json") +
     `?status=any&financial_status=paid,partially_paid,partially_refunded,refunded` +
-    `&created_at_min=${since}&created_at_max=${until}&limit=250` +
-    `&fields=id,created_at,line_items,shipping_address,shipping_lines`;
-  let pages = 0;
-  while (url) {
-    if (++pages > 100) throw new Error(`Paginación de órdenes anormal para ${shop}`);
-    const res: Response = await fetch(url, {
-      headers: { "X-Shopify-Access-Token": token },
-      signal: AbortSignal.timeout(30_000),
-    });
-    if (!res.ok) throw new Error(`Shopify ${shop} respondió HTTP ${res.status}`);
-    const data = await res.json();
-    for (const o of (data.orders ?? [])) {
-      if (!seen.has(String(o.id))) { seen.add(String(o.id)); all.push(o); }
-    }
-    const next: RegExpMatchArray | null = (res.headers.get("Link") ?? "").match(/<([^>]+)>;\s*rel="next"/);
-    url = next ? next[1] : null;
-  }
-  return all;
+    `&created_at_min=${encodeURIComponent(since)}` +
+    `&created_at_max=${encodeURIComponent(until)}&limit=250` +
+    `&fields=id,created_at,line_items,shipping_address,shipping_lines`,
+    "orders",
+  );
 }
 
 /**
@@ -612,7 +600,7 @@ export async function GET(req: NextRequest) {
     try {
       const token  = await getToken(store);
       const [orders, funnel] = await Promise.all([
-        fetchOrders(store.shop, token, since, until),
+        fetchOrders(store, since, until),
         fetchFunnelData(store.shop, token, since, until),
       ]);
       funnelByStore[store.brandId] = funnel;
