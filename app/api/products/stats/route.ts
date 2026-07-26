@@ -98,7 +98,7 @@ export async function GET(req: NextRequest) {
             ? "brand_glowmmi"
             : "brand_balancea";
         return {
-          code: product.name,
+          code: `${brandId}|${product.name}|${product.variant ?? ""}`,
           name: product.name,
           brandId,
           orders: product.orderCount,

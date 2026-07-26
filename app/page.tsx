@@ -1911,7 +1911,7 @@ export default function Dashboard() {
                               const isGlow = p.brandId === "brand_glowmmi";
                               const barPct = (p.revenue / maxRev) * 100;
                               return (
-                                <tr key={`${p.code}-${p.name}`}>
+                                <tr key={`${p.brandId}-${p.code}-${p.name}`}>
                                   <td style={{ fontWeight: 700, color: i === 0 ? "#F59E0B" : "var(--text-3)", fontSize: 13 }}>
                                     {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}`}
                                   </td>
@@ -1978,7 +1978,7 @@ export default function Dashboard() {
                               </div>
                               <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                                 {day.products.map((p: any) => (
-                                  <div key={`${p.code}-${p.name}`} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 10px", borderRadius: 8, background: "var(--bg-2)" }}>
+                                  <div key={`${day.date}-${p.brandId}-${p.code}-${p.name}`} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 10px", borderRadius: 8, background: "var(--bg-2)" }}>
                                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                                       <div style={{ width: 6, height: 6, borderRadius: "50%", background: p.brandId === "brand_glowmmi" ? "#EC4899" : "#10B981", flexShrink: 0 }} />
                                       <span style={{ fontSize: 12, color: "var(--text-2)", fontWeight: 500 }}>{p.name}</span>

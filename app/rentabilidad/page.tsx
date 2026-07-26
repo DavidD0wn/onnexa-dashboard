@@ -430,7 +430,7 @@ export default function RentabilidadPage() {
                           const stateCol = state === "good" ? "#065F46" : state === "ok" ? "#92400E" : "#991B1B";
                           const isGlow = p.brandId === "brand_glowmmi";
                           return (
-                            <tr key={`${p.code}-${p.name}`} style={{ borderBottom: "1px solid var(--border)", background: i % 2 === 0 ? "transparent" : "var(--bg-2)" }}>
+                            <tr key={`${p.brandId}-${p.code}-${p.name}`} style={{ borderBottom: "1px solid var(--border)", background: i % 2 === 0 ? "transparent" : "var(--bg-2)" }}>
                               <td style={{ padding: "10px 14px" }}>
                                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                                   <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-3)", minWidth: 20 }}>{i + 1}</span>
