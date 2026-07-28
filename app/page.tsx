@@ -740,18 +740,23 @@ export default function Dashboard() {
     try {
       // Respaldo de seguridad antes de sincronizar (punto de restauración)
       try { await fetch("/api/backup", { method: "POST" }); } catch { /* no crítico */ }
-      // SOLO últimos 15 días — actualiza el mes en curso sin tocar meses cerrados.
-      // Los meses pasados quedan fijos en la BD; nunca se re-sincronizan ni se degradan.
-      const syncDays = 15;
+
+      // Sincroniza EXACTAMENTE el período seleccionado:
+      // - Rango de fechas personalizado → manda from/to (ese rango tal cual).
+      // - Preset (Hoy / 30 días / etc.) → manda esos días (mínimo 2 para cubrir hoy/ayer).
+      const payloadBase = (isCustom && customFrom && customTo)
+        ? { from: customFrom, to: customTo }
+        : { days: Math.max(days, 2) };
+
       await fetch("/api/shopify/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ store: "glowmmi", days: syncDays }),
+        body: JSON.stringify({ store: "glowmmi", ...payloadBase }),
       });
       await fetch("/api/shopify/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ store: "balancea", days: syncDays }),
+        body: JSON.stringify({ store: "balancea", ...payloadBase }),
       });
       setLastSynced(new Date().toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" }));
       // Resetear el contador de 7 días: el AppLoader no re-sincronizará hasta dentro de una semana.
@@ -759,7 +764,7 @@ export default function Dashboard() {
     } catch { /* non-critical */ }
     setSyncing(false);
     load();
-  }, [days, load]);
+  }, [days, isCustom, customFrom, customTo, load]);
 
   /**
    * Full sync: Shopify + Meta Ads + Rollup.
