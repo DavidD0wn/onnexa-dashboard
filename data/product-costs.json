@@ -136,14 +136,14 @@
     "GOMFIT x1": 10.03,
     "GOMFIT x2": 8.915,
     "GOMFIT x3": 7.8767,
-    "ClearDot": 10.48,
     "ClearDot x1": 10.48,
     "ClearDot x2": 8.115,
-    "ClearDot x3": 7.42,
-    "ClearDot™": 10.48,
-    "ClearDot™ — Deja de Cubrir el Granito. Se Va en 24 Horas.": 10.48
+    "ClearDot x3": 7.42
   },
   "us": {
+    "ClearDot x1": 12.69,
+    "ClearDot x2": 9.905,
+    "ClearDot x3": 8.2933,
     "Holy Basil x1": 11.42,
     "Holy Basil x2": 8.90,
     "Holy Basil x3": 8.10,
@@ -276,13 +276,7 @@
     "FERTIL x2": 11.47,
     "FERTIL x3": 10.10,
     "Cutting Mix x4": 11.34,
-    "CuttingMix x4": 11.34,
-    "ClearDot": 12.69,
-    "ClearDot x1": 12.69,
-    "ClearDot x2": 9.905,
-    "ClearDot x3": 8.2933,
-    "ClearDot™": 12.69,
-    "ClearDot™ — Deja de Cubrir el Granito. Se Va en 24 Horas.": 12.69
+    "CuttingMix x4": 11.34
   },
   "cl": {
     "Holy Basil x1": 12.14,
