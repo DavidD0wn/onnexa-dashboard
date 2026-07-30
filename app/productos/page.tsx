@@ -33,9 +33,15 @@ const BRANDS = [
 /* ─── Product type classifier ────────────────────────────────── */
 // Sincronizado con la regex de /costos y analytics/route.ts.
 // "otro" eliminado: todo producto real es físico (aunque no tenga COGS cargados).
-type ProductType = "físico" | "digital" | "upsell";
+type ProductType = "físico" | "digital" | "upsell" | "pauta";
 
-function classifyProduct(name: string): ProductType {
+function classifyProduct(name: string, explicitType?: string): ProductType {
+  if (
+    explicitType === "pauta sin asignar" ||
+    name === "Meta Ads sin producto identificado"
+  ) {
+    return "pauta";
+  }
   // Sincronizado con isUpsellProduct() en analytics/route.ts
   if (/rendimiento extendido|rendimiento m[aá]ximo|pureza extendida|reafirmante|vitamina c|youtful|fórmula pro|formula pro|protección de pedido|proteccion de pedido/i.test(name))
     return "upsell";
@@ -49,6 +55,7 @@ const TYPE_CONFIG: Record<ProductType, { label: string; color: string; bg: strin
   físico:  { label: "Físico",   color: "#065F46", bg: "#D1FAE5", border: "#6EE7B7", emoji: "📦" },
   digital: { label: "Digital",  color: "#1E40AF", bg: "#DBEAFE", border: "#93C5FD", emoji: "📱" },
   upsell:  { label: "Upsell",   color: "#92400E", bg: "#FEF3C7", border: "#FCD34D", emoji: "⚡" },
+  pauta:   { label: "Pauta sin asignar", color: "#9F1239", bg: "#FFE4E6", border: "#FDA4AF", emoji: "📣" },
 };
 
 /* ─── Types ──────────────────────────────────────────────────── */
@@ -61,6 +68,7 @@ interface ProductAnalytics {
   revenue: number; orders: number; units: number; profit: number; adSpend: number;
   roas: number | null; realCpa: number | null; aov: number;
   hasData: boolean;
+  productType?: string;
   costTiers: Array<{ qty: string; costUsd: number; landedUsd: number }>;
 }
 
@@ -123,7 +131,7 @@ function ProductRow({ p, fmtC }: { p: ProductAnalytics; fmtC: (v: number) => str
   const brandColor = p.brandId === "brand_glowmmi" ? "#EC4899" : "#10B981";
   const marginColor = p.margin >= 40 ? "var(--green)" : p.margin >= 25 ? "var(--yellow)" : "var(--red)";
   const roasColor   = p.roas === null ? "var(--text-3)" : p.roas >= 3 ? "var(--green)" : p.roas >= 2 ? "var(--yellow)" : "var(--red)";
-  const pType = classifyProduct(p.name);
+  const pType = classifyProduct(p.name, p.productType);
   const tc    = TYPE_CONFIG[pType];
 
   return (
@@ -359,7 +367,8 @@ export default function ProductosPage() {
           roas:         r.roas        ?? null,
           realCpa:      r.cpa         ?? r.realCpa ?? null,
           aov:          r.orders > 0  ? (r.revenueUsd / r.orders) : 0,
-          hasData:      (r.revenueUsd ?? 0) > 0,
+          hasData:      (r.revenueUsd ?? 0) > 0 || (r.adSpendUsd ?? 0) > 0,
+          productType:   r.productType ?? null,
           costTiers:    r.costTiers   ?? [],
         }));
         setData({
@@ -389,7 +398,7 @@ export default function ProductosPage() {
       list = list.filter((p) => p.name.toLowerCase().includes(q) || p.supplierName?.toLowerCase().includes(q));
     }
     if (statusFilter !== "all") list = list.filter((p) => p.status === statusFilter);
-    if (typeFilter   !== "all") list = list.filter((p) => classifyProduct(p.name) === typeFilter);
+    if (typeFilter   !== "all") list = list.filter((p) => classifyProduct(p.name, p.productType) === typeFilter);
     if (profitFilter === "winners") list = list.filter((p) => p.profit > 0);
     if (profitFilter === "losers")  list = list.filter((p) => p.profit < 0);
     return [...list].sort((a, b) => {
@@ -410,15 +419,18 @@ export default function ProductosPage() {
 
   // Computed KPIs
   const products   = Array.isArray(data?.products) ? data!.products : [];
-  const winners    = products.filter((p) => p.status === "winner").length;
-  const inTest     = products.filter((p) => p.status === "test").length;
-  const total      = products.length;
-  const avgMargin  = total > 0 ? (products.reduce((s, p) => s + p.margin, 0) / total) : 0;
+  const realProducts = products.filter(
+    (p) => classifyProduct(p.name, p.productType) !== "pauta",
+  );
+  const winners    = realProducts.filter((p) => p.status === "winner").length;
+  const inTest     = realProducts.filter((p) => p.status === "test").length;
+  const total      = realProducts.length;
+  const avgMargin  = total > 0 ? (realProducts.reduce((s, p) => s + p.margin, 0) / total) : 0;
 
   // Breakdown físico vs digital
-  const fisicos    = products.filter((p) => classifyProduct(p.name) === "físico");
-  const digitales  = products.filter((p) => classifyProduct(p.name) === "digital");
-  const upsells    = products.filter((p) => classifyProduct(p.name) === "upsell");
+  const fisicos    = products.filter((p) => classifyProduct(p.name, p.productType) === "físico");
+  const digitales  = products.filter((p) => classifyProduct(p.name, p.productType) === "digital");
+  const upsells    = products.filter((p) => classifyProduct(p.name, p.productType) === "upsell");
   const revFisico  = fisicos.reduce((s, p) => s + p.revenue, 0);
   const revDigital = digitales.reduce((s, p) => s + p.revenue, 0);
   const revUpsell  = upsells.reduce((s, p) => s + p.revenue, 0);
@@ -569,6 +581,7 @@ export default function ProductosPage() {
                   { v: "físico",  l: "📦 Físico"   },
                   { v: "digital", l: "📱 Digital"  },
                   { v: "upsell",  l: "⚡ Upsell"   },
+                  { v: "pauta",   l: "📣 Pauta"    },
                 ] as { v: "all" | ProductType; l: string }[]).map((s) => {
                   const tc = s.v !== "all" ? TYPE_CONFIG[s.v] : null;
                   return (

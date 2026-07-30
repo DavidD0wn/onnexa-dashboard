@@ -23,6 +23,7 @@ type ProductRow = {
   cpaAds: number | null; roasAds: number | null;
   campaignPurchases: number; campaignConversionValue: number;
   status: string; dataQuality: string;
+  productType?: string;
   sessions: number | null; addToCart: number | null; reachedCheckout: number | null;
   addToCartRate: number | null; conversionRate: number | null;
 };
@@ -85,17 +86,25 @@ const STATUS_CFG: Record<string, { color: string; bg: string }> = {
   "No rentable":        { color: "#EF4444", bg: "rgba(239,68,68,0.15)"  },
   "Sin pauta":          { color: "#6366F1", bg: "rgba(99,102,241,0.12)" },
   "Datos incompletos":  { color: "rgba(255,255,255,0.4)", bg: "rgba(255,255,255,0.07)" },
+  "Revisar campaña":    { color: "#FB7185", bg: "rgba(251,113,133,0.14)" },
 };
 
 const DQ_CFG: Record<string, { color: string }> = {
   "OK":                   { color: "#10B981" },
   "Falta COGS":           { color: "#F59E0B" },
   "Sin pauta registrada": { color: "#6366F1" },
+  "Pauta sin producto identificado": { color: "#FB7185" },
 };
 
 /* ─── Product type classifier ────────────────────── */
-type ProductType = "físico" | "digital" | "upsell" | "otro";
-function classifyProduct(name: string, costPerUnit: number): ProductType {
+type ProductType = "físico" | "digital" | "upsell" | "pauta" | "otro";
+function classifyProduct(name: string, costPerUnit: number, explicitType?: string): ProductType {
+  if (
+    explicitType === "pauta sin asignar" ||
+    name === "Meta Ads sin producto identificado"
+  ) {
+    return "pauta";
+  }
   const n = name.toLowerCase();
   if (n.includes("upsell") || n.includes("order bump") || n.includes("potenciador") || n.includes("add-on")) return "upsell";
   if (n.includes("guía") || n.includes("guia") || n.includes("ebook") || n.includes("e-book") || n.includes("digital") || n.includes("pdf") || n.includes("protocolo") || n.includes("agenda") || n.includes("tracker") || n.includes("recetas") || n.includes("alimentos") || n.includes("lifting desde") || n.includes("glow desde") || n.includes("curva 360") || n.includes("plan de gym") || n.includes("plan ") || n.includes("rutina anti") || n.includes("poros bajo") || n.includes("poros abiertos") || n.includes("equilibrio íntimo") || n.includes("equilibrio intimo") || n.includes("infecciones") || n.includes("hormonas")) return "digital";
@@ -106,6 +115,7 @@ const TYPE_CFG: Record<ProductType, { label: string; color: string; bg: string; 
   físico:  { label: "Físico",   color: "#10B981", bg: "rgba(16,185,129,0.15)", emoji: "📦" },
   digital: { label: "Digital",  color: "#6366F1", bg: "rgba(99,102,241,0.15)", emoji: "📱" },
   upsell:  { label: "Upsell",   color: "#F59E0B", bg: "rgba(245,158,11,0.15)", emoji: "⚡" },
+  pauta:   { label: "Pauta sin asignar", color: "#FB7185", bg: "rgba(251,113,133,0.14)", emoji: "📣" },
   otro:    { label: "Sin tipo", color: "rgba(255,255,255,0.4)", bg: "rgba(255,255,255,0.06)", emoji: "•" },
 };
 
@@ -559,7 +569,7 @@ export default function ProductAnalyticsPage() {
   const [sortKey,       setSortKey]       = useState<SortKey>("revenueUsd");
   const [sortAsc,       setSortAsc]       = useState(false);
   const [search,        setSearch]        = useState("");
-  const [typeFilter,    setTypeFilter]    = useState<"total" | "físico" | "digital">("total");
+  const [typeFilter,    setTypeFilter]    = useState<"total" | "físico" | "digital" | "upsell" | "pauta">("total");
   const [statusFilter,  setStatusFilter]  = useState("all");
   const [costs,         setCosts]         = useState<Record<string, number>>({});
   const [showCustomize, setShowCustomize] = useState(false);
@@ -676,7 +686,7 @@ export default function ProductAnalyticsPage() {
   // ── Filtered base rows ──
   const filteredRows = useMemo(() => {
     let r = rows;
-    if (typeFilter !== "total") r = r.filter(x => classifyProduct(x.name, x.costPerUnit) === typeFilter);
+    if (typeFilter !== "total") r = r.filter(x => classifyProduct(x.name, x.costPerUnit, x.productType) === typeFilter);
     if (search) r = r.filter(x => x.name.toLowerCase().includes(search.toLowerCase()) || x.brandName.toLowerCase().includes(search.toLowerCase()));
     if (statusFilter !== "all") r = r.filter(x => x.status === statusFilter);
     return r;
@@ -697,6 +707,7 @@ export default function ProductAnalyticsPage() {
           grossProfit: 0, grossMargin: 0, netProfit: 0, netMargin: 0,
           roas: null, cpa: null, cpaAds: null, roasAds: null, campaignPurchases: 0, campaignConversionValue: 0,
           status: r.status, dataQuality: r.dataQuality,
+          productType: r.productType,
           sessions: null, addToCart: null, reachedCheckout: null, addToCartRate: null, conversionRate: null,
           countries: [], stores: [], _sumData: true,
         };
@@ -839,8 +850,8 @@ export default function ProductAnalyticsPage() {
   const storeTotals     = useMemo(() => computeTotals(storeRows),     [storeRows]);
 
   /* ── Cell renderers ─────────────────────────────── */
-  const renderProductCell = (r: { name: string; variant: string; brandName: string; brandColor: string; costPerUnit: number }) => {
-    const pType = classifyProduct(r.name, r.costPerUnit);
+  const renderProductCell = (r: { name: string; variant: string; brandName: string; brandColor: string; costPerUnit: number; productType?: string }) => {
+    const pType = classifyProduct(r.name, r.costPerUnit, r.productType);
     const tc    = TYPE_CFG[pType];
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
@@ -1216,7 +1227,9 @@ export default function ProductAnalyticsPage() {
             { v: "total",   l: "Total"       },
             { v: "físico",  l: "📦 Físicos"  },
             { v: "digital", l: "📱 Digitales" },
-          ] as { v: "total" | "físico" | "digital"; l: string }[]).map(s => (
+            { v: "upsell",  l: "⚡ Upsells"   },
+            { v: "pauta",   l: "📣 Pauta"     },
+          ] as { v: "total" | "físico" | "digital" | "upsell" | "pauta"; l: string }[]).map(s => (
             <button key={s.v} onClick={() => setTypeFilter(s.v)} style={{
               padding: "6px 12px", borderRadius: 7, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600,
               background: typeFilter === s.v ? "#0E766E" : "transparent",
