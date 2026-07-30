@@ -812,7 +812,7 @@ export async function GET(req: NextRequest) {
   const unmatchedBrandCountrySpend: Record<string, number> = {};
 
   const productKeys = Object.keys(products);
-  // Exclude digital products (cogsUsd === 0) from ad matching.
+  // Exclude digital products and upsells from ad matching.
   // Ebooks and upsells are never the target of paid campaigns — they ride along with
   // the physical product purchase. Matching them causes two bugs:
   //   1. Short words like "glow" in ebook names match "glowfill" campaign keywords
@@ -820,7 +820,11 @@ export async function GET(req: NextRequest) {
   //   2. Digital products accumulate ad spend, which makes their profit appear negative
   //      even though they are 100% margin items with zero cost.
   const nameToKey = productKeys
-    .filter(k => products[k].cogsUsd > 0)          // physical products only
+    .filter(
+      (key) =>
+        !isDigitalProduct(products[key].name) &&
+        !isUpsellProduct(products[key].name),
+    )
     .map(k => {
       const p = products[k];
       const norm = normalizeName(p.name);
@@ -916,28 +920,15 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const eligibleRevenueByBrandCountry: Record<string, number> = {};
-  const eligibleRevenueByBrand: Record<string, number> = {};
   const cogsByBrandCountry: Record<string, number> = {};
   for (const product of Object.values(products)) {
     const countryKey = `${product.brandId}||${product.countryCode}`;
     cogsByBrandCountry[countryKey] =
       (cogsByBrandCountry[countryKey] ?? 0) + product.cogsUsd;
-    if (
-      isDigitalProduct(product.name) ||
-      isUpsellProduct(product.name) ||
-      product.revenueUsd <= 0
-    ) {
-      continue;
-    }
-    eligibleRevenueByBrandCountry[countryKey] =
-      (eligibleRevenueByBrandCountry[countryKey] ?? 0) + product.revenueUsd;
-    eligibleRevenueByBrand[product.brandId] =
-      (eligibleRevenueByBrand[product.brandId] ?? 0) + product.revenueUsd;
   }
 
   // ── Build final rows ────────────────────────────────────────────────────────
-  const rows = Object.values(products).map(p => {
+  const rows: any[] = Object.values(products).map(p => {
     const cCfg     = COUNTRY_CFG[p.countryCode] ?? COUNTRY_CFG.MX;
 
     const key         = `${p.name}||${p.variant}||${p.brandId}||${p.countryCode}`;
@@ -945,28 +936,13 @@ export async function GET(req: NextRequest) {
     const isDigital   = isDigitalProduct(p.name);
     const isUpsell    = !isDigital && isUpsellProduct(p.name);
 
-    // Proportional fallback uses only physical products. Country-specific and
-    // global unmatched pools have separate denominators so spend is never
-    // duplicated across countries or diluted into ebooks/upsells.
     const bck         = `${p.brandId}||${p.countryCode}`;
-    const bckAll      = `${p.brandId}||ALL`;
     const bcRevenue   = brandCountryRevenue[bck] ?? 0;
     // Digitales y upsells: 0 ad spend — no tienen campaña propia.
     const directSpend = (isDigital || isUpsell) ? 0 : (productAdSpend[key] ?? 0);
-    const countryEligibleRevenue = eligibleRevenueByBrandCountry[bck] ?? 0;
-    const brandEligibleRevenue = eligibleRevenueByBrand[p.brandId] ?? 0;
-    const countryProrated =
-      !isDigital && !isUpsell && countryEligibleRevenue > 0
-        ? (unmatchedBrandCountrySpend[bck] ?? 0) *
-          (p.revenueUsd / countryEligibleRevenue)
-        : 0;
-    const globalProrated =
-      !isDigital && !isUpsell && brandEligibleRevenue > 0
-        ? (unmatchedBrandCountrySpend[bckAll] ?? 0) *
-          (p.revenueUsd / brandEligibleRevenue)
-        : 0;
-    const proratSpend = countryProrated + globalProrated;
-    const adSpendUsd  = directSpend + proratSpend;
+    // Nunca inventar atribución: la pauta sin producto verificable se presenta
+    // en una fila separada, en lugar de prorratearla por ingresos.
+    const adSpendUsd  = directSpend;
 
     // ── Calibrate fees, shipping, returns from DailyMetric (effective rate approach) ──
     // Uses period-level effective rates (total_fees / total_gross) per brand+country.
@@ -1096,7 +1072,74 @@ export async function GET(req: NextRequest) {
       status, dataQuality,
       sessions, addToCart, reachedCheckout, addToCartRate, conversionRate,
     };
-  }).sort((a, b) => b.revenueUsd - a.revenueUsd);
+  });
+
+  // Conserva la conciliación total sin atribuir gasto a productos al azar.
+  // Esta fila hace visible cuánto gasto de Meta todavía necesita un mapeo.
+  for (const [brandCountryKey, spend] of Object.entries(
+    unmatchedBrandCountrySpend,
+  )) {
+    if (Math.abs(spend) < 0.000001) continue;
+    const [brandId, countryCode] = brandCountryKey.split("||");
+    const store = targetStores.find(
+      ([, value]) => value.brandId === brandId,
+    )?.[1];
+    const country = COUNTRY_CFG[countryCode];
+    const brandName = store?.brandName ?? brandId;
+    const brandColor = store?.color ?? "#64748B";
+    const countryName = country?.name ?? "Global";
+
+    rows.push({
+      name: "Meta Ads sin producto identificado",
+      variant: "",
+      brandId,
+      brandName,
+      brandColor,
+      storeKey: `${brandId}_${countryCode}`,
+      storeName: `${brandName} ${countryName}`,
+      countryCode,
+      countryName,
+      revenueUsd: 0,
+      revenueLocal: 0,
+      units: 0,
+      orders: 0,
+      lastSeen: toDateStr,
+      cogsUsd: 0,
+      unitPriceUsd: 0,
+      priceUsd: 0,
+      costPerUnit: 0,
+      adSpendUsd: spend,
+      feesUsd: 0,
+      shippingUsd: 0,
+      taxesUsd: 0,
+      totalCost: spend,
+      returnsUsd: 0,
+      aov: 0,
+      cpaBE: null,
+      isDigital: false,
+      isUpsell: false,
+      productType: "pauta sin asignar",
+      grossProfit: 0,
+      grossMargin: 0,
+      netProfit: -spend,
+      netMargin: 0,
+      roas: null,
+      cpa: null,
+      cpaAds: null,
+      roasAds: null,
+      campaignPurchases: 0,
+      campaignConversionValue: 0,
+      status: "Revisar campaña",
+      dataQuality: "Pauta sin producto identificado",
+      sessions: null,
+      addToCart: null,
+      reachedCheckout: null,
+      addToCartRate: null,
+      conversionRate: null,
+    });
+  }
+
+  rows.sort((a, b) => b.revenueUsd - a.revenueUsd);
 
   const totals = rows.reduce((acc, r) => ({
     revenueUsd:  acc.revenueUsd  + r.revenueUsd,
