@@ -2,6 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { calculateProfit } from "@/lib/metrics";
 
+function reconciliationSecret(): string | undefined {
+  return process.env.SYNC_SECRET ?? process.env.META_WEBHOOK_VERIFY_TOKEN;
+}
+
+function hasReconciliationAccess(req: NextRequest): boolean {
+  const secret = reconciliationSecret();
+  return Boolean(secret) && req.headers.get("x-sync-secret") === secret;
+}
+
 function dayKey(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
@@ -19,11 +28,7 @@ function finiteDays(value: string | null, fallback: number): number {
 
 export async function GET(req: NextRequest) {
   try {
-    const reconciliationSecret =
-      process.env.SYNC_SECRET ?? process.env.META_WEBHOOK_VERIFY_TOKEN;
-    const includeDetails =
-      Boolean(reconciliationSecret) &&
-      req.headers.get("x-sync-secret") === reconciliationSecret;
+    const includeDetails = hasReconciliationAccess(req);
     const days = finiteDays(req.nextUrl.searchParams.get("days"), 30);
     const requestedFrom = req.nextUrl.searchParams.get("from");
     const requestedTo = req.nextUrl.searchParams.get("to");
@@ -289,6 +294,162 @@ export async function GET(req: NextRequest) {
       },
       mismatches: mismatches.slice(0, 250),
       truncated: mismatches.length > 250,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    if (!hasReconciliationAccess(req)) {
+      return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+    }
+
+    const body = await req.json();
+    const date = typeof body.date === "string" ? body.date : "";
+    const brandId = typeof body.brandId === "string" ? body.brandId : "";
+    const countryId =
+      typeof body.countryId === "string" ? body.countryId : "";
+    const dryRun = body.dryRun !== false;
+    const expected = body.expected ?? {};
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !brandId || !countryId) {
+      return NextResponse.json(
+        { error: "Fecha, marca o país inválidos" },
+        { status: 400 },
+      );
+    }
+
+    const dayStart = new Date(`${date}T00:00:00.000Z`);
+    const dayEnd = new Date(`${date}T23:59:59.999Z`);
+    const rows = await prisma.dailyMetric.findMany({
+      where: {
+        date: { gte: dayStart, lte: dayEnd },
+        brandId,
+        countryId,
+      },
+      orderBy: [{ adSpendFacebook: "desc" }, { updatedAt: "desc" }],
+    });
+
+    if (rows.length !== 2) {
+      return NextResponse.json(
+        {
+          error: `Se esperaban exactamente 2 filas; se encontraron ${rows.length}`,
+        },
+        { status: 409 },
+      );
+    }
+
+    const [canonical, residual] = rows;
+    const sameCommerceCounters =
+      canonical.ordersCount === residual.ordersCount &&
+      canonical.unitsSold === residual.unitsSold;
+    const sameStore = canonical.storeId === residual.storeId;
+    const bothShopifySynced = rows.every((row) =>
+      row.notes?.startsWith("Shopify sync"),
+    );
+
+    if (!sameCommerceCounters || !sameStore || !bothShopifySynced) {
+      return NextResponse.json(
+        {
+          error:
+            "Las filas no cumplen las condiciones seguras de consolidación",
+        },
+        { status: 409 },
+      );
+    }
+
+    const sum = (pick: (row: (typeof rows)[number]) => number) =>
+      rows.reduce((total, row) => total + pick(row), 0);
+    const merged = {
+      ordersCount: canonical.ordersCount,
+      unitsSold: canonical.unitsSold,
+      grossRevenue: sum((row) => row.grossRevenue),
+      netRevenue: sum((row) => row.netRevenue),
+      discounts: sum((row) => row.discounts),
+      returns: sum((row) => row.returns),
+      adSpend: sum((row) => row.adSpend),
+      adSpendFacebook: sum((row) => row.adSpendFacebook),
+      adSpendGoogle: sum((row) => row.adSpendGoogle),
+      adSpendSnapchat: sum((row) => row.adSpendSnapchat),
+      adSpendTiktok: sum((row) => row.adSpendTiktok),
+      cogs: sum((row) => row.cogs),
+      shippingCost: sum((row) => row.shippingCost),
+      fees: sum((row) => row.fees),
+      handlingFees: sum((row) => row.handlingFees),
+      taxes: sum((row) => row.taxes),
+      otherCosts: sum((row) => row.otherCosts),
+      costMarketing: sum((row) => row.costMarketing),
+      costOffice: sum((row) => row.costOffice),
+    };
+    const profit = calculateProfit(merged);
+    const adSpendFacebook = merged.adSpendFacebook;
+    const metrics = {
+      ...merged,
+      netProfit: profit.netProfit,
+      netMargin: profit.netMargin,
+      aov:
+        merged.ordersCount > 0
+          ? merged.grossRevenue / merged.ordersCount
+          : 0,
+      cpa:
+        adSpendFacebook > 0 && merged.ordersCount > 0
+          ? adSpendFacebook / merged.ordersCount
+          : null,
+      roas:
+        adSpendFacebook > 0
+          ? merged.netRevenue / adSpendFacebook
+          : 0,
+      mer: merged.adSpend > 0 ? merged.netRevenue / merged.adSpend : 0,
+      notes: `Shopify sync — ${merged.ordersCount} órdenes · consolidado`,
+    };
+
+    const expectedChecks = [
+      ["ordersCount", metrics.ordersCount, Number(expected.ordersCount)],
+      ["unitsSold", metrics.unitsSold, Number(expected.unitsSold)],
+      ["netRevenue", metrics.netRevenue, Number(expected.netRevenue)],
+      ["cogs", metrics.cogs, Number(expected.cogs)],
+      ["adSpend", metrics.adSpend, Number(expected.adSpend)],
+    ] as const;
+    const failedChecks = expectedChecks.filter(
+      ([, actual, wanted]) =>
+        !Number.isFinite(wanted) || Math.abs(actual - wanted) >= 0.01,
+    );
+    if (failedChecks.length > 0) {
+      return NextResponse.json(
+        {
+          error: "La comprobación previa no coincide; no se modificó nada",
+          failedChecks: failedChecks.map(([field, actual, wanted]) => ({
+            field,
+            actual,
+            expected: wanted,
+          })),
+        },
+        { status: 409 },
+      );
+    }
+
+    if (!dryRun) {
+      await prisma.$transaction([
+        prisma.dailyMetric.update({
+          where: { id: canonical.id },
+          data: metrics,
+        }),
+        prisma.dailyMetric.delete({ where: { id: residual.id } }),
+      ]);
+    }
+
+    return NextResponse.json({
+      ok: true,
+      dryRun,
+      date,
+      brandId,
+      countryId,
+      keptId: canonical.id,
+      removedId: residual.id,
+      metrics,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
