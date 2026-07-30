@@ -19,9 +19,11 @@ function finiteDays(value: string | null, fallback: number): number {
 
 export async function GET(req: NextRequest) {
   try {
+    const reconciliationSecret =
+      process.env.SYNC_SECRET ?? process.env.META_WEBHOOK_VERIFY_TOKEN;
     const includeDetails =
-      Boolean(process.env.SYNC_SECRET) &&
-      req.headers.get("x-sync-secret") === process.env.SYNC_SECRET;
+      Boolean(reconciliationSecret) &&
+      req.headers.get("x-sync-secret") === reconciliationSecret;
     const days = finiteDays(req.nextUrl.searchParams.get("days"), 30);
     const requestedFrom = req.nextUrl.searchParams.get("from");
     const requestedTo = req.nextUrl.searchParams.get("to");
