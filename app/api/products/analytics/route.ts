@@ -177,6 +177,17 @@ function bundleSize(name: string, variant: string): number {
   return 1;
 }
 
+function localDateKey(createdAt: string, storeOffsetHours: number): string {
+  // Shopify puede devolver la fecha con el offset de la tienda o normalizada a UTC.
+  // Si ya incluye offset, la parte YYYY-MM-DD es la fecha local correcta.
+  if (/[+-]\d{2}:\d{2}$/.test(createdAt.trimEnd())) {
+    return createdAt.slice(0, 10);
+  }
+  const localMs =
+    new Date(createdAt).getTime() + storeOffsetHours * 60 * 60 * 1000;
+  return new Date(localMs).toISOString().slice(0, 10);
+}
+
 function isSkippableItem(item: any): boolean {
   // Dashboard y Shopify cuentan todas las líneas: regalos, productos digitales
   // y protección de pedido incluidos. Excluirlas aquí descuadraba unidades,
@@ -601,6 +612,8 @@ export async function GET(req: NextRequest) {
   for (const [, store] of targetStores) {
     try {
       const token  = await getToken(store);
+      const sharedStore = getShopifyStore(store.key);
+      const storeOffsetHours = sharedStore.storeUtcOffset ?? -6;
       const [orders, funnel] = await Promise.all([
         fetchOrders(store, since, until),
         fetchFunnelData(store.shop, token, since, until),
@@ -621,7 +634,9 @@ export async function GET(req: NextRequest) {
         const storeKeyStr  = `${store.brandId}_${countryCode}`;
 
         // Use the per-day historical rate for this order's date (fallback only)
-        const orderDate  = order.created_at?.slice(0, 10) ?? toDateStr;
+        const orderDate = order.created_at
+          ? localDateKey(order.created_at, storeOffsetHours)
+          : toDateStr;
         const orderRate  = store.currency === "MXN"
           ? (historicalRates[orderDate] ?? store.exchangeRate)
           : 1;
