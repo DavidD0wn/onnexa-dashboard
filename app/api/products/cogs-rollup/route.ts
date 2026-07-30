@@ -109,7 +109,17 @@ async function loadCosts(): Promise<Record<string, number>> {
 }
 
 function lookupCost(name: string, costs: Record<string, number>): number {
-  return costs[name] ?? costs[normalizeName(name)] ?? 0;
+  const base = name
+    .split(/\s*[|—–]\s*/)[0]
+    .replace(/[™®]/g, "")
+    .trim();
+  const normalizedName = normalizeName(name);
+  const normalizedBase = normalizeName(base);
+  return (
+    costs[`${base} x1`] ?? costs[`${normalizedBase} x1`] ??
+    costs[`${name} x1`] ?? costs[`${normalizedName} x1`] ??
+    costs[name] ?? costs[base] ?? costs[normalizedName] ?? costs[normalizedBase] ?? 0
+  );
 }
 
 // ─── POST ─────────────────────────────────────────────────────────────────────

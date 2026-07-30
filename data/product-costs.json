@@ -1,7 +1,7 @@
 {
   "_nota": "COGS en USD por país de envío. Claves 'Producto xN' = costo POR UNIDAD del escalón N del proveedor (el motor multiplica por unidades físicas). Claves de oferta sin xN (ej. '2 + 1 Free') = costo TOTAL de la oferta. Claves de título largo = costo x1 por unidad.",
-  "_version": 9,
-  "_updated": "2026-07-25 — ClearDot agregado para MX y US en escalones x1, x2 y x3.",
+  "_version": 10,
+  "_updated": "2026-07-29 — restaurados COGS reales de Mascarilla para CL y resolución automática de títulos largos al escalón x1.",
   "mx": {
     "Holy Basil x1": 11.14,
     "Holy Basil x2": 9.47,
@@ -284,6 +284,9 @@
     "Holy Basil x3": 9.51,
     "Holy Basil 2 + 1 Free": 28.54,
     "Holy Basil 3 + 2 Free": 44.87,
+    "Mascarilla coreana para puntos negros x1": 13.18,
+    "Mascarilla coreana para puntos negros x2": 12.24,
+    "Mascarilla coreana para puntos negros x3": 10.49,
     "Retinal Shot 1": 10.74,
     "Retinal Shot x1": 10.74,
     "Retinal Shot 2 + 35%off": 18.15,

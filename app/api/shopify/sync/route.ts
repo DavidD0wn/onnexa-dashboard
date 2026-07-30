@@ -228,7 +228,11 @@ function lookupCostSync(
       flatCosts[base]  ?? flatCosts[nTitle] ?? flatCosts[nBase] ?? 0
     );
   }
-  return flatCosts[title] ?? flatCosts[base] ?? flatCosts[nTitle] ?? flatCosts[nBase] ?? 0;
+  return (
+    flatCosts[`${base} x1`] ?? flatCosts[`${nBase} x1`] ??
+    flatCosts[`${title} x1`] ?? flatCosts[`${nTitle} x1`] ??
+    flatCosts[title] ?? flatCosts[base] ?? flatCosts[nTitle] ?? flatCosts[nBase] ?? 0
+  );
 }
 
 // ─── Country-aware cost maps ─────────────────────────────────────────────────
