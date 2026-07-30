@@ -1,7 +1,7 @@
 {
   "_nota": "COGS en USD por país de envío. Claves 'Producto xN' = costo POR UNIDAD del escalón N del proveedor (el motor multiplica por unidades físicas). Claves de oferta sin xN (ej. '2 + 1 Free') = costo TOTAL de la oferta. Claves de título largo = costo x1 por unidad.",
-  "_version": 10,
-  "_updated": "2026-07-29 — restaurados COGS reales de Mascarilla para CL y resolución automática de títulos largos al escalón x1.",
+  "_version": 11,
+  "_updated": "2026-07-30 — agregados COGS MX de SlowGrow/Cyperus Rotundus: paquete x1 $10.48, x2 $16.23 y x3 $22.26.",
   "mx": {
     "Holy Basil x1": 11.14,
     "Holy Basil x2": 9.47,
@@ -138,7 +138,13 @@
     "GOMFIT x3": 7.8767,
     "ClearDot x1": 10.48,
     "ClearDot x2": 8.115,
-    "ClearDot x3": 7.42
+    "ClearDot x3": 7.42,
+    "SlowGrow x1": 10.48,
+    "SlowGrow x2": 8.115,
+    "SlowGrow x3": 7.42,
+    "Cyperus Rotundus x1": 10.48,
+    "Cyperus Rotundus x2": 8.115,
+    "Cyperus Rotundus x3": 7.42
   },
   "us": {
     "ClearDot x1": 12.69,
