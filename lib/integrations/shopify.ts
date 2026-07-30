@@ -259,6 +259,7 @@ export async function fetchShopifyPaginated<T>(
   responseKey: string,
 ): Promise<T[]> {
   const rows: T[] = [];
+  const seenIds = new Set<string>();
   let nextUrl: string | null = startUrl;
   let pages = 0;
 
@@ -272,7 +273,17 @@ export async function fetchShopifyPaginated<T>(
     if (!Array.isArray(pageRows)) {
       throw new Error(`Respuesta Shopify inválida: falta '${responseKey}'`);
     }
-    rows.push(...(pageRows as T[]));
+    for (const row of pageRows as T[]) {
+      const id =
+        row && typeof row === "object" && "id" in row
+          ? String((row as { id?: unknown }).id ?? "")
+          : "";
+      if (id) {
+        if (seenIds.has(id)) continue;
+        seenIds.add(id);
+      }
+      rows.push(row);
+    }
 
     const match = (response.headers.get("link") ?? "").match(
       /<([^>]+)>;\s*rel="next"/,
