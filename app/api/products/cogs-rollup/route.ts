@@ -136,8 +136,8 @@ export async function POST(req: NextRequest) {
     ? new Date(body.to + "T23:59:59Z")
     : today;
 
-  const since  = from.toISOString().slice(0, 10) + "T00:00:00-06:00";
-  const until  = to.toISOString().slice(0, 10)   + "T23:59:59-06:00";
+  const since  = from.toISOString().slice(0, 10) + "T00:00:00-05:00";
+  const until  = to.toISOString().slice(0, 10)   + "T23:59:59-05:00";
 
   const costs = await loadCosts();
 

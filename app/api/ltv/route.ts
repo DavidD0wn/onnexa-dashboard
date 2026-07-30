@@ -94,8 +94,8 @@ export async function GET(req: Request) {
 
   /* Extend the since window so we capture customers who first bought
      before the selected period but also bought within it (all-time LTV) */
-  const allTimeSince = "2020-01-01T00:00:00-06:00";
-  const periodUntil  = `${pTo}-31T23:59:59-06:00`; // overshoot is fine
+  const allTimeSince = "2020-01-01T00:00:00-05:00";
+  const periodUntil  = `${pTo}-31T23:59:59-05:00`; // overshoot is fine
 
   /* ── 1. Pick stores ─────────────────────────────────────────── */
   const targetStores = brandParam === "all"

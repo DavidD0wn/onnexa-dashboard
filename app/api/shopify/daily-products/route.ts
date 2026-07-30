@@ -95,8 +95,8 @@ export async function GET(req: NextRequest) {
           store,
           orders: await fetchOrders(
             store,
-            `${from}T00:00:00-06:00`,
-            `${to}T23:59:59-06:00`,
+            `${from}T00:00:00-05:00`,
+            `${to}T23:59:59-05:00`,
           ),
         })),
       ),

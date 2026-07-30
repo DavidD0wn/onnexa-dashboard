@@ -66,7 +66,7 @@ export function getShopifyStores(): Record<ShopifyStoreKey, ShopifyStoreConfig> 
       gatewayPct: 0.029,
       gatewayFixed: 0.3,
       splitByCountry: true,
-      storeUtcOffset: -6,
+      storeUtcOffset: -5,
       color: "#EC4899",
     },
     balancea: {
@@ -85,7 +85,7 @@ export function getShopifyStores(): Record<ShopifyStoreKey, ShopifyStoreConfig> 
       gatewayPct: 0.036,
       gatewayFixed: 0,
       splitByCountry: true,
-      storeUtcOffset: -6,
+      storeUtcOffset: -5,
       color: "#10B981",
     },
   };

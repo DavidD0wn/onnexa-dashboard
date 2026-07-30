@@ -185,7 +185,7 @@ async function fetchRefunds(
  * Extracts the LOCAL date string (YYYY-MM-DD) from a Shopify `created_at` timestamp.
  *
  * Shopify REST API returns timestamps in TWO formats:
- *   - Local timezone: "2026-05-19T23:30:00-06:00"  → date part IS already local, use it directly.
+ *   - Local timezone: "2026-05-19T23:30:00-05:00"  → date part IS already local, use it directly.
  *   - UTC:            "2026-05-20T05:30:00Z"         → no offset, apply storeOffsetMs to convert.
  *
  * Applying the offset blindly to local-timezone timestamps double-shifts the time and can
@@ -355,7 +355,7 @@ function groupByDate(
 
   // Store UTC offset in ms — used to convert UTC order timestamp → store's local date.
   // Shopify Analytics attributes orders to the date in the STORE'S timezone, so we do the same.
-  const STORE_OFFSET_MS = (cfg.storeUtcOffset ?? -6) * 60 * 60 * 1000;
+  const STORE_OFFSET_MS = (cfg.storeUtcOffset ?? -5) * 60 * 60 * 1000;
 
   // ── Paid orders ──
   for (const order of orders) {
@@ -458,7 +458,7 @@ export async function POST(req: Request) {
   // ── Exchange rates: fetch live rate (fallback) + historical per-day rates ────
   // We start with the live rate as safety net, then try to get per-day history.
   // Both run in parallel so historical fetch doesn't slow down the sync.
-  const nowMxMs = Date.now() - 6 * 60 * 60 * 1000;
+  const nowMxMs = Date.now() - 5 * 60 * 60 * 1000;
   const todayMx = new Date(nowMxMs).toISOString().slice(0, 10);
   const defaultFrom = new Date(
     nowMxMs - (Math.max(1, days) - 1) * 86_400_000,
@@ -491,8 +491,8 @@ export async function POST(req: Request) {
   console.log(`[sync:${store}] Exchange rates: live=${liveMxnRate} | historical=${rateCount} days loaded`);
 
   try {
-    const since = `${dateFrom}T00:00:00-06:00`;
-    const until = `${dateTo}T23:59:59-06:00`;
+    const since = `${dateFrom}T00:00:00-05:00`;
+    const until = `${dateTo}T23:59:59-05:00`;
     const [orders, refundOrders, costsByCountry] = await Promise.all([
       fetchOrders(cfg, since, until),
       fetchRefunds(cfg, since, until),

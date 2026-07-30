@@ -525,24 +525,24 @@ export async function GET(req: NextRequest) {
 
   if (fromParam && toParam) {
     // Custom date range
-    since    = `${fromParam}T00:00:00-06:00`;
-    until    = `${toParam}T23:59:59-06:00`;
+    since    = `${fromParam}T00:00:00-05:00`;
+    until    = `${toParam}T23:59:59-05:00`;
     // AdSpend rows are stored as UTC midnight — use UTC boundaries so first/last day aren't skipped
     dateFrom = new Date(fromParam + "T00:00:00Z");
     dateTo   = new Date(toParam   + "T23:59:59Z");
   } else {
     const days = parseInt(searchParams.get("days") ?? "7");
-    // Fix: use Mexico time (UTC-6) to determine today's date — NOT UTC.
-    // Without this, after 6 PM Mexico time the UTC date flips to tomorrow,
+    // Use the stores' configured local time (UTC-5) to determine today's date.
+    // Without this, after 7 PM local time the UTC date flips to tomorrow,
     // so "Hoy" queries a future date and returns 0 orders.
-    const MX_OFFSET_MS = 6 * 60 * 60 * 1000; // 6 hours in ms
-    const nowMxMs      = Date.now() - MX_OFFSET_MS;
+    const STORE_OFFSET_MS = 5 * 60 * 60 * 1000;
+    const nowMxMs      = Date.now() - STORE_OFFSET_MS;
     const todayMx      = new Date(nowMxMs).toISOString().slice(0, 10);
     const startMx      = new Date(nowMxMs - (days - 1) * 86400000).toISOString().slice(0, 10);
-    since    = `${startMx}T00:00:00-06:00`;
-    until    = `${todayMx}T23:59:59-06:00`;
+    since    = `${startMx}T00:00:00-05:00`;
+    until    = `${todayMx}T23:59:59-05:00`;
     // AdSpend rows are stored as UTC midnight — use UTC boundaries so first day isn't skipped
-    // (using -06:00 offset would make dateFrom = startMxT06:00Z, excluding the midnight UTC row)
+    // (using a local offset here would exclude the AdSpend row stored at UTC midnight)
     dateFrom = new Date(startMx + "T00:00:00Z");
     dateTo   = new Date(todayMx + "T23:59:59Z");
   }
@@ -613,7 +613,7 @@ export async function GET(req: NextRequest) {
     try {
       const token  = await getToken(store);
       const sharedStore = getShopifyStore(store.key);
-      const storeOffsetHours = sharedStore.storeUtcOffset ?? -6;
+      const storeOffsetHours = sharedStore.storeUtcOffset ?? -5;
       const [orders, funnel] = await Promise.all([
         fetchOrders(store, since, until),
         fetchFunnelData(store.shop, token, since, until),
