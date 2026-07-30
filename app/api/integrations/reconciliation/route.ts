@@ -19,6 +19,9 @@ function finiteDays(value: string | null, fallback: number): number {
 
 export async function GET(req: NextRequest) {
   try {
+    const includeDetails =
+      Boolean(process.env.SYNC_SECRET) &&
+      req.headers.get("x-sync-secret") === process.env.SYNC_SECRET;
     const days = finiteDays(req.nextUrl.searchParams.get("days"), 30);
     const requestedFrom = req.nextUrl.searchParams.get("from");
     const requestedTo = req.nextUrl.searchParams.get("to");
@@ -72,9 +75,12 @@ export async function GET(req: NextRequest) {
         where: { date: { gte: from, lte: to } },
         select: {
           id: true,
+          storeId: true,
           brandId: true,
           countryId: true,
           date: true,
+          ordersCount: true,
+          unitsSold: true,
           netRevenue: true,
           grossRevenue: true,
           cogs: true,
@@ -89,6 +95,9 @@ export async function GET(req: NextRequest) {
           adSpendSnapchat: true,
           adSpendTiktok: true,
           netProfit: true,
+          notes: true,
+          createdAt: true,
+          updatedAt: true,
         },
       }),
     ]);
@@ -146,6 +155,21 @@ export async function GET(req: NextRequest) {
       expectedNetProfit: number;
       profitDifference: number;
       rowCount: number;
+      rows?: Array<{
+        id: string;
+        storeId: string;
+        ordersCount: number;
+        unitsSold: number;
+        grossRevenue: number;
+        netRevenue: number;
+        cogs: number;
+        adSpend: number;
+        adSpendFacebook: number;
+        netProfit: number;
+        notes: string | null;
+        createdAt: Date;
+        updatedAt: Date;
+      }>;
     }> = [];
 
     for (const key of allKeys) {
@@ -200,6 +224,25 @@ export async function GET(req: NextRequest) {
           expectedNetProfit: expectedProfit,
           profitDifference,
           rowCount: rows.length,
+          ...(includeDetails
+            ? {
+                rows: rows.map((row) => ({
+                  id: row.id,
+                  storeId: row.storeId,
+                  ordersCount: row.ordersCount,
+                  unitsSold: row.unitsSold,
+                  grossRevenue: row.grossRevenue,
+                  netRevenue: row.netRevenue,
+                  cogs: row.cogs,
+                  adSpend: row.adSpend,
+                  adSpendFacebook: row.adSpendFacebook,
+                  netProfit: row.netProfit,
+                  notes: row.notes,
+                  createdAt: row.createdAt,
+                  updatedAt: row.updatedAt,
+                })),
+              }
+            : {}),
         });
       }
     }
