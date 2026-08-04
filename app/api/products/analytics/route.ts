@@ -508,6 +508,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const requestedStore = searchParams.get("store");
   const requestedBrand = searchParams.get("brandId");
+  const includeDaily = searchParams.get("includeDaily") === "1";
   const storeKey =
     requestedStore && requestedStore !== "all"
       ? requestedStore
@@ -598,6 +599,15 @@ export async function GET(req: NextRequest) {
     units: number; orders: number; lastSeen: string;
     cogsUsd: number; unitPriceUsd: number;
   }> = {};
+
+  // El mismo detalle anterior, separado por fecha. Testeos lo usa para
+  // comparar el rendimiento diario sin recalcular ni estimar los totales.
+  const productDailyRaw: Record<string, Record<string, {
+    revenueUsd: number;
+    units: number;
+    orders: number;
+    cogsUsd: number;
+  }>> = {};
 
   // Revenue per brand+country for proportional ad spend distribution
   const brandCountryRevenue: Record<string, number> = {};
@@ -702,6 +712,21 @@ export async function GET(req: NextRequest) {
           if (date >= products[key].lastSeen) products[key].unitPriceUsd = unitPriceUsd;
           if (date > products[key].lastSeen) products[key].lastSeen = date;
 
+          if (includeDaily) {
+            if (!productDailyRaw[key]) productDailyRaw[key] = {};
+            const daily = productDailyRaw[key][date] ?? {
+              revenueUsd: 0,
+              units: 0,
+              orders: 0,
+              cogsUsd: 0,
+            };
+            daily.revenueUsd += priceUsd;
+            daily.units += physicalUnits;
+            daily.orders += 1;
+            daily.cogsUsd += itemCogsUsd;
+            productDailyRaw[key][date] = daily;
+          }
+
           const bck = `${store.brandId}||${countryCode}`;
           brandCountryRevenue[bck] = (brandCountryRevenue[bck] ?? 0) + priceUsd;
           if (!brandCountryOrderIds[bck]) brandCountryOrderIds[bck] = new Set();
@@ -796,7 +821,7 @@ export async function GET(req: NextRequest) {
   // ── Ad spend — per country when available ──────────────────────────────────
   const adRows   = await prisma.adSpend.findMany({
     where: { brandId: { in: brandIds }, platform: "facebook", date: { gte: dateFrom, lte: dateTo } },
-    select: { brandId: true, countryId: true, productId: true, spend: true, purchases: true, conversionValue: true, campaignName: true, adsetName: true, adName: true },
+    select: { date: true, brandId: true, countryId: true, productId: true, spend: true, purchases: true, conversionValue: true, campaignName: true, adsetName: true, adName: true },
   });
   const adCountryCode = (row: (typeof adRows)[number]): string | null => {
     return row.countryId ? (codeById[row.countryId] ?? null) : null;
@@ -810,6 +835,27 @@ export async function GET(req: NextRequest) {
   const productCampaignPurchases: Record<string, number> = {};
   const productCampaignConversionValue: Record<string, number> = {};
   const unmatchedBrandCountrySpend: Record<string, number> = {};
+  const productDailyAdSpend: Record<string, Record<string, number>> = {};
+  const unmatchedDailySpend: Record<string, number> = {};
+
+  const addDailySpend = (productKey: string, date: string, spend: number) => {
+    if (!includeDaily) return;
+    if (!productDailyAdSpend[productKey]) productDailyAdSpend[productKey] = {};
+    productDailyAdSpend[productKey][date] =
+      (productDailyAdSpend[productKey][date] ?? 0) + spend;
+  };
+  const addUnmatchedSpend = (
+    brandCountryKey: string,
+    date: string,
+    spend: number,
+  ) => {
+    unmatchedBrandCountrySpend[brandCountryKey] =
+      (unmatchedBrandCountrySpend[brandCountryKey] ?? 0) + spend;
+    if (!includeDaily) return;
+    const dailyKey = `${brandCountryKey}||${date}`;
+    unmatchedDailySpend[dailyKey] =
+      (unmatchedDailySpend[dailyKey] ?? 0) + spend;
+  };
 
   const productKeys = Object.keys(products);
   // Exclude digital products and upsells from ad matching.
@@ -839,6 +885,7 @@ export async function GET(req: NextRequest) {
     });
 
   for (const row of relevantAdRows) {
+    const adDate = row.date.toISOString().slice(0, 10);
     let adKws = extractAdKeywords(row);
     // If campaign contains a known product code (e.g. "INS01", "TP01"), expand adKws
     // with that product's name keywords so it can match product rows correctly.
@@ -888,6 +935,7 @@ export async function GET(req: NextRequest) {
               : 1 / matches.length;
           productAdSpend[match.key] =
             (productAdSpend[match.key] ?? 0) + row.spend * share;
+          addDailySpend(match.key, adDate, row.spend * share);
           productCampaignPurchases[match.key] =
             (productCampaignPurchases[match.key] ?? 0) +
             (row.purchases ?? 0) * share;
@@ -896,7 +944,7 @@ export async function GET(req: NextRequest) {
             (row.conversionValue ?? 0) * share;
         }
       } else {
-        unmatchedBrandCountrySpend[bck] = (unmatchedBrandCountrySpend[bck] ?? 0) + row.spend;
+        addUnmatchedSpend(bck, adDate, row.spend);
       }
     } else {
       // ── Campaign has NO country → distribute proportionally by revenue across ALL matching products ──
@@ -907,12 +955,13 @@ export async function GET(req: NextRequest) {
         if (matchesProduct(entry)) matchingKeys.push(entry.key);
       }
       if (matchingKeys.length === 0) {
-        unmatchedBrandCountrySpend[bck] = (unmatchedBrandCountrySpend[bck] ?? 0) + row.spend;
+        addUnmatchedSpend(bck, adDate, row.spend);
       } else {
         const totalMatchRevenue = matchingKeys.reduce((s, k) => s + (products[k]?.revenueUsd ?? 0), 0);
         for (const k of matchingKeys) {
           const share = totalMatchRevenue > 0 ? (products[k]?.revenueUsd ?? 0) / totalMatchRevenue : 1 / matchingKeys.length;
           productAdSpend[k] = (productAdSpend[k] ?? 0) + row.spend * share;
+          addDailySpend(k, adDate, row.spend * share);
           productCampaignPurchases[k] = (productCampaignPurchases[k] ?? 0) + (row.purchases ?? 0) * share;
           productCampaignConversionValue[k] = (productCampaignConversionValue[k] ?? 0) + (row.conversionValue ?? 0) * share;
         }
@@ -926,6 +975,18 @@ export async function GET(req: NextRequest) {
     cogsByBrandCountry[countryKey] =
       (cogsByBrandCountry[countryKey] ?? 0) + product.cogsUsd;
   }
+
+  // Factores usados tanto en el total del período como en cada día. Compartir
+  // estos factores garantiza que la tabla diaria sume exactamente el total.
+  const productFinancialConfig: Record<string, {
+    revenueScale: number;
+    cogsScale: number;
+    feeRate: number;
+    shippingRate: number;
+    taxRate: number;
+    isDigital: boolean;
+    isUpsell: boolean;
+  }> = {};
 
   // ── Build final rows ────────────────────────────────────────────────────────
   const rows: any[] = Object.values(products).map(p => {
@@ -962,6 +1023,16 @@ export async function GET(req: NextRequest) {
     const effectiveFeeRate      = calibHasData ? ct!.fees     / ct!.netRevenue : cCfg.gatewayPct;
     const effectiveShippingRate = calibHasData ? ct!.shipping / ct!.netRevenue : 0;
     const effectiveTaxRate      = calibHasData ? ct!.taxes    / ct!.netRevenue : 0;
+
+    productFinancialConfig[key] = {
+      revenueScale,
+      cogsScale,
+      feeRate: effectiveFeeRate,
+      shippingRate: effectiveShippingRate,
+      taxRate: effectiveTaxRate,
+      isDigital,
+      isUpsell,
+    };
 
     const feesUsd      = netRevenueUsd * effectiveFeeRate;
     const shippingUsd  = netRevenueUsd * effectiveShippingRate;
@@ -1139,6 +1210,124 @@ export async function GET(req: NextRequest) {
     });
   }
 
+  const dailyRows: any[] = [];
+  if (includeDaily) {
+    for (const [productKey, product] of Object.entries(products)) {
+    const finance = productFinancialConfig[productKey];
+    if (!finance) continue;
+    const dates = new Set([
+      ...Object.keys(productDailyRaw[productKey] ?? {}),
+      ...Object.keys(productDailyAdSpend[productKey] ?? {}),
+    ]);
+    const country = COUNTRY_CFG[product.countryCode] ?? COUNTRY_CFG.MX;
+
+    for (const date of dates) {
+      const raw = productDailyRaw[productKey]?.[date] ?? {
+        revenueUsd: 0,
+        units: 0,
+        orders: 0,
+        cogsUsd: 0,
+      };
+      const revenueUsd = Math.max(0, raw.revenueUsd * finance.revenueScale);
+      const cogsUsd = raw.cogsUsd * finance.cogsScale;
+      const adSpendUsd =
+        finance.isDigital || finance.isUpsell
+          ? 0
+          : (productDailyAdSpend[productKey]?.[date] ?? 0);
+      const feesUsd = revenueUsd * finance.feeRate;
+      const shippingUsd = revenueUsd * finance.shippingRate;
+      const taxesUsd = revenueUsd * finance.taxRate;
+      const grossProfit = revenueUsd - cogsUsd;
+      const netProfit =
+        grossProfit - adSpendUsd - feesUsd - shippingUsd - taxesUsd;
+      const netMargin = revenueUsd > 0 ? (netProfit / revenueUsd) * 100 : 0;
+
+      dailyRows.push({
+        id: `${productKey}||${date}`,
+        date,
+        name: product.name,
+        variant: product.variant,
+        brandId: product.brandId,
+        brandName: product.brandName,
+        brandColor: product.brandColor,
+        countryCode: product.countryCode,
+        countryName: product.countryName,
+        productType: finance.isDigital
+          ? "digital"
+          : finance.isUpsell
+            ? "upsell"
+            : "físico",
+        orders: raw.orders,
+        units: raw.units,
+        revenueUsd,
+        cogsUsd,
+        adSpendUsd,
+        feesUsd,
+        shippingUsd,
+        taxesUsd,
+        totalCost: cogsUsd + adSpendUsd + feesUsd + shippingUsd + taxesUsd,
+        grossProfit,
+        netProfit,
+        netMargin,
+        roas: adSpendUsd > 0 ? revenueUsd / adSpendUsd : null,
+        cpa:
+          adSpendUsd > 0 && raw.orders > 0
+            ? adSpendUsd / raw.orders
+            : null,
+        displayRevenue: revenueUsd * country.displayRate,
+      });
+    }
+    }
+
+    // El gasto sin producto también se conserva por día para que el total diario
+    // concilie con Meta sin adjudicarlo a un producto al azar.
+    for (const [dailyKey, spend] of Object.entries(unmatchedDailySpend)) {
+    if (Math.abs(spend) < 0.000001) continue;
+    const [brandId, countryCode, date] = dailyKey.split("||");
+    const store = targetStores.find(
+      ([, value]) => value.brandId === brandId,
+    )?.[1];
+    const country = COUNTRY_CFG[countryCode];
+    const brandName = store?.brandName ?? brandId;
+    const countryName = country?.name ?? "Global";
+
+    dailyRows.push({
+      id: `${dailyKey}||unmatched-meta`,
+      date,
+      name: "Meta Ads sin producto identificado",
+      variant: "",
+      brandId,
+      brandName,
+      brandColor: store?.color ?? "#64748B",
+      countryCode,
+      countryName,
+      productType: "pauta sin asignar",
+      orders: 0,
+      units: 0,
+      revenueUsd: 0,
+      cogsUsd: 0,
+      adSpendUsd: spend,
+      feesUsd: 0,
+      shippingUsd: 0,
+      taxesUsd: 0,
+      totalCost: spend,
+      grossProfit: 0,
+      netProfit: -spend,
+      netMargin: 0,
+      roas: null,
+      cpa: null,
+      displayRevenue: 0,
+    });
+    }
+
+    dailyRows.sort(
+      (a, b) =>
+        b.date.localeCompare(a.date) ||
+        b.revenueUsd - a.revenueUsd ||
+        a.name.localeCompare(b.name),
+    );
+  }
+
   rows.sort((a, b) => b.revenueUsd - a.revenueUsd);
 
   const totals = rows.reduce((acc, r) => ({
@@ -1181,9 +1370,20 @@ export async function GET(req: NextRequest) {
     (sum, brand) => sum + brand.difference,
     0,
   );
+  const dailyTotals = dailyRows.reduce(
+    (acc, row) => ({
+      revenueUsd: acc.revenueUsd + row.revenueUsd,
+      orders: acc.orders + row.orders,
+      cogsUsd: acc.cogsUsd + row.cogsUsd,
+      adSpendUsd: acc.adSpendUsd + row.adSpendUsd,
+      netProfit: acc.netProfit + row.netProfit,
+    }),
+    { revenueUsd: 0, orders: 0, cogsUsd: 0, adSpendUsd: 0, netProfit: 0 },
+  );
 
   return NextResponse.json({
     rows,
+    ...(includeDaily ? { dailyRows } : {}),
     totals: {
       ...totals,
       uniqueOrders,
@@ -1200,5 +1400,24 @@ export async function GET(req: NextRequest) {
       difference: allocationDifference,
       byBrand: allocationByBrand,
     },
+    ...(includeDaily
+      ? {
+          dailyReconciliation: {
+            ok:
+              Math.abs(dailyTotals.revenueUsd - totals.revenueUsd) < 0.01 &&
+              Math.abs(dailyTotals.cogsUsd - totals.cogsUsd) < 0.01 &&
+              Math.abs(dailyTotals.adSpendUsd - totals.adSpendUsd) < 0.01 &&
+              Math.abs(dailyTotals.netProfit - totals.netProfit) < 0.01,
+            dailyTotals,
+            differences: {
+              revenueUsd: dailyTotals.revenueUsd - totals.revenueUsd,
+              orders: dailyTotals.orders - totals.orders,
+              cogsUsd: dailyTotals.cogsUsd - totals.cogsUsd,
+              adSpendUsd: dailyTotals.adSpendUsd - totals.adSpendUsd,
+              netProfit: dailyTotals.netProfit - totals.netProfit,
+            },
+          },
+        }
+      : {}),
   });
 }
