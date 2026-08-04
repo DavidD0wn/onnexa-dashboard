@@ -278,7 +278,7 @@ export default function TesteosPage() {
     const expectedZeroCogs = sel.productType === "upsell" || /protecci[oó]n de pedido|brocha instantlift/i.test(sel.name);
     const issues: string[] = [];
     if (sel.orders > 0 && sel.cogs <= 0.01 && !expectedZeroCogs) issues.push("COGS faltante");
-    if (sel.orders > 0 && sel.adSpend <= 0.01) issues.push("Sin pauta atribuida");
+    if (sel.orders > 0 && sel.adSpend <= 0.01 && !expectedZeroCogs) issues.push("Sin pauta atribuida");
     if (sel.orders === 0 && sel.adSpend > 0.01) issues.push("Pauta sin pedidos");
     if (sel.shopifyStatus === "draft" && sel.orders === 0 && sel.adSpend <= 0.01) {
       return { label: "Borrador sin actividad", detail: "El producto está disponible para testeo, pero todavía no tiene ventas ni pauta en el período.", color: "#F59E0B", bg: "rgba(245,158,11,0.08)" };
