@@ -9,7 +9,7 @@ function inferCountryId(
   campaign: string | null,
   adset:    string | null,
   ad:       string | null,
-  accountCurrency: string,
+  _accountCurrency: string,
 ): string {
   const text = [campaign, adset, ad].filter(Boolean).join(" ");
 
@@ -23,8 +23,10 @@ function inferCountryId(
   if (/\bchile\b/i.test(text))                    return "country_cl";
   if (/\b(mexico|méxico)\b/i.test(text))          return "country_mx";
 
-  // Fall back to account currency
-  return accountCurrency === "USD" ? "country_us" : "country_mx";
+  // Las cuentas de Meta están facturadas en USD aunque la mayoría de campañas
+  // sin sufijo pertenecen a México. Las campañas de EE. UU. ya llevan "usa/us"
+  // explícito, por lo que el fallback correcto es MX y no la moneda de cuenta.
+  return "country_mx";
 }
 
 // ─── Product code extraction + ID lookup ─────────────────────────────────────

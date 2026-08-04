@@ -99,6 +99,8 @@ const CAMPAIGN_CODE_KEYWORDS: Record<string, string[]> = {
   "dp01":  ["deep collagen", "collagen"],
   "re01":  ["retinal", "retinal shot"],
   "rv01":  ["revivelift", "revive lift"],
+  "rt01":  ["retinal", "retinal shot"],
+  "cd01":  ["cleardot", "clear dot"],
   // HB01 covers two brands:
   //   • Glowmmi  → "Mascarilla coreana para puntos negros" (keyword: "mascarilla")
   //   • Balancea → Holy Basil suplemento (keyword: "holy basil")
@@ -112,6 +114,9 @@ const CAMPAIGN_CODE_KEYWORDS: Record<string, string[]> = {
   "fx01":  ["curva"],
   "ino01": ["fertil"],
   "db01":  ["airi"],
+  "mw01":  ["mouthwash"],
+  "ast01": ["astaxanthin"],
+  "cg01":  ["gomfit", "creatina", "gomita"],
 };
 
 // productId is assigned during the Meta sync from the campaign code. Prefer
@@ -917,12 +922,22 @@ export async function GET(req: NextRequest) {
 
     if (cc) {
       // A country-specific campaign belongs to exactly one product row.
-      const matches = nameToKey.filter(
+      const countryMatches = nameToKey.filter(
         (entry) =>
           entry.brandId === row.brandId &&
           entry.countryCode === cc &&
           matchesProduct(entry),
       );
+      // Algunas campañas antiguas quedaron con país inferido por la moneda de
+      // la cuenta aunque el nombre no incluía país (p. ej. DB01 / INO01). Si el
+      // producto no tiene ventas en ese país, preservamos la atribución al
+      // producto usando sus filas de otros países en vez de mandarlo a
+      // "Meta Ads sin producto identificado".
+      const matches = countryMatches.length > 0
+        ? countryMatches
+        : nameToKey.filter(
+            (entry) => entry.brandId === row.brandId && matchesProduct(entry),
+          );
       if (matches.length > 0) {
         const matchRevenue = matches.reduce(
           (sum, entry) => sum + (products[entry.key]?.revenueUsd ?? 0),

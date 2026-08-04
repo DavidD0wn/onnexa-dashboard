@@ -273,6 +273,22 @@ export default function TesteosPage() {
     });
   }, [dailyRows, periodDates, sel]);
 
+  const selectedDataState = useMemo(() => {
+    if (!sel) return null;
+    const expectedZeroCogs = sel.productType === "upsell" || /protecci[oó]n de pedido|brocha instantlift/i.test(sel.name);
+    const issues: string[] = [];
+    if (sel.orders > 0 && sel.cogs <= 0.01 && !expectedZeroCogs) issues.push("COGS faltante");
+    if (sel.orders > 0 && sel.adSpend <= 0.01) issues.push("Sin pauta atribuida");
+    if (sel.orders === 0 && sel.adSpend > 0.01) issues.push("Pauta sin pedidos");
+    if (sel.shopifyStatus === "draft" && sel.orders === 0 && sel.adSpend <= 0.01) {
+      return { label: "Borrador sin actividad", detail: "El producto está disponible para testeo, pero todavía no tiene ventas ni pauta en el período.", color: "#F59E0B", bg: "rgba(245,158,11,0.08)" };
+    }
+    if (issues.length > 0) {
+      return { label: issues.join(" · "), detail: "Revisa la conexión indicada antes de evaluar la rentabilidad de este producto.", color: "var(--red)", bg: "var(--red-bg)" };
+    }
+    return { label: "Datos coordinados", detail: expectedZeroCogs ? "Ventas y pauta conectadas. Este producto está marcado como costo cero esperado." : "Ventas, COGS y pauta están conectados para el período seleccionado.", color: "var(--green)", bg: "var(--green-bg)" };
+  }, [sel]);
+
   return (
     <div style={{ padding: "24px 32px", width: "100%", background: "var(--bg)", minHeight: "100vh" }}>
       {/* Header */}
@@ -346,6 +362,15 @@ export default function TesteosPage() {
               ))}
             </div>
           </div>
+          {selectedDataState && (
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 9, padding: "10px 12px", marginBottom: 14, borderRadius: 9, border: `1px solid ${selectedDataState.color}`, background: selectedDataState.bg }}>
+              <span style={{ color: selectedDataState.color, fontSize: 13, lineHeight: 1.35 }}>●</span>
+              <div>
+                <p style={{ margin: 0, color: selectedDataState.color, fontSize: 11, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.04em" }}>{selectedDataState.label}</p>
+                <p style={{ margin: "2px 0 0", color: C.text, fontSize: 11, lineHeight: 1.4 }}>{selectedDataState.detail}</p>
+              </div>
+            </div>
+          )}
           {viewMode === "summary" ? (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(145px, 1fr))", gap: 10 }}>
               {[
