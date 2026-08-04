@@ -26,11 +26,13 @@ export async function GET(req: NextRequest) {
     orderBy: { date: "desc" },
   });
 
-  // Load REAL campaign statuses from Meta API (synced during last sync)
-  // Using raw SQL since MetaCampaignStatus was added without a full prisma generate
-  const campaignStatusRows = await prisma.$queryRawUnsafe<
-    Array<{ campaignName: string; effectiveStatus: string }>
-  >(`SELECT campaignName, effectiveStatus FROM MetaCampaignStatus`).catch(() => [] as any[]);
+  // Load REAL campaign statuses from Meta API (synced during last sync).
+  // Prisma quotes camel-cased PostgreSQL identifiers correctly. The previous
+  // unquoted raw query was folded to lowercase by Postgres and silently fell
+  // back to an empty list, so every campaign appeared without a Meta status.
+  const campaignStatusRows = await prisma.metaCampaignStatus.findMany({
+    select: { campaignName: true, effectiveStatus: true },
+  }).catch(() => [] as Array<{ campaignName: string; effectiveStatus: string }>);
   const campaignStatusMap: Record<string, string> = {};
   for (const r of campaignStatusRows) {
     campaignStatusMap[r.campaignName] = r.effectiveStatus;
