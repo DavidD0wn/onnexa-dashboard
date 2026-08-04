@@ -55,7 +55,7 @@ const GROUPS = [
     defaultOpen: false,
     items: [
       { label: "Ads",               href: "/ads",        icon: Megaphone   },
-      { label: "Productos",         href: "/productos",  icon: Package     },
+      { label: "Testeos",           href: "/testeos",    icon: Target      },
       { label: "Product Analytics", href: "/analytics",  icon: BarChart3   },
       { label: "COGS / Costos",     href: "/costos",     icon: DollarSign  },
     ],
