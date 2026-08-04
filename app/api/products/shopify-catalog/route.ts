@@ -48,12 +48,13 @@ async function getToken(s: (typeof STORES)[number]): Promise<string | null> {
 async function fetchProducts(s: (typeof STORES)[number], token: string) {
   const out: any[] = [];
   let url: string | null =
-    `https://${s.shop}/admin/api/${process.env.SHOPIFY_API_VERSION || "2026-07"}/products.json?limit=250&status=active,draft&fields=id,title,handle,status,image,product_type`;
+    `https://${s.shop}/admin/api/${process.env.SHOPIFY_API_VERSION || "2026-07"}/products.json?limit=250&status=any&fields=id,title,handle,status,image,product_type`;
   while (url) {
     const r: Response = await fetch(url, { headers: { "X-Shopify-Access-Token": token } });
     if (!r.ok) break;
     const d: any = await r.json();
     for (const p of d.products ?? []) {
+      if (p.status !== "active" && p.status !== "draft") continue;
       out.push({
         brand:      s.brand,
         productId:  String(p.id),

@@ -8,6 +8,7 @@ import { fmtNum } from "@/lib/utils";
 /* ─── Tipos ─────────────────────────────────────────────── */
 interface Prod {
   id: string; name: string; brandId: string; productType: string;
+  shopifyStatus?: "active" | "draft";
   revenue: number; units: number; orders: number;
   cogs: number; adSpend: number; profit: number;
   margin: number; grossMargin: number; roas: number | null; cpa: number | null;
@@ -31,6 +32,28 @@ const C = {
   text: "var(--text)", muted: "var(--text-3)",
 };
 
+function normalizeProductKey(name: string): string {
+  const base = name
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[™®©]/g, "")
+    .split(/\s*(?:\||—|–)\s*/)[0]
+    .replace(/\s+x\d+\s*$/i, "")
+    .replace(/\s+\d+\s*\+\s*\d+.*$/i, "")
+    .replace(/[^a-zA-Z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+  return base || name.trim().toLowerCase();
+}
+
+type CatalogProduct = {
+  brand: "glowmmi" | "balancea";
+  productId: string;
+  title: string;
+  status: "active" | "draft";
+};
+
 /* ═══════════════════════════════════════════════════════════ */
 export default function TesteosPage() {
   const { fmtC } = useCurrency();
@@ -49,19 +72,25 @@ export default function TesteosPage() {
     if (isCustom && customFrom && customTo) { params.set("from", customFrom); params.set("to", customTo); }
     else params.set("days", String(days));
     if (brand !== "all") params.set("brandId", brand);
-    fetch(`/api/products/analytics?${params}`)
-      .then(async (r) => {
-        const data = await r.json();
-        if (!r.ok) throw new Error(data.error ?? "No se pudieron cargar los testeos");
-        return data;
+    Promise.all([
+      fetch(`/api/products/analytics?${params}`),
+      fetch("/api/products/shopify-catalog"),
+    ])
+      .then(async ([analyticsResponse, catalogResponse]) => {
+        const data = await analyticsResponse.json();
+        if (!analyticsResponse.ok) throw new Error(data.error ?? "No se pudieron cargar los testeos");
+        const catalogData = catalogResponse.ok
+          ? await catalogResponse.json().catch(() => ({ products: [] }))
+          : { products: [] };
+        return { data, catalog: (catalogData.products ?? []) as CatalogProduct[] };
       })
-      .then((d) => {
+      .then(({ data: d, catalog }) => {
         const raw = d.rows ?? d.products ?? [];
         const grouped = new Map<string, Prod>();
         for (const r of raw) {
           const name = r.name ?? "Producto";
           const brandId = r.brandId ?? "";
-          const id = `${brandId}||${name}`;
+          const id = `${brandId}||${normalizeProductKey(name)}`;
           const current = grouped.get(id) ?? {
             id,
             name,
@@ -86,20 +115,60 @@ export default function TesteosPage() {
           current.profit += r.netProfit ?? 0;
           grouped.set(id, current);
         }
-        const mapped = [...grouped.values()].map((p) => ({
+        const mapped: Prod[] = [...grouped.values()].map((p) => ({
           ...p,
           margin: p.revenue > 0 ? (p.profit / p.revenue) * 100 : 0,
           grossMargin: p.revenue > 0 ? ((p.revenue - p.cogs) / p.revenue) * 100 : 0,
           roas: p.adSpend > 0 ? p.revenue / p.adSpend : null,
           cpa: p.adSpend > 0 && p.orders > 0 ? p.adSpend / p.orders : null,
         }));
-        setRows(mapped);
+
+        const catalogById = new Map<string, CatalogProduct>();
+        for (const product of catalog) {
+          if (product.status !== "active" && product.status !== "draft") continue;
+          const brandId = `brand_${product.brand}`;
+          if (brand !== "all" && brandId !== brand) continue;
+          const id = `${brandId}||${normalizeProductKey(product.title)}`;
+          const previous = catalogById.get(id);
+          if (!previous || (previous.status === "draft" && product.status === "active")) {
+            catalogById.set(id, product);
+          }
+        }
+
+        const merged = new Map(mapped.map((product) => [product.id, product]));
+        for (const [id, catalogProduct] of catalogById) {
+          const brandId = `brand_${catalogProduct.brand}`;
+          const current = merged.get(id);
+          if (current) {
+            current.name = catalogProduct.title;
+            current.shopifyStatus = catalogProduct.status;
+            continue;
+          }
+          merged.set(id, {
+            id,
+            name: catalogProduct.title,
+            brandId,
+            productType: "físico",
+            shopifyStatus: catalogProduct.status,
+            revenue: 0,
+            units: 0,
+            orders: 0,
+            cogs: 0,
+            adSpend: 0,
+            profit: 0,
+            margin: 0,
+            grossMargin: 0,
+            roas: null,
+            cpa: null,
+          });
+        }
+        setRows([...merged.values()]);
 
         const groupedDaily = new Map<string, DailyProd>();
         for (const r of d.dailyRows ?? []) {
           const name = r.name ?? "Producto";
           const brandId = r.brandId ?? "";
-          const id = `${brandId}||${name}`;
+          const id = `${brandId}||${normalizeProductKey(name)}`;
           const key = `${r.date}||${id}`;
           const current = groupedDaily.get(key) ?? {
             id,
@@ -144,10 +213,14 @@ export default function TesteosPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Solo productos "testeables": físicos y upsells (los digitales son regalos)
+  // Productos del catálogo real, activos o borradores, deduplicados por tienda.
   const testeables = useMemo(
     () => rows.filter((p) => p.productType === "físico" || p.productType === "upsell")
-             .sort((a, b) => b.profit - a.profit),
+             .sort((a, b) =>
+               Number(a.shopifyStatus === "draft") - Number(b.shopifyStatus === "draft") ||
+               a.name.localeCompare(b.name, "es") ||
+               a.brandId.localeCompare(b.brandId)
+             ),
     [rows],
   );
 
@@ -231,10 +304,12 @@ export default function TesteosPage() {
           style={{ width: "100%", padding: "11px 14px", borderRadius: 10, border: `1.5px solid ${C.border}`, background: C.bg, color: C.text, fontSize: 15, fontWeight: 600, cursor: "pointer" }}
         >
           <option value="" disabled>
-            {testeables.length === 0 ? "— Sin productos con ventas en este período —" : "Selecciona un producto…"}
+            {testeables.length === 0 ? "— Sin productos disponibles —" : "Selecciona un producto…"}
           </option>
           {testeables.map((p) => (
-            <option key={p.id} value={p.id}>{p.name}</option>
+            <option key={p.id} value={p.id}>
+              {p.name} · {p.brandId === "brand_glowmmi" ? "Glowmmi" : "Balancea"}{p.shopifyStatus === "draft" ? " · Borrador" : ""}
+            </option>
           ))}
         </select>
       </div>
