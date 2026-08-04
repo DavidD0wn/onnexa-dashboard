@@ -37,7 +37,7 @@ function normalizeProductKey(name: string): string {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[™®©]/g, "")
-    .split(/\s*(?:\||—|–)\s*/)[0]
+    .split(/\s*(?:\||—|–)\s*|\s+-\s+/)[0]
     .replace(/\s+x\d+\s*$/i, "")
     .replace(/\s+\d+\s*\+\s*\d+.*$/i, "")
     .replace(/[^a-zA-Z0-9\s]/g, " ")
