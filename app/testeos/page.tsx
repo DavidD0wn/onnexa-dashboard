@@ -220,7 +220,11 @@ export default function TesteosPage() {
 
   // Productos del catálogo real, activos o borradores, deduplicados por tienda.
   const testeables = useMemo(
-    () => rows.filter((p) => p.productType === "físico" || p.productType === "upsell")
+    () => rows.filter((p) => {
+      if (p.productType !== "físico") return false;
+      const key = normalizeProductKey(p.name);
+      return !["limpiador de lengua", "brocha instantlift", "proteccion de pedido"].includes(key);
+    })
              .sort((a, b) =>
                Number(a.shopifyStatus === "draft") - Number(b.shopifyStatus === "draft") ||
                a.name.localeCompare(b.name, "es") ||
