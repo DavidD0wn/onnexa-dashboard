@@ -30,17 +30,21 @@ type ShopifyProduct = {
 };
 
 async function fetchProducts(store: ShopifyStoreConfig) {
-  const url = shopifyRestUrl(
-    store,
-    "products.json?limit=250&status=any&fields=id,title,handle,status,image,product_type",
-  );
-  const products = await fetchShopifyPaginated<ShopifyProduct>(
-    store,
-    url,
-    "products",
-  );
-  return products
-    .filter((product) => product.status === "active" || product.status === "draft")
+  const statuses = ["active", "draft"] as const;
+  const pages = await Promise.all(statuses.map((status) =>
+    fetchShopifyPaginated<ShopifyProduct>(
+      store,
+      shopifyRestUrl(
+        store,
+        `products.json?limit=250&status=${status}&fields=id,title,handle,status,image,product_type`,
+      ),
+      "products",
+    )
+  ));
+  const products = new Map<string, ShopifyProduct>();
+  for (const product of pages.flat()) products.set(String(product.id), product);
+
+  return [...products.values()]
     .map((product) => ({
       brand: store.key,
       productId: String(product.id),
