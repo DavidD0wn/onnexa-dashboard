@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState, useMemo, useCallback } from "react";
-import { CalendarDays, RefreshCw, Target } from "lucide-react";
+import { CalendarDays, LayoutGrid, RefreshCw, Table2, Target } from "lucide-react";
 import { useCurrency } from "@/lib/currency";
 import { useFilters } from "@/lib/filters";
 import { fmtNum } from "@/lib/utils";
@@ -40,6 +40,7 @@ export default function TesteosPage() {
   const [loading, setLoading] = useState(true);
   const [brand, setBrand] = useState("all");
   const [selId, setSelId] = useState<string>("");
+  const [viewMode, setViewMode] = useState<"table" | "summary">("table");
 
   const load = useCallback(() => {
     setLoading(true);
@@ -241,15 +242,53 @@ export default function TesteosPage() {
       {/* Comparación diaria del producto seleccionado */}
       {sel && (
         <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: "18px 20px", marginBottom: 20 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
-            <CalendarDays size={17} style={{ color: "#6366F1" }} />
-            <p style={{ fontSize: 15, fontWeight: 800, color: C.text, margin: 0 }}>Comparación diaria del testeo</p>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <CalendarDays size={17} style={{ color: "#6366F1" }} />
+              <div>
+                <p style={{ fontSize: 15, fontWeight: 800, color: C.text, margin: 0 }}>{sel.name}</p>
+                <p style={{ fontSize: 11, color: C.muted, margin: "2px 0 0" }}>Resultados del período seleccionado</p>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 4, padding: 3, borderRadius: 9, background: C.bg, border: `1px solid ${C.border}` }}>
+              {([
+                { key: "table" as const, label: "Vista tabla", icon: Table2 },
+                { key: "summary" as const, label: "Vista resumida", icon: LayoutGrid },
+              ]).map((option) => (
+                <button
+                  key={option.key}
+                  onClick={() => setViewMode(option.key)}
+                  aria-pressed={viewMode === option.key}
+                  style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 11px", borderRadius: 7, border: "none", cursor: "pointer", fontSize: 11, fontWeight: 800, background: viewMode === option.key ? C.card : "transparent", color: viewMode === option.key ? C.text : C.muted, boxShadow: viewMode === option.key ? "0 1px 3px rgba(0,0,0,0.12)" : "none" }}
+                >
+                  <option.icon size={13} /> {option.label}
+                </button>
+              ))}
+            </div>
           </div>
-          <p style={{ fontSize: 12, color: C.muted, margin: "0 0 14px" }}>
-            Cada fila es un día de <strong style={{ color: C.text }}>{sel.name}</strong>. Los días sin pedidos también aparecen para identificar pausas o gasto sin conversión.
-          </p>
-
-          <div style={{ overflowX: "auto", border: `1px solid ${C.border}`, borderRadius: 10 }}>
+          {viewMode === "summary" ? (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(145px, 1fr))", gap: 10 }}>
+              {[
+                { label: "Pedidos", value: fmtNum(sel.orders, 0), color: "#6366F1" },
+                { label: "Revenue", value: fmtC(sel.revenue), color: "#2563EB" },
+                { label: "COGS", value: fmtC(sel.cogs), color: "#8B5CF6" },
+                { label: "Ad Spend", value: fmtC(sel.adSpend), color: "#F59E0B" },
+                { label: "ROAS", value: sel.roas == null ? "—" : `${sel.roas.toFixed(2)}x`, color: (sel.roas ?? 0) >= 2.5 ? "var(--green)" : "var(--yellow)" },
+                { label: "Profit %", value: `${sel.margin.toFixed(1)}%`, color: sel.profit >= 0 ? "var(--green)" : "var(--red)" },
+                { label: "Profit $", value: fmtC(sel.profit), color: sel.profit >= 0 ? "var(--green)" : "var(--red)" },
+              ].map((metric) => (
+                <div key={metric.label} style={{ padding: "15px 16px", borderRadius: 10, background: C.bg, border: `1px solid ${C.border}` }}>
+                  <p style={{ margin: 0, fontSize: 10, fontWeight: 800, color: C.muted, textTransform: "uppercase", letterSpacing: "0.05em" }}>{metric.label}</p>
+                  <p style={{ margin: "7px 0 0", fontSize: 20, fontWeight: 900, color: metric.color }}>{metric.value}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <>
+              <p style={{ fontSize: 12, color: C.muted, margin: "0 0 14px" }}>
+                Cada fila es un día. Los días sin pedidos también aparecen para identificar pausas o gasto sin conversión.
+              </p>
+              <div style={{ overflowX: "auto", border: `1px solid ${C.border}`, borderRadius: 10 }}>
             <table style={{ width: "100%", minWidth: 900, borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ background: C.bg }}>
@@ -293,7 +332,9 @@ export default function TesteosPage() {
                 </tr>
               </tfoot>
             </table>
-          </div>
+              </div>
+            </>
+          )}
         </div>
       )}
 
