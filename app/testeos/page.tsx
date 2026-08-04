@@ -44,7 +44,11 @@ function normalizeProductKey(name: string): string {
     .replace(/\s+/g, " ")
     .trim()
     .toLowerCase();
-  return base || name.trim().toLowerCase();
+  const aliases: Record<string, string> = {
+    "jiyu toner pads": "toner pads",
+    "korean toner pads": "toner pads",
+  };
+  return aliases[base] ?? (base || name.trim().toLowerCase());
 }
 
 type CatalogProduct = {
@@ -144,6 +148,7 @@ export default function TesteosPage() {
             current.shopifyStatus = catalogProduct.status;
             continue;
           }
+          if (catalogProduct.status !== "draft") continue;
           merged.set(id, {
             id,
             name: catalogProduct.title,
