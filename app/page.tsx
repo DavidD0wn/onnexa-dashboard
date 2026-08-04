@@ -758,6 +758,25 @@ export default function Dashboard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ store: "balancea", ...payloadBase }),
       });
+
+      // ── También sincroniza el AD SPEND (Meta Ads) del MISMO período ──
+      // El botón antes solo traía ventas; ahora también trae el gasto de pauta.
+      const dateTo   = (isCustom && customTo)   ? customTo   : localDateStr();
+      const dateFrom = (isCustom && customFrom) ? customFrom : daysAgoLocal(Math.max(days, 2) - 1);
+      try {
+        await fetch("/api/meta-ads/sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ dateFrom, dateTo }),
+        });
+        // Rollup: pasa el gasto a las métricas diarias del dashboard
+        await fetch("/api/meta-ads/rollup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ from: dateFrom, to: dateTo }),
+        });
+      } catch { /* si Meta falla, al menos quedaron las ventas de Shopify */ }
+
       setLastSynced(new Date().toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" }));
       // Resetear el contador de 7 días: el AppLoader no re-sincronizará hasta dentro de una semana.
       if (typeof window !== "undefined") localStorage.setItem("onnexa_last_sync_at", String(Date.now()));
@@ -1006,7 +1025,7 @@ export default function Dashboard() {
           <button
             onClick={syncShopify}
             disabled={syncing || autoSyncing}
-            title="Actualiza solo las órdenes de Shopify (ventas, devoluciones, COGS). El Ad Spend de Meta se sincroniza automáticamente al abrir el dashboard."
+            title="Actualiza las ventas de Shopify (ambas tiendas) Y el Ad Spend de Meta Ads, del período seleccionado."
             style={{
               display: "flex", alignItems: "center", gap: 6,
               padding: "7px 14px", borderRadius: 8,
@@ -1018,7 +1037,7 @@ export default function Dashboard() {
               opacity: (syncing || autoSyncing) ? 0.7 : 1, transition: "all 0.2s",
             }}>
             <RefreshCw size={13} style={{ animation: syncing ? "spin 1s linear infinite" : "none" }} />
-            {syncing ? "Actualizando…" : "Actualizar Shopify"}
+            {syncing ? "Actualizando…" : "Actualizar (Ventas + Ads)"}
             {lastSynced && !syncing && !autoSyncing && (
               <span style={{ fontSize: 10, opacity: 0.7, marginLeft: 2 }}>· {lastSynced}</span>
             )}
