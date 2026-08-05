@@ -105,11 +105,32 @@ function classifyProduct(name: string, costPerUnit: number, explicitType?: strin
   ) {
     return "pauta";
   }
+  if (explicitType === "físico" || explicitType === "digital" || explicitType === "upsell") {
+    return explicitType;
+  }
   const n = name.toLowerCase();
   if (n.includes("upsell") || n.includes("order bump") || n.includes("potenciador") || n.includes("add-on")) return "upsell";
   if (n.includes("guía") || n.includes("guia") || n.includes("ebook") || n.includes("e-book") || n.includes("digital") || n.includes("pdf") || n.includes("protocolo") || n.includes("agenda") || n.includes("tracker") || n.includes("recetas") || n.includes("alimentos") || n.includes("lifting desde") || n.includes("glow desde") || n.includes("curva 360") || n.includes("plan de gym") || n.includes("plan ") || n.includes("rutina anti") || n.includes("poros bajo") || n.includes("poros abiertos") || n.includes("equilibrio íntimo") || n.includes("equilibrio intimo") || n.includes("infecciones") || n.includes("hormonas")) return "digital";
   if (costPerUnit > 0) return "físico";
   return "otro";
+}
+
+function normalizeProductName(name: string): string {
+  return name
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[™®©]/g, "")
+    .split(/\s*(?:\||—|–)\s*|\s+-\s+/)[0]
+    .replace(/[^a-zA-Z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function isMainTangibleProduct(row: ProductRow): boolean {
+  if (classifyProduct(row.name, row.costPerUnit, row.productType) !== "físico") return false;
+  const key = normalizeProductName(row.name);
+  return !["limpiador de lengua", "brocha instantlift", "proteccion de pedido"].includes(key);
 }
 const TYPE_CFG: Record<ProductType, { label: string; color: string; bg: string; emoji: string }> = {
   físico:  { label: "Físico",   color: "#10B981", bg: "rgba(16,185,129,0.15)", emoji: "📦" },
@@ -569,7 +590,6 @@ export default function ProductAnalyticsPage() {
   const [sortKey,       setSortKey]       = useState<SortKey>("revenueUsd");
   const [sortAsc,       setSortAsc]       = useState(false);
   const [search,        setSearch]        = useState("");
-  const [typeFilter,    setTypeFilter]    = useState<"total" | "físico" | "digital" | "upsell" | "pauta">("total");
   const [statusFilter,  setStatusFilter]  = useState("all");
   const [costs,         setCosts]         = useState<Record<string, number>>({});
   const [showCustomize, setShowCustomize] = useState(false);
@@ -685,12 +705,33 @@ export default function ProductAnalyticsPage() {
 
   // ── Filtered base rows ──
   const filteredRows = useMemo(() => {
-    let r = rows;
-    if (typeFilter !== "total") r = r.filter(x => classifyProduct(x.name, x.costPerUnit, x.productType) === typeFilter);
+    let r = rows.filter(isMainTangibleProduct);
     if (search) r = r.filter(x => x.name.toLowerCase().includes(search.toLowerCase()) || x.brandName.toLowerCase().includes(search.toLowerCase()));
     if (statusFilter !== "all") r = r.filter(x => x.status === statusFilter);
     return r;
-  }, [rows, typeFilter, search, statusFilter]);
+  }, [rows, search, statusFilter]);
+
+  const visibleTotals = useMemo<Totals>(() => {
+    const sum = filteredRows.reduce(
+      (acc, row) => ({
+        revenueUsd: acc.revenueUsd + row.revenueUsd,
+        units: acc.units + row.units,
+        orders: acc.orders + row.orders,
+        cogsUsd: acc.cogsUsd + row.cogsUsd,
+        adSpendUsd: acc.adSpendUsd + row.adSpendUsd,
+        totalCost: acc.totalCost + row.totalCost,
+        grossProfit: acc.grossProfit + row.grossProfit,
+        netProfit: acc.netProfit + row.netProfit,
+      }),
+      { revenueUsd: 0, units: 0, orders: 0, cogsUsd: 0, adSpendUsd: 0, totalCost: 0, grossProfit: 0, netProfit: 0 },
+    );
+    return {
+      ...sum,
+      grossMargin: sum.revenueUsd > 0 ? (sum.grossProfit / sum.revenueUsd) * 100 : 0,
+      netMargin: sum.revenueUsd > 0 ? (sum.netProfit / sum.revenueUsd) * 100 : 0,
+      roas: sum.adSpendUsd > 0 ? sum.revenueUsd / sum.adSpendUsd : null,
+    };
+  }, [filteredRows]);
 
   // ── General view: aggregate by product (collapse countries) ──
   const generalRows = useMemo((): (GeneralRow & { countries: string[]; stores: string[] })[] => {
@@ -1221,21 +1262,8 @@ export default function ProductAnalyticsPage() {
           )}
         </div>
 
-        {/* Type filter */}
-        <div style={{ display: "flex", gap: 4, background: "rgba(255,255,255,0.05)", padding: 4, borderRadius: 10 }}>
-          {([
-            { v: "total",   l: "Total"       },
-            { v: "físico",  l: "📦 Físicos"  },
-            { v: "digital", l: "📱 Digitales" },
-            { v: "upsell",  l: "⚡ Upsells"   },
-            { v: "pauta",   l: "📣 Pauta"     },
-          ] as { v: "total" | "físico" | "digital" | "upsell" | "pauta"; l: string }[]).map(s => (
-            <button key={s.v} onClick={() => setTypeFilter(s.v)} style={{
-              padding: "6px 12px", borderRadius: 7, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600,
-              background: typeFilter === s.v ? "#0E766E" : "transparent",
-              color:      typeFilter === s.v ? "#fff"    : "rgba(255,255,255,0.5)",
-            }}>{s.l}</button>
-          ))}
+        <div style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(16,185,129,0.12)", color: "#6EE7B7", padding: "7px 11px", borderRadius: 9, fontSize: 12, fontWeight: 700 }}>
+          <Package size={13} /> Productos físicos principales
         </div>
 
         {/* Status filter */}
@@ -1253,13 +1281,13 @@ export default function ProductAnalyticsPage() {
       {/* KPI Cards */}
       {totals && (
         <div style={{ display: "flex", gap: 12, marginBottom: 24, flexWrap: "wrap" }}>
-          <KPI label="Revenue total"  value={`$${usd(totals.revenueUsd)}`}  sub={`${totals.uniqueOrders ?? totals.orders} pedidos`} icon={TrendingUp} accent="#0E766E" />
-          <KPI label="Ut. Bruta"      value={`$${usd(totals.grossProfit)}`} sub={pct(totals.grossMargin)} icon={DollarSign}  accent={totals.grossProfit >= 0 ? "#10B981" : "#EF4444"} />
-          <KPI label="Ut. Neta"       value={`$${usd(totals.netProfit)}`}   sub={pct(totals.netMargin)}   icon={ShoppingCart} accent={totals.netProfit >= 0 ? "#10B981" : "#EF4444"} />
-          <KPI label="Ad Spend Meta"  value={`$${usd(totals.adSpendUsd)}`}
-               sub={adReconciliation?.ok ? "Conciliado con Meta" : `Diferencia $${usd(Math.abs(adReconciliation?.difference ?? 0))}`}
+          <KPI label="Revenue total"  value={`$${usd(visibleTotals.revenueUsd)}`}  sub={`${search || statusFilter !== "all" ? visibleTotals.orders : (totals.uniqueOrders ?? visibleTotals.orders)} pedidos`} icon={TrendingUp} accent="#0E766E" />
+          <KPI label="Ut. Bruta"      value={`$${usd(visibleTotals.grossProfit)}`} sub={pct(visibleTotals.grossMargin)} icon={DollarSign}  accent={visibleTotals.grossProfit >= 0 ? "#10B981" : "#EF4444"} />
+          <KPI label="Ut. Neta"       value={`$${usd(visibleTotals.netProfit)}`}   sub={pct(visibleTotals.netMargin)}   icon={ShoppingCart} accent={visibleTotals.netProfit >= 0 ? "#10B981" : "#EF4444"} />
+          <KPI label="Ad Spend Meta"  value={`$${usd(visibleTotals.adSpendUsd)}`}
+               sub={search || statusFilter !== "all" ? "Productos visibles" : adReconciliation?.ok ? "Conciliado con Meta" : `Diferencia $${usd(Math.abs(adReconciliation?.difference ?? 0))}`}
                icon={DollarSign} accent={adReconciliation?.ok ? "#10B981" : "#EF4444"} />
-          <KPI label="ROAS"           value={totals.roas != null ? `${totals.roas.toFixed(2)}x` : "N/A"} sub="Ads Meta" icon={Package} accent="#6366f1" />
+          <KPI label="ROAS"           value={visibleTotals.roas != null ? `${visibleTotals.roas.toFixed(2)}x` : "N/A"} sub="Ads Meta" icon={Package} accent="#6366f1" />
           <KPI label={viewMode === "bystore" ? "Tiendas" : "Productos"}
                value={String(viewMode === "bystore" ? storeRows.length : viewMode === "general" ? generalRows.length : countryRows.length)}
                sub={countryFilter !== "all" ? `${FLAG[countryFilter]} ${COUNTRY_NAME[countryFilter]}` : "Todos los países"}

@@ -475,14 +475,14 @@ function lookupCost(name: string, countryCosts: Record<string, number>, dbCosts:
 // Un producto sin COGS cargados sigue siendo "físico" — no confundir con digital.
 function isDigitalProduct(name: string): boolean {
   // Solo contenido descargable/no físico.
-  return /ebook|eook|guía|guia|protocolo|recetario|calendario|hábitos|habitos|menú|menu|plan\s+\d+\s+d[ií]as|plan de gym|plan anti|método|metodo|ritual|agenda|21d|reto |challenge|poros bajo|poros abiertos|glow desde adentro|lifting desde dentro|rutina anti|tracker/i.test(name);
+  return /ebook|eook|guía|guia|protocolo|recetario|calendario|hábitos|habitos|menú|menu|plan\s+\d+\s+d[ií]as|plan de gym|plan anti|método|metodo|ritual|agenda|21d|reto |challenge|poros bajo|poros abiertos|glow desde adentro|lifting desde dentro|rutina anti|tracker|c[oó]mo usarlo sin errores|despierta tu mejor versi[oó]n/i.test(name);
 }
 
 // Upsells y complementos sin pauta propia: se venden o entregan junto al producto principal.
 // Características: 0 ad spend (la campaña ya se pagó), 0 envío extra (va en la misma caja),
 // COGS mínimo o nulo según el producto. Son margen casi puro — no mostrar como "Datos incompletos".
 function isUpsellProduct(name: string): boolean {
-  return /rendimiento extendido|rendimiento m[aá]ximo|pureza extendida|reafirmante|vitamina c|youtful|fórmula pro|formula pro|protección de pedido|proteccion de pedido|brocha|brush/i.test(name);
+  return /rendimiento extendido|rendimiento m[aá]ximo|pureza extendida|reafirmante|vitamina c|youtful|fórmula pro|formula pro|protección de pedido|proteccion de pedido|brocha|brush|limpiador de lengua/i.test(name);
 }
 
 // ─── Status + Data Quality ─────────────────────────────────────────────────────
