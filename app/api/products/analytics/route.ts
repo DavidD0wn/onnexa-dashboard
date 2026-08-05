@@ -119,6 +119,36 @@ const CAMPAIGN_CODE_KEYWORDS: Record<string, string[]> = {
   "cg01":  ["gomfit", "creatina", "gomita"],
 };
 
+// Nombre canónico para conservar la pauta del producto incluso en períodos
+// donde todavía no tuvo pedidos. Sin esta fila base, una campaña reconocida
+// (por ejemplo RT01) terminaba como "pauta sin producto" solo porque Retinal
+// no aparecía en las órdenes del rango consultado.
+const CAMPAIGN_CODE_PRODUCTS: Record<string, Record<string, string>> = {
+  brand_glowmmi: {
+    tp01: "Toner Pads — K-Beauty Para Aclarar tus Zonas Íntimas",
+    gf01: "GlowFill™ — La alternativa al filler sin agujas y desde casa",
+    ins01: "InstantLift™ | Efecto tensor para ojeras y bolsas en 5 minutos",
+    dp01: "Deep Collagen | Tu Bótox Natural Coreano",
+    re01: "Retinal Shot – La fórmula nocturna para arrugas y poros marcados",
+    rt01: "Retinal Shot – La fórmula nocturna para arrugas y poros marcados",
+    rv01: "ReviveLift™ — Borrador de ojeras y arrugas",
+    hb01: "Mascarilla coreana para puntos negros — sin irritar piel sensible",
+    cd01: "ClearDot™ — Deja de Cubrir el Granito. Se Va en 24 Horas.",
+  },
+  brand_balancea: {
+    hb01: "Holy Basil",
+    hr01: "HerBiotic™ | Controla el mal olor y restaura la humedad íntima",
+    st01: "Clearstem™",
+    ct01: "Cutting Mix – Control del apetito, energía y apoyo al metabolismo",
+    fx01: "CURVA™ — Glúteos más llenos, piel más firme, sin agujas",
+    ino01: "FERTIL™ — Equilibra tus Hormonas, Optimiza tu Fertilidad",
+    db01: "AiRi – Elimina la hinchazón y deja de sentirte inflamada todo el día",
+    mw01: "MOUTHWASH — Limpieza profunda en 30 segundos",
+    ast01: "Astaxanthin™ — El Rey Antioxidante que Protege tu Piel desde Adentro",
+    cg01: "GOMFIT™ — Creatina en gomita para glúteos más firmes",
+  },
+};
+
 // productId is assigned during the Meta sync from the campaign code. Prefer
 // this deterministic mapping over fuzzy text matching whenever it exists.
 const PRODUCT_ID_KEYWORDS: Record<string, string[]> = {
@@ -933,11 +963,56 @@ export async function GET(req: NextRequest) {
       // producto no tiene ventas en ese país, preservamos la atribución al
       // producto usando sus filas de otros países en vez de mandarlo a
       // "Meta Ads sin producto identificado".
-      const matches = countryMatches.length > 0
+      let matches = countryMatches.length > 0
         ? countryMatches
         : nameToKey.filter(
             (entry) => entry.brandId === row.brandId && matchesProduct(entry),
           );
+      if (matches.length === 0) {
+        const campaignProducts = CAMPAIGN_CODE_PRODUCTS[row.brandId] ?? {};
+        const campaignCode = adKws.find((keyword) => campaignProducts[keyword]);
+        const canonicalName = campaignCode ? campaignProducts[campaignCode] : undefined;
+        if (canonicalName) {
+          const store = targetStores.find(
+            ([, value]) => value.brandId === row.brandId,
+          )?.[1];
+          const country = COUNTRY_CFG[cc] ?? COUNTRY_CFG.MX;
+          const syntheticKey = `${canonicalName}||||${row.brandId}||${cc}`;
+          if (!products[syntheticKey]) {
+            products[syntheticKey] = {
+              name: canonicalName,
+              variant: "",
+              brandId: row.brandId,
+              brandName: store?.brandName ?? row.brandId,
+              brandColor: store?.color ?? "#64748B",
+              storeKey: `${row.brandId}_${cc}`,
+              storeName: `${store?.brandName ?? row.brandId} ${country.name}`,
+              countryCode: cc,
+              countryName: country.name,
+              revenueUsd: 0,
+              revenueLocal: 0,
+              units: 0,
+              orders: 0,
+              lastSeen: adDate,
+              cogsUsd: 0,
+              unitPriceUsd: 0,
+            };
+          }
+          const normalizedName = normalizeName(canonicalName);
+          const syntheticEntry = {
+            normalizedName,
+            keywords: [
+              normalizedName,
+              ...normalizedName.split(" ").filter((word) => word.length >= 4),
+            ],
+            key: syntheticKey,
+            brandId: row.brandId,
+            countryCode: cc,
+          };
+          nameToKey.push(syntheticEntry);
+          matches = [syntheticEntry];
+        }
+      }
       if (matches.length > 0) {
         const matchRevenue = matches.reduce(
           (sum, entry) => sum + (products[entry.key]?.revenueUsd ?? 0),
