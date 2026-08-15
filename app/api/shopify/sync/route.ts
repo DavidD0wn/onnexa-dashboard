@@ -122,6 +122,50 @@ const COUNTRY_ID_MAP: Record<string, string> = {
 
 type StoreConfig = ShopifyStoreConfig & { shopCurrencyRate: number };
 
+async function ensureStoreRecords(store: ShopifyStoreConfig): Promise<void> {
+  const countryCode = store.countryId.replace(/^country_/, "").toUpperCase();
+  await prisma.$transaction([
+    prisma.brand.upsert({
+      where: { id: store.brandId },
+      create: { id: store.brandId, name: store.brandName, status: "active" },
+      update: { name: store.brandName, status: "active" },
+    }),
+    prisma.country.upsert({
+      where: { id: store.countryId },
+      create: {
+        id: store.countryId,
+        name: countryCode === "MX" ? "México" : countryCode,
+        code: countryCode,
+        currency: store.currency,
+        exchangeRateToUsd: store.currency === "MXN" ? 1 / FALLBACK_MXN_RATE : 1,
+        gatewayFeePercent: store.gatewayPct * 100,
+        gatewayFixedFee: store.gatewayFixed,
+      },
+      update: {},
+    }),
+  ]);
+  await prisma.store.upsert({
+    where: { id: store.storeId },
+    create: {
+      id: store.storeId,
+      brandId: store.brandId,
+      countryId: store.countryId,
+      name: `${store.brandName} ${countryCode}`,
+      shopifyUrl: `https://${store.shop}`,
+      currency: store.currency,
+      status: "active",
+    },
+    update: {
+      brandId: store.brandId,
+      countryId: store.countryId,
+      name: `${store.brandName} ${countryCode}`,
+      shopifyUrl: `https://${store.shop}`,
+      currency: store.currency,
+      status: "active",
+    },
+  });
+}
+
 function locationFor(
   cfg: StoreConfig,
   rawCountryCode: string,
@@ -487,6 +531,7 @@ export async function POST(req: Request) {
   if (!dailyRates[dateTo]) dailyRates[dateTo] = liveMxnRate;
 
   const cfg: StoreConfig = { ...baseCfg, shopCurrencyRate: liveMxnRate };
+  await ensureStoreRecords(baseCfg);
   const rateCount = Object.keys(dailyRates).length;
   console.log(`[sync:${store}] Exchange rates: live=${liveMxnRate} | historical=${rateCount} days loaded`);
 

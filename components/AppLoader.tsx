@@ -188,9 +188,14 @@ export function AppLoader({ children }: { children: React.ReactNode }) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ store: "balancea", days: syncDays }),
         });
+        await fetch("/api/shopify/sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ store: "pleena", days: syncDays }),
+        });
         const ok = r1.ok || d1.ok || d1.synced || d1.message;
         if (ok) {
-          updateStep("shopify", { status: "done", detail: `Glowmmi + Balancea actualizados` });
+          updateStep("shopify", { status: "done", detail: `Glowmmi + Balancea + Pleena actualizados` });
         } else {
           updateStep("shopify", { status: "error", detail: (d1.error ?? "Sin respuesta")?.toString().slice(0, 60) });
         }

@@ -1,4 +1,4 @@
-type ShopifyStoreKey = "glowmmi" | "balancea";
+export type ShopifyStoreKey = "glowmmi" | "balancea" | "pleena";
 type ShopifyAuthType = "json" | "urlencoded";
 
 export type ShopifyStoreConfig = {
@@ -9,7 +9,7 @@ export type ShopifyStoreConfig = {
   staticToken: string;
   authType: ShopifyAuthType;
   brandId: string;
-  brandName: "Glowmmi" | "Balancea";
+  brandName: "Glowmmi" | "Balancea" | "Pleena";
   countryId: string;
   storeId: string;
   currency: "USD" | "MXN";
@@ -88,15 +88,40 @@ export function getShopifyStores(): Record<ShopifyStoreKey, ShopifyStoreConfig> 
       storeUtcOffset: -5,
       color: "#10B981",
     },
+    pleena: {
+      key: "pleena",
+      shop: normalizeShop(env("SHOPIFY_PLEENA_SHOP"), "s31nvm-ng.myshopify.com"),
+      clientId: env("SHOPIFY_PLEENA_CLIENT_ID"),
+      clientSecret: env("SHOPIFY_PLEENA_CLIENT_SECRET"),
+      staticToken: env("SHOPIFY_PLEENA_TOKEN"),
+      authType: authType(env("SHOPIFY_PLEENA_AUTH_TYPE"), "urlencoded"),
+      brandId: "brand_pleena",
+      brandName: "Pleena",
+      countryId: "country_mx",
+      storeId: "store_pleena_mx",
+      currency: "MXN",
+      payoutCurrency: "MXN",
+      gatewayPct: 0.036,
+      gatewayFixed: 0,
+      splitByCountry: true,
+      storeUtcOffset: -5,
+      color: "#8B5CF6",
+    },
   };
 }
 
 export function getShopifyStore(key: string): ShopifyStoreConfig {
   const stores = getShopifyStores();
-  if (key !== "glowmmi" && key !== "balancea") {
-    throw new Error("Tienda no válida. Usa 'glowmmi' o 'balancea'");
+  if (!(key in stores)) {
+    throw new Error("Tienda no válida. Usa 'glowmmi', 'balancea' o 'pleena'");
   }
-  return stores[key];
+  return stores[key as ShopifyStoreKey];
+}
+
+export function isShopifyStoreConfigured(store: ShopifyStoreConfig): boolean {
+  return Boolean(
+    store.staticToken || (store.clientId && store.clientSecret),
+  );
 }
 
 export function shopifyRestUrl(

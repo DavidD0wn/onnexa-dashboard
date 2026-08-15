@@ -2,9 +2,11 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
   getShopifyStores,
+  isShopifyStoreConfigured,
   SHOPIFY_API_VERSION,
   shopifyFetch,
   shopifyRestUrl,
+  type ShopifyStoreKey,
 } from "@/lib/integrations/shopify";
 import {
   META_GRAPH_API_VERSION,
@@ -18,10 +20,17 @@ type Check = {
 };
 
 async function shopifyCheck(
-  key: "glowmmi" | "balancea",
+  key: ShopifyStoreKey,
 ): Promise<Check> {
+  const store = getShopifyStores()[key];
+  if (!isShopifyStoreConfigured(store)) {
+    return {
+      ok: false,
+      message: `${store.brandName} pendiente de credenciales`,
+      details: { configured: false, shop: store.shop },
+    };
+  }
   try {
-    const store = getShopifyStores()[key];
     const response = await shopifyFetch(
       store,
       shopifyRestUrl(store, "shop.json") +
@@ -46,6 +55,7 @@ async function shopifyCheck(
         requestedApiVersion: SHOPIFY_API_VERSION,
         servedApiVersion:
           response.headers.get("x-shopify-api-version") ?? "no informado",
+        configured: true,
       },
     };
   } catch (error) {
@@ -92,14 +102,18 @@ async function databaseCheck(): Promise<Check> {
 }
 
 export async function GET() {
-  const [database, glowmmi, balancea, meta] = await Promise.all([
+  const [database, glowmmi, balancea, pleena, meta] = await Promise.all([
     databaseCheck(),
     shopifyCheck("glowmmi"),
     shopifyCheck("balancea"),
+    shopifyCheck("pleena"),
     metaCheck(),
   ]);
-  const checks = { database, shopify: { glowmmi, balancea }, meta };
-  const ok = database.ok && glowmmi.ok && balancea.ok && meta.ok;
+  const checks = { database, shopify: { glowmmi, balancea, pleena }, meta };
+  const pleenaConfigured = pleena.details?.configured !== false;
+  const ok =
+    database.ok && glowmmi.ok && balancea.ok && meta.ok &&
+    (!pleenaConfigured || pleena.ok);
 
   return NextResponse.json(
     { ok, checkedAt: new Date().toISOString(), checks },

@@ -14,6 +14,10 @@ const BRAND_DEFAULTS: Record<
     storeId: "store_balancea_mx",
     countryId: "country_mx",
   },
+  brand_pleena: {
+    storeId: "store_pleena_mx",
+    countryId: "country_mx",
+  },
 };
 
 function storeIdFor(brandId: string, countryId: string): string | null {
@@ -22,7 +26,9 @@ function storeIdFor(brandId: string, countryId: string): string | null {
       ? "glowmmi"
       : brandId === "brand_balancea"
         ? "balancea"
-        : null;
+        : brandId === "brand_pleena"
+          ? "pleena"
+          : null;
   const country = countryId.replace(/^country_/, "").toLowerCase();
   return brand && ["mx", "us", "cl"].includes(country)
     ? `store_${brand}_${country}`

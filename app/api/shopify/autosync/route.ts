@@ -1,5 +1,19 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import {
+  getShopifyStores,
+  isShopifyStoreConfigured,
+} from "@/lib/integrations/shopify";
+
+async function readJsonResponse(res: Response): Promise<Record<string, any>> {
+  const text = await res.text();
+  if (!text.trim()) return { error: `Respuesta vacía (HTTP ${res.status})` };
+  try {
+    return JSON.parse(text) as Record<string, any>;
+  } catch {
+    return { error: `Respuesta inválida (HTTP ${res.status})` };
+  }
+}
 
 /**
  * Auto-sync completo en 5 pasos:
@@ -25,43 +39,50 @@ export async function POST(req: Request) {
   const dateFrom = new Date(Date.now() - (days - 1) * 864e5).toISOString().slice(0, 10);
 
   const results: Record<string, any> = {};
+  const stores = Object.values(getShopifyStores()).filter(isShopifyStoreConfigured);
 
   // ── Paso 1: Shopify sync ──────────────────────────────────
-  for (const store of ["glowmmi", "balancea"]) {
+  for (const store of stores) {
     try {
       const res = await fetch(`${base}/api/shopify/sync`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ store, days }),
+        body: JSON.stringify({ store: store.key, days }),
       });
-      results[`shopify_${store}`] = await res.json();
+      results[`shopify_${store.key}`] = await readJsonResponse(res);
     } catch (e: any) {
-      results[`shopify_${store}`] = { error: e.message };
+      results[`shopify_${store.key}`] = { error: e.message };
     }
   }
 
   // ── Paso 2: Shopify Payments → fees reales (Glowmmi only) ───
-  try {
-    const res = await fetch(`${base}/api/shopify/payments`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ store: "glowmmi", days }),
-    });
-    results.payments = await res.json();
-  } catch (e: any) {
-    results.payments = { error: e.message };
+  results.payments = {};
+  for (const store of stores) {
+    try {
+      const res = await fetch(`${base}/api/shopify/payments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ store: store.key, days }),
+      });
+      results.payments[store.key] = await readJsonResponse(res);
+    } catch (e: any) {
+      results.payments[store.key] = { error: e.message };
+    }
   }
 
   // ── Paso 3: Disputes → chargebacks automáticos ────────────
-  try {
-    const res = await fetch(`${base}/api/shopify/disputes`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ store: "glowmmi" }),
-    });
-    results.disputes = await res.json();
-  } catch (e: any) {
-    results.disputes = { error: e.message };
+  results.disputes = {};
+  for (const store of stores) {
+    try {
+      const res = await fetch(`${base}/api/shopify/disputes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ store: store.key }),
+      });
+      results.disputes[store.key] = await readJsonResponse(res);
+    } catch (e: any) {
+      results.disputes[store.key] = { error: e.message };
+    }
   }
 
   // ── Paso 4: Meta Ads sync ──────────────────────────────────
@@ -120,7 +141,8 @@ export async function POST(req: Request) {
   // ── Resumen ────────────────────────────────────────────────
   const totalOrders =
     (results.shopify_glowmmi?.ordersTotal  ?? 0) +
-    (results.shopify_balancea?.ordersTotal ?? 0);
+    (results.shopify_balancea?.ordersTotal ?? 0) +
+    (results.shopify_pleena?.ordersTotal ?? 0);
 
   return NextResponse.json({
     timestamp: new Date().toISOString(),
@@ -131,6 +153,7 @@ export async function POST(req: Request) {
     shopify: {
       glowmmi:  results.shopify_glowmmi,
       balancea: results.shopify_balancea,
+      pleena:   results.shopify_pleena,
     },
     payments: results.payments,
     disputes: results.disputes,

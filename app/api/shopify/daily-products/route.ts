@@ -81,8 +81,8 @@ export async function GET(req: NextRequest) {
     const selected =
       storeKey === "all"
         ? Object.values(stores)
-        : storeKey === "glowmmi" || storeKey === "balancea"
-          ? [stores[storeKey]]
+        : storeKey in stores
+          ? [stores[storeKey as keyof typeof stores]]
           : [];
     if (!selected.length) {
       return NextResponse.json({ error: "Tienda no válida" }, { status: 400 });

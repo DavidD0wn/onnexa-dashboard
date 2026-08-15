@@ -26,7 +26,7 @@ interface DashboardData {
     aov: number; cpaBe: number | null; roasBe: number | null;
     profitPerOrder: number | null; realProfitPerOrder: number | null;
   };
-  chartData: Array<{ date: string; glowmmi: number; balancea: number; profit: number; adSpend: number; orders: number; cogs: number; fees: number }>;
+  chartData: Array<{ date: string; glowmmi: number; balancea: number; pleena: number; profit: number; adSpend: number; orders: number; cogs: number; fees: number }>;
   byBrand: Array<{ name: string; brandId: string; revenue: number; net: number; profit: number; orders: number; units: number; adSpend: number; cogs: number; shipping: number; fees: number; chargebacks?: number }>;
   byCountry: Array<{ name: string; code: string; revenue: number; profit: number; orders: number; currency: string }>;
   tasks: Array<{ id: string; title: string; status: string; priority: string; category?: string; brand?: { name: string } }>;
@@ -69,6 +69,7 @@ const BRANDS = [
   { label: "Todas",    value: "all",           color: undefined },
   { label: "Glowmmi",  value: "brand_glowmmi",  color: "#EC4899" },
   { label: "Balancea", value: "brand_balancea", color: "#10B981" },
+  { label: "Pleena",   value: "brand_pleena",   color: "#8B5CF6" },
 ];
 
 const COUNTRIES = [
@@ -334,6 +335,7 @@ function ChargebackModal({
           >
             <option value="brand_glowmmi">Glowmmi</option>
             <option value="brand_balancea">Balancea</option>
+            <option value="brand_pleena">Pleena</option>
           </select>
         </div>
 
@@ -720,7 +722,7 @@ export default function Dashboard() {
     if (brand !== "all") pParams.set("brand", brand);
     fetch(`/api/products/stats?${pParams}`)
       .then((r) => r.json())
-      .then((d) => setProductStats(d))
+      .then((d) => setProductStats(d && Array.isArray(d.topProducts) ? d : null))
       .catch(() => {});
   }, [days, brand, country, isCustom, customFrom, customTo]);
 
@@ -757,6 +759,11 @@ export default function Dashboard() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ store: "balancea", ...payloadBase }),
+      });
+      await fetch("/api/shopify/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ store: "pleena", ...payloadBase }),
       });
 
       // ── También sincroniza el AD SPEND (Meta Ads) del MISMO período ──
@@ -804,6 +811,11 @@ export default function Dashboard() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ store: "balancea", days: syncDays }),
+      });
+      await fetch("/api/shopify/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ store: "pleena", days: syncDays }),
       });
 
       // Step 2: Meta Ads sync
@@ -1779,6 +1791,7 @@ export default function Dashboard() {
                     {[
                       { label: "Glowmmi",  color: "#EC4899" },
                       { label: "Balancea", color: "#10B981" },
+                      { label: "Pleena",   color: "#8B5CF6" },
                     ].map((l) => (
                       <div key={l.label} style={{ display: "flex", alignItems: "center", gap: 7 }}>
                         <div style={{ width: 10, height: 10, borderRadius: "50%", background: l.color }} />
@@ -1835,6 +1848,7 @@ export default function Dashboard() {
                             <th style={{ textAlign: "right" }}>Pedidos</th>
                             <th style={{ textAlign: "right" }}>Glowmmi</th>
                             <th style={{ textAlign: "right" }}>Balancea</th>
+                            <th style={{ textAlign: "right" }}>Pleena</th>
                             <th style={{ textAlign: "right" }}>Total Revenue</th>
                             <th style={{ textAlign: "right" }}>Ad Spend</th>
                             <th style={{ textAlign: "right" }}>COGS</th>
@@ -1845,7 +1859,7 @@ export default function Dashboard() {
                         </thead>
                         <tbody>
                           {rows.map((r) => {
-                            const rev = r.glowmmi + r.balancea;
+                            const rev = r.glowmmi + r.balancea + (r.pleena ?? 0);
                             const margin = rev > 0 ? (r.profit / rev) * 100 : 0;
                             const isToday = r.date === localDateStr();
                             return (
@@ -1865,6 +1879,9 @@ export default function Dashboard() {
                                 </td>
                                 <td style={{ textAlign: "right", color: r.balancea > 0 ? "#10B981" : "var(--text-3)", fontWeight: r.balancea > 0 ? 600 : 400 }}>
                                   {r.balancea > 0 ? fmtC(r.balancea) : "—"}
+                                </td>
+                                <td style={{ textAlign: "right", color: (r.pleena ?? 0) > 0 ? "#8B5CF6" : "var(--text-3)", fontWeight: (r.pleena ?? 0) > 0 ? 600 : 400 }}>
+                                  {(r.pleena ?? 0) > 0 ? fmtC(r.pleena) : "—"}
                                 </td>
                                 <td style={{ textAlign: "right", fontWeight: 700, color: "var(--text)" }}>
                                   {fmtC(rev)}
@@ -1901,7 +1918,7 @@ export default function Dashboard() {
             {/* ╔══════════════════════════════════════════════════╗
                 ║  FILA 4c — TOP PRODUCTOS                         ║
                 ╚══════════════════════════════════════════════════╝ */}
-            {productStats && productStats.topProducts.length > 0 && (() => {
+            {productStats && productStats.topProducts?.length > 0 && (() => {
               const tops = productStats.topProducts;
               const maxRev = tops[0]?.revenue || 1;
               return (
@@ -1932,7 +1949,11 @@ export default function Dashboard() {
                           </thead>
                           <tbody>
                             {tops.map((p, i) => {
-                              const isGlow = p.brandId === "brand_glowmmi";
+                              const productColor = p.brandId === "brand_glowmmi"
+                                ? "#EC4899"
+                                : p.brandId === "brand_pleena"
+                                  ? "#8B5CF6"
+                                  : "#10B981";
                               const barPct = (p.revenue / maxRev) * 100;
                               return (
                                 <tr key={`${p.brandId}-${p.code}-${p.name}`}>
@@ -1942,12 +1963,12 @@ export default function Dashboard() {
                                   <td>
                                     <div>
                                       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                                        <div style={{ width: 8, height: 8, borderRadius: "50%", background: isGlow ? "#EC4899" : "#10B981", flexShrink: 0 }} />
+                                        <div style={{ width: 8, height: 8, borderRadius: "50%", background: productColor, flexShrink: 0 }} />
                                         <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>{p.name}</span>
                                       </div>
                                       {/* Mini bar */}
                                       <div style={{ height: 4, borderRadius: 2, background: "var(--border)", overflow: "hidden", maxWidth: 200 }}>
-                                        <div style={{ height: "100%", width: `${barPct}%`, background: isGlow ? "#EC4899" : "#10B981", borderRadius: 2 }} />
+                                        <div style={{ height: "100%", width: `${barPct}%`, background: productColor, borderRadius: 2 }} />
                                       </div>
                                     </div>
                                   </td>
@@ -1988,7 +2009,7 @@ export default function Dashboard() {
                         Productos vendidos por día
                       </p>
                       <div style={{ display: "flex", flexDirection: "column", gap: 16, maxHeight: 420, overflowY: "auto" }}>
-                        {productStats.daily.slice(0, 7).map(day => {
+                        {(productStats.daily ?? []).slice(0, 7).map(day => {
                           const isToday = day.date === localDateStr();
                           const dayTotal = day.products.reduce((s: number, p: any) => s + p.revenue, 0);
                           return (
@@ -2004,7 +2025,7 @@ export default function Dashboard() {
                                 {day.products.map((p: any) => (
                                   <div key={`${day.date}-${p.brandId}-${p.code}-${p.name}`} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 10px", borderRadius: 8, background: "var(--bg-2)" }}>
                                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                      <div style={{ width: 6, height: 6, borderRadius: "50%", background: p.brandId === "brand_glowmmi" ? "#EC4899" : "#10B981", flexShrink: 0 }} />
+                                      <div style={{ width: 6, height: 6, borderRadius: "50%", background: p.brandId === "brand_glowmmi" ? "#EC4899" : p.brandId === "brand_pleena" ? "#8B5CF6" : "#10B981", flexShrink: 0 }} />
                                       <span style={{ fontSize: 12, color: "var(--text-2)", fontWeight: 500 }}>{p.name}</span>
                                       <span style={{ fontSize: 11, color: "var(--text-3)" }}>×{p.orders}</span>
                                     </div>

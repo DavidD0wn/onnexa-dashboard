@@ -10,6 +10,7 @@ export interface ChartData {
   date: string;
   glowmmi: number;
   balancea: number;
+  pleena: number;
   profit: number;
   adSpend: number;
   orders: number;
@@ -17,6 +18,7 @@ export interface ChartData {
 
 const GLOWMMI_COLOR  = "#EC4899";
 const BALANCEA_COLOR = "#10B981";
+const PLEENA_COLOR   = "#8B5CF6";
 const PROFIT_COLOR   = "#6366F1";
 
 function fmtMoney(v: number) {
@@ -68,6 +70,7 @@ function CustomTooltip({ active, payload, label }: any) {
           <span style={{ color: "#6B7280", fontSize: 12, textTransform: "capitalize", flex: 1 }}>
             {p.name === "glowmmi"  ? "Glowmmi"  :
              p.name === "balancea" ? "Balancea"  :
+             p.name === "pleena"   ? "Pleena"    :
              p.name === "profit"   ? "Utilidad"  : p.name}:
           </span>
           <span style={{ color: "#111827", fontSize: 12, fontWeight: 700 }}>
@@ -106,6 +109,10 @@ export function RevenueChart({ data, showProfit = false }: Props) {
             <linearGradient id="pGrad" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%"   stopColor={PROFIT_COLOR}  stopOpacity={0.15} />
               <stop offset="100%" stopColor={PROFIT_COLOR}  stopOpacity={0} />
+            </linearGradient>
+            <linearGradient id="plGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%"   stopColor={PLEENA_COLOR} stopOpacity={0.15} />
+              <stop offset="100%" stopColor={PLEENA_COLOR} stopOpacity={0} />
             </linearGradient>
           </defs>
 
@@ -181,6 +188,17 @@ export function RevenueChart({ data, showProfit = false }: Props) {
             fill="url(#bGrad)"
             dot={false}
             activeDot={{ r: 4, fill: BALANCEA_COLOR, strokeWidth: 0 }}
+          />
+          <Area
+            yAxisId="money"
+            type="monotone"
+            dataKey="pleena"
+            name="pleena"
+            stroke={PLEENA_COLOR}
+            strokeWidth={2}
+            fill="url(#plGrad)"
+            dot={false}
+            activeDot={{ r: 4, fill: PLEENA_COLOR, strokeWidth: 0 }}
           />
 
           {showProfit && (

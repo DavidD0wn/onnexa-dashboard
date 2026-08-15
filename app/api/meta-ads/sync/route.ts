@@ -38,11 +38,13 @@ const PRODUCT_CODE_MAP: Record<string, string> = {
   // Glowmmi
   "brand_glowmmi:TP01":  "prod_glw_7966465949744",  // Jiyu Toner Pads K-Beauty
   "brand_glowmmi:GF01":  "prod_glw_7959152361520",  // GlowFill™
-  "brand_glowmmi:INS01": "prod_glw_7909382848560",  // InstantLift™
+  "brand_glowmmi:INS01": "prod_glw_7968560709680",  // InstantLift™ (producto activo)
   "brand_glowmmi:DP01":  "prod_glw_7931502067760",  // Deep Collagen
   "brand_glowmmi:RE01":  "prod_glw_7885424525360",  // Retinal Shot
+  "brand_glowmmi:RT01":  "prod_glw_7885424525360",  // Retinal Shot (código nuevo)
   "brand_glowmmi:RV01":  "prod_glw_7901472784432",  // ReviveLift™
   "brand_glowmmi:HB01":  "prod_glw_7810722168880",   // Mascarilla coreana para puntos negros
+  "brand_glowmmi:CD01":  "prod_glw_8010808098864",  // ClearDot™
   // Balancea
   "brand_balancea:HB01":  "bal_holy_basil",         // Holy Basil suplemento
   "brand_balancea:HR01":  "bal_herbiotic",           // HerBiotic™
@@ -51,6 +53,9 @@ const PRODUCT_CODE_MAP: Record<string, string> = {
   "brand_balancea:FX01":  "bal_curva",               // CURVA™
   "brand_balancea:INO01": "bal_fertil",              // FERTIL™
   "brand_balancea:DB01":  "bal_airi",                // AiRi
+  "brand_balancea:MW01":  "bal_mouthwash",           // MOUTHWASH
+  "brand_balancea:AST01": "bal_astaxanthin",         // Astaxanthin™
+  "brand_balancea:CG01":  "bal_gomfit",              // GOMFIT™
 };
 
 function extractProductId(campaign: string | null, brandId?: string): string | null {

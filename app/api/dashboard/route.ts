@@ -141,18 +141,19 @@ export async function GET(req: Request) {
 
   // Chart data by date — use adSpendByDay from source-of-truth
   const byDate: Record<string, {
-    glowmmi: number; balancea: number; net: number; profit: number; adSpend: number;
+    glowmmi: number; balancea: number; pleena: number; net: number; profit: number; adSpend: number;
     orders: number; cogs: number; shipping: number; fees: number; handling: number;
     taxes: number; other: number;
   }> = {};
   for (const m of metrics) {
     const d = m.date.toISOString().split("T")[0];
     if (!byDate[d]) byDate[d] = {
-      glowmmi: 0, balancea: 0, net: 0, profit: 0, adSpend: 0, orders: 0,
+      glowmmi: 0, balancea: 0, pleena: 0, net: 0, profit: 0, adSpend: 0, orders: 0,
       cogs: 0, shipping: 0, fees: 0, handling: 0, taxes: 0, other: 0,
     };
     if (m.brandId === "brand_glowmmi")  byDate[d].glowmmi  += m.netRevenue;
     if (m.brandId === "brand_balancea") byDate[d].balancea += m.netRevenue;
+    if (m.brandId === "brand_pleena")   byDate[d].pleena   += m.netRevenue;
     byDate[d].net     += m.netRevenue;
     byDate[d].orders  += m.ordersCount;
     byDate[d].cogs    += m.cogs;
@@ -166,7 +167,7 @@ export async function GET(req: Request) {
   for (const [dateKey, spend] of adSpendByDay.entries()) {
     if (byDate[dateKey]) byDate[dateKey].adSpend = spend;
     else byDate[dateKey] = {
-      glowmmi: 0, balancea: 0, net: 0, profit: -spend, adSpend: spend,
+      glowmmi: 0, balancea: 0, pleena: 0, net: 0, profit: -spend, adSpend: spend,
       orders: 0, cogs: 0, shipping: 0, fees: 0, handling: 0, taxes: 0, other: 0,
     };
   }

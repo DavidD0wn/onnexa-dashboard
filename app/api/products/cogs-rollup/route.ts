@@ -18,55 +18,23 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import fs from "fs";
 import path from "path";
-
-// ─── Store configs ────────────────────────────────────────────────────────────
-const STORES = [
-  {
-    shop:         "glm-1694.myshopify.com",
-    clientId:     process.env.SHOPIFY_GLOWMMI_CLIENT_ID ?? "",
-    clientSecret: process.env.SHOPIFY_GLOWMMI_CLIENT_SECRET ?? "",
-    authType:     "json" as const,
-    brandId:      "brand_glowmmi",
-    shopRate:     18.7,  // MXN → USD
-  },
-  {
-    shop:         "mp0vab-bw.myshopify.com",
-    clientId:     process.env.SHOPIFY_BALANCEA_CLIENT_ID ?? "",
-    clientSecret: process.env.SHOPIFY_BALANCEA_CLIENT_SECRET ?? "",
-    authType:     "urlencoded" as const,
-    brandId:      "brand_balancea",
-    shopRate:     18.7,
-  },
-];
-
-// ─── Auth ─────────────────────────────────────────────────────────────────────
-async function getToken(s: typeof STORES[number]): Promise<string> {
-  const url  = `https://${s.shop}/admin/oauth/access_token`;
-  const body = s.authType === "urlencoded"
-    ? new URLSearchParams({ grant_type: "client_credentials", client_id: s.clientId, client_secret: s.clientSecret }).toString()
-    : JSON.stringify({ client_id: s.clientId, client_secret: s.clientSecret, grant_type: "client_credentials" });
-  const res  = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": s.authType === "urlencoded" ? "application/x-www-form-urlencoded" : "application/json" },
-    body,
-  });
-  if (!res.ok) throw new Error(`Auth ${s.shop}: ${res.status}`);
-  return (await res.json()).access_token;
-}
+import {
+  fetchShopifyPaginated,
+  getShopifyStores,
+  shopifyRestUrl,
+  type ShopifyStoreConfig,
+} from "@/lib/integrations/shopify";
 
 // ─── Fetch orders with line_items ─────────────────────────────────────────────
-async function fetchOrders(shop: string, token: string, since: string, until: string) {
-  const all: any[] = [];
-  let url = `https://${shop}/admin/api/${process.env.SHOPIFY_API_VERSION || "2026-07"}/orders.json?status=any&financial_status=paid,partially_paid&created_at_min=${since}&created_at_max=${until}&limit=250&fields=id,created_at,line_items`;
-  while (url) {
-    const res  = await fetch(url, { headers: { "X-Shopify-Access-Token": token } });
-    if (!res.ok) break;
-    const data = await res.json();
-    all.push(...(data.orders ?? []));
-    const next = (res.headers.get("Link") ?? "").match(/<([^>]+)>;\s*rel="next"/);
-    url = next ? next[1] : "";
-  }
-  return all;
+async function fetchOrders(store: ShopifyStoreConfig, since: string, until: string) {
+  return fetchShopifyPaginated<any>(
+    store,
+    shopifyRestUrl(
+      store,
+      `orders.json?status=any&financial_status=paid,partially_paid&created_at_min=${since}&created_at_max=${until}&limit=250&fields=id,created_at,line_items`,
+    ),
+    "orders",
+  );
 }
 
 // ─── Load product costs (JSON priority > DB) ──────────────────────────────────
@@ -146,10 +114,9 @@ export async function POST(req: NextRequest) {
   const missingCosts  = new Set<string>();
   let   totalOrders   = 0;
 
-  for (const store of STORES) {
+  for (const store of Object.values(getShopifyStores())) {
     try {
-      const token  = await getToken(store);
-      const orders = await fetchOrders(store.shop, token, since, until);
+      const orders = await fetchOrders(store, since, until);
       totalOrders += orders.length;
 
       for (const order of orders) {

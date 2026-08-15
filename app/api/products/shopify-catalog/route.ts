@@ -11,14 +11,12 @@
 import { NextResponse } from "next/server";
 import {
   fetchShopifyPaginated,
-  getShopifyStore,
+  getShopifyStores,
   shopifyRestUrl,
   type ShopifyStoreConfig,
 } from "@/lib/integrations/shopify";
 
 export const dynamic = "force-dynamic";
-
-const STORE_KEYS = ["glowmmi", "balancea"] as const;
 
 type ShopifyProduct = {
   id: string | number;
@@ -62,8 +60,7 @@ export async function GET() {
   try {
     const all: any[] = [];
     const errors: string[] = [];
-    for (const key of STORE_KEYS) {
-      const store = getShopifyStore(key);
+    for (const store of Object.values(getShopifyStores())) {
       try {
         all.push(...await fetchProducts(store));
       } catch (error) {

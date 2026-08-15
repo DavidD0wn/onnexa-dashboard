@@ -14,6 +14,11 @@
  */
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import {
+  getShopifyAccessToken,
+  getShopifyStore,
+  type ShopifyStoreConfig,
+} from "@/lib/integrations/shopify";
 
 const FALLBACK_MXN_RATE = 17.30;
 
@@ -49,56 +54,7 @@ async function fetchHistoricalRates(from: string, to: string): Promise<Record<st
 }
 
 // ─── Store configs ────────────────────────────────────────────────────────────
-type PaymentStoreConfig = {
-  shop: string;
-  clientId: string;
-  clientSecret: string;
-  authType: "json" | "urlencoded";
-  brandId: string;
-  feesCurrency: "USD" | "MXN";
-  splitByCountry: boolean;
-};
-
-const STORES: Record<"glowmmi" | "balancea", PaymentStoreConfig> = {
-  glowmmi: {
-    shop:           "glm-1694.myshopify.com",
-    clientId:       process.env.SHOPIFY_GLOWMMI_CLIENT_ID ?? "",
-    clientSecret:   process.env.SHOPIFY_GLOWMMI_CLIENT_SECRET ?? "",
-    authType:       "json" as const,
-    brandId:        "brand_glowmmi",
-    // Shopify Payments balance transactions report fees in the store's PAYOUT currency (USD)
-    // even when orders are placed in MXN — no conversion needed
-    feesCurrency:   "USD",
-    splitByCountry: true,
-  },
-  balancea: {
-    shop:           "mp0vab-bw.myshopify.com",
-    clientId:       process.env.SHOPIFY_BALANCEA_CLIENT_ID ?? "",
-    clientSecret:   process.env.SHOPIFY_BALANCEA_CLIENT_SECRET ?? "",
-    authType:       "urlencoded" as const,
-    brandId:        "brand_balancea",
-    feesCurrency:   "USD",   // Balancea Shopify Payments settles in USD
-    splitByCountry: true,
-  },
-};
-
 // ─── Auth ─────────────────────────────────────────────────────────────────────
-async function getToken(
-  shop: string, clientId: string, clientSecret: string,
-  authType: "json" | "urlencoded",
-): Promise<string> {
-  const url = `https://${shop}/admin/oauth/access_token`;
-  const body = authType === "urlencoded"
-    ? new URLSearchParams({ grant_type: "client_credentials", client_id: clientId, client_secret: clientSecret }).toString()
-    : JSON.stringify({ client_id: clientId, client_secret: clientSecret, grant_type: "client_credentials" });
-  const ct = authType === "urlencoded" ? "application/x-www-form-urlencoded" : "application/json";
-  const res  = await fetch(url, { method: "POST", headers: { "Content-Type": ct }, body });
-  if (!res.ok) throw new Error(`Auth error ${shop} (${res.status})`);
-  const data = await res.json();
-  if (!data.access_token) throw new Error(`No access_token: ${JSON.stringify(data).slice(0, 200)}`);
-  return data.access_token;
-}
-
 // ─── Fetch balance transactions (charges + refunds) ───────────────────────────
 // ⚠️  Shopify cursor-based pagination (page_info) DROPS all query filters after
 //     the first page. We must NOT use payout_transaction_type or processed_at
@@ -169,11 +125,18 @@ export async function POST(req: Request) {
     to?: string;
   };
 
-  const cfg = STORES[store as keyof typeof STORES];
-  if (!cfg) return NextResponse.json({ error: "Tienda no válida" }, { status: 400 });
+  let cfg: ShopifyStoreConfig;
+  try {
+    cfg = getShopifyStore(store);
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : String(error) },
+      { status: 400 },
+    );
+  }
 
   try {
-    const token    = await getToken(cfg.shop, cfg.clientId, cfg.clientSecret, cfg.authType);
+    const token    = await getShopifyAccessToken(cfg);
     const dateTo = requestedTo ?? localStr(new Date());
     const fromD = new Date(`${dateTo}T12:00:00Z`);
     fromD.setUTCDate(fromD.getUTCDate() - Math.max(1, days) + 1);
@@ -198,7 +161,7 @@ export async function POST(req: Request) {
 
     // ── Load daily exchange rates for MXN→USD conversion if needed ──
     let ratesByDate: Record<string, number> = {};
-    if (cfg.feesCurrency === "MXN") {
+    if (cfg.payoutCurrency === "MXN") {
       ratesByDate = await fetchHistoricalRates(dateFrom, dateTo);
     }
     const getRate = (d: string) => ratesByDate[d] ?? FALLBACK_MXN_RATE;
@@ -211,7 +174,7 @@ export async function POST(req: Request) {
     for (const [dateKey, rawFee] of Object.entries(feesByDate)) {
       if (rawFee <= 0) continue; // skip days with 0 or negative fees (net refunds)
 
-      const rate      = cfg.feesCurrency === "MXN" ? getRate(dateKey) : 1;
+      const rate      = cfg.payoutCurrency === "MXN" ? getRate(dateKey) : 1;
       const totalFeeUsd = rawFee / rate;
 
       const dayStart = new Date(dateKey + "T00:00:00Z");
@@ -269,15 +232,16 @@ export async function POST(req: Request) {
 // ─── GET — last 7 days with real fees ────────────────────────────────────────
 export async function GET() {
   const metrics = await prisma.dailyMetric.findMany({
-    where:   { brandId: "brand_glowmmi", fees: { gt: 0 } },
+    where:   { fees: { gt: 0 } },
     orderBy: { date: "desc" },
     take:    10,
-    select:  { date: true, countryId: true, grossRevenue: true, fees: true },
+    select:  { date: true, brandId: true, countryId: true, grossRevenue: true, fees: true },
   });
   return NextResponse.json({
     message: "Últimas métricas con fees de Shopify Balance Transactions",
     rows: metrics.map(m => ({
       date:       m.date.toISOString().slice(0, 10),
+      brand:      m.brandId,
       country:    m.countryId,
       gross:      m.grossRevenue.toFixed(2),
       fees:       m.fees.toFixed(2),

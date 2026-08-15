@@ -48,6 +48,17 @@ type AdSpendReconciliation = {
   }>;
 };
 
+type CampaignAttribution = {
+  ok: boolean;
+  unknownSpend: number;
+  unknownCodes: Array<{
+    brandId: string;
+    code: string | null;
+    spend: number;
+    campaignCount: number;
+  }>;
+};
+
 // Aggregated row for General view (collapses countries)
 type GeneralRow = Omit<ProductRow, "countryCode" | "countryName" | "storeKey" | "storeName" | "revenueLocal"> & {
   countries: string[]; stores: string[];
@@ -578,6 +589,8 @@ export default function ProductAnalyticsPage() {
   const [totals,        setTotals]        = useState<Totals | null>(null);
   const [adReconciliation, setAdReconciliation] =
     useState<AdSpendReconciliation | null>(null);
+  const [campaignAttribution, setCampaignAttribution] =
+    useState<CampaignAttribution | null>(null);
   const [loading,       setLoading]       = useState(true);
   const [error,         setError]         = useState("");
   const [days,          setDays]          = useState(7);
@@ -677,6 +690,7 @@ export default function ProductAnalyticsPage() {
       setRows(data.rows ?? []);
       setTotals(data.totals ?? null);
       setAdReconciliation(data.adSpendReconciliation ?? null);
+      setCampaignAttribution(data.campaignAttribution ?? null);
       const c: Record<string, number> = {};
       (data.rows ?? []).forEach((r: ProductRow) => { if (r.costPerUnit > 0) c[r.name] = r.costPerUnit; });
       setCosts(c);
@@ -1204,7 +1218,7 @@ export default function ProductAnalyticsPage() {
       <div style={{ display: "flex", gap: 10, marginBottom: 24, flexWrap: "wrap", alignItems: "center" }}>
         {/* Brand / Store */}
         <div style={{ display: "flex", gap: 4, background: "rgba(255,255,255,0.05)", padding: 4, borderRadius: 10 }}>
-          {[{ v: "all", l: "Todas" }, { v: "glowmmi", l: "Glowmmi" }, { v: "balancea", l: "Balancea" }].map(s => (
+          {[{ v: "all", l: "Todas" }, { v: "glowmmi", l: "Glowmmi" }, { v: "balancea", l: "Balancea" }, { v: "pleena", l: "Pleena" }].map(s => (
             <button key={s.v} onClick={() => setStore(s.v)} style={{ padding: "6px 14px", borderRadius: 7, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600, background: store === s.v ? "#0E766E" : "transparent", color: store === s.v ? "#fff" : "rgba(255,255,255,0.5)" }}>{s.l}</button>
           ))}
         </div>
@@ -1337,6 +1351,23 @@ export default function ProductAnalyticsPage() {
           {adReconciliation.ok
             ? `✓ Ad Spend conciliado: Meta $${usd(adReconciliation.sourceAdSpend)} = productos $${usd(adReconciliation.allocatedAdSpend)}`
             : `⚠ Ad Spend sin conciliar: diferencia $${usd(Math.abs(adReconciliation.difference))}`}
+        </div>
+      )}
+
+      {campaignAttribution && !campaignAttribution.ok && (
+        <div style={{
+          padding: "10px 14px",
+          borderRadius: 10,
+          marginBottom: 16,
+          background: "rgba(245,158,11,0.12)",
+          border: "1px solid rgba(245,158,11,0.35)",
+          color: "#FBBF24",
+          fontSize: 12,
+          fontWeight: 600,
+        }}>
+          ⚠ Campañas por revisar: {campaignAttribution.unknownCodes
+            .map((entry) => `${entry.code ?? "SIN CÓDIGO"} (${entry.brandId.replace("brand_", "")})`)
+            .join(", ")} · ${usd(campaignAttribution.unknownSpend)} sin vínculo confirmado
         </div>
       )}
 

@@ -10,25 +10,11 @@
  */
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-
-const STORES = {
-  glowmmi: {
-    shop: "glm-1694.myshopify.com",
-    clientId: process.env.SHOPIFY_GLOWMMI_CLIENT_ID ?? "",
-    clientSecret: process.env.SHOPIFY_GLOWMMI_CLIENT_SECRET ?? "",
-    authType: "json" as const,
-    brandId: "brand_glowmmi",
-    supportsPayments: true,
-  },
-  balancea: {
-    shop: "mp0vab-bw.myshopify.com",
-    clientId: process.env.SHOPIFY_BALANCEA_CLIENT_ID ?? "",
-    clientSecret: process.env.SHOPIFY_BALANCEA_CLIENT_SECRET ?? "",
-    authType: "urlencoded" as const,
-    brandId: "brand_balancea",
-    supportsPayments: true,  // Balancea has Shopify Payments active
-  },
-};
+import {
+  getShopifyAccessToken,
+  getShopifyStore,
+  type ShopifyStoreConfig,
+} from "@/lib/integrations/shopify";
 
 // Always store chargeback amounts in USD for consistency.
 // Shopify Payments disputes API returns amount in the order's presentment currency.
@@ -48,20 +34,6 @@ function toUsd(amount: number, currency: string, mxnRate: number): number {
   if (!currency || currency === "USD") return amount;
   if (currency === "MXN") return Math.round((amount / mxnRate) * 100) / 100;
   return amount; // unknown currency — store as-is
-}
-
-async function getToken(shop: string, clientId: string, clientSecret: string, authType: "json" | "urlencoded"): Promise<string> {
-  const url = `https://${shop}/admin/oauth/access_token`;
-  const isJson = authType === "json";
-  const body = isJson
-    ? JSON.stringify({ client_id: clientId, client_secret: clientSecret, grant_type: "client_credentials" })
-    : new URLSearchParams({ grant_type: "client_credentials", client_id: clientId, client_secret: clientSecret }).toString();
-  const contentType = isJson ? "application/json" : "application/x-www-form-urlencoded";
-  const res = await fetch(url, { method: "POST", headers: { "Content-Type": contentType }, body });
-  if (!res.ok) throw new Error(`Auth error ${shop} (${res.status})`);
-  const data = await res.json();
-  if (!data.access_token) throw new Error(`No access_token`);
-  return data.access_token;
 }
 
 async function fetchDisputes(shop: string, token: string): Promise<any[]> {
@@ -100,21 +72,21 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
   const { store = "glowmmi" } = body as { store?: string };
 
-  const cfg = STORES[store as keyof typeof STORES];
-  if (!cfg) return NextResponse.json({ error: "Tienda no válida" }, { status: 400 });
-  if (!cfg.supportsPayments) {
-    return NextResponse.json({
-      store: cfg.shop,
-      skipped: true,
-      message: "Shopify Payments no disponible para esta tienda.",
-    });
+  let cfg: ShopifyStoreConfig;
+  try {
+    cfg = getShopifyStore(store);
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : String(error) },
+      { status: 400 },
+    );
   }
 
   // Fetch live rate once for the whole sync — amounts are always stored in USD
   const mxnRate = await fetchLiveMxnRate();
 
   try {
-    const token = await getToken(cfg.shop, cfg.clientId, cfg.clientSecret, cfg.authType);
+    const token = await getShopifyAccessToken(cfg);
     const disputes = await fetchDisputes(cfg.shop, token);
 
     let created = 0;
@@ -195,7 +167,6 @@ export async function POST(req: Request) {
 
 export async function GET() {
   const chargebacks = await prisma.chargeback.findMany({
-    where:   { brandId: "brand_glowmmi" },
     orderBy: { date: "desc" },
     take:    20,
   });
@@ -209,6 +180,7 @@ export async function GET() {
   return NextResponse.json({
     chargebacks: chargebacks.map((c) => ({
       date:    c.date,
+      brandId: c.brandId,
       amount:  c.amount,
       reason:  c.reason,
       status:  c.status,

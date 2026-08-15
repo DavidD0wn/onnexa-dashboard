@@ -84,6 +84,17 @@ const STORES = {
     currency:     "MXN",
     exchangeRate: FALLBACK_RATE,  // overridden with live rate at request time
   },
+  pleena: {
+    key:          "pleena" as const,
+    shop:         "s31nvm-ng.myshopify.com",
+    clientId:     process.env.SHOPIFY_PLEENA_CLIENT_ID ?? "",
+    clientSecret: process.env.SHOPIFY_PLEENA_CLIENT_SECRET ?? "",
+    brandId:      "brand_pleena",
+    brandName:    "Pleena",
+    color:        "#8B5CF6",
+    currency:     "MXN",
+    exchangeRate: FALLBACK_RATE,
+  },
 };
 
 /**
@@ -154,11 +165,12 @@ const CAMPAIGN_CODE_PRODUCTS: Record<string, Record<string, string>> = {
 const PRODUCT_ID_KEYWORDS: Record<string, string[]> = {
   prod_glw_7966465949744: ["jiyu", "toner pads"],
   prod_glw_7959152361520: ["glowfill"],
-  prod_glw_7909382848560: ["instantlift"],
+  prod_glw_7968560709680: ["instantlift"],
   prod_glw_7931502067760: ["deep collagen"],
   prod_glw_7885424525360: ["retinal shot", "retinal"],
   prod_glw_7901472784432: ["revivelift"],
   prod_glw_7810722168880: ["mascarilla coreana"],
+  prod_glw_8010808098864: ["cleardot", "clear dot"],
   bal_holy_basil: ["holy basil"],
   bal_herbiotic: ["herbiotic"],
   bal_clearstem: ["clearstem"],
@@ -166,6 +178,9 @@ const PRODUCT_ID_KEYWORDS: Record<string, string[]> = {
   bal_curva: ["curva"],
   bal_fertil: ["fertil"],
   bal_airi: ["airi"],
+  bal_mouthwash: ["mouthwash"],
+  bal_astaxanthin: ["astaxanthin"],
+  bal_gomfit: ["gomfit", "creatina en gomita"],
 };
 
 /**
@@ -405,6 +420,49 @@ function normalizeName(n: string): string {
   return n.toLowerCase().replace(/[™®–—\-]/g, " ").replace(/\s+/g, " ").trim();
 }
 
+const CANONICAL_PRODUCT_RULES: Record<
+  string,
+  Array<{ code: string; aliases: string[] }>
+> = {
+  brand_glowmmi: [
+    { code: "tp01", aliases: ["toner pads"] },
+    { code: "gf01", aliases: ["glowfill"] },
+    { code: "ins01", aliases: ["instantlift"] },
+    { code: "dp01", aliases: ["deep collagen"] },
+    { code: "rt01", aliases: ["retinal shot"] },
+    { code: "rv01", aliases: ["revivelift"] },
+    { code: "hb01", aliases: ["mascarilla coreana"] },
+    { code: "cd01", aliases: ["cleardot"] },
+  ],
+  brand_balancea: [
+    { code: "hr01", aliases: ["herbiotic"] },
+    { code: "st01", aliases: ["clearstem"] },
+    { code: "ct01", aliases: ["cutting mix"] },
+    { code: "fx01", aliases: ["curva"] },
+    { code: "ino01", aliases: ["fertil"] },
+    { code: "db01", aliases: ["airi"] },
+    { code: "mw01", aliases: ["mouthwash"] },
+    { code: "ast01", aliases: ["astaxanthin"] },
+    { code: "cg01", aliases: ["gomfit"] },
+    { code: "hb01", aliases: ["holy basil"] },
+  ],
+};
+
+function canonicalProductName(brandId: string, productName: string): string {
+  const normalized = normalizeName(productName);
+  const rule = (CANONICAL_PRODUCT_RULES[brandId] ?? []).find(({ aliases }) =>
+    aliases.some((alias) => normalized.includes(normalizeName(alias))),
+  );
+  return rule
+    ? (CAMPAIGN_CODE_PRODUCTS[brandId]?.[rule.code] ?? productName)
+    : productName;
+}
+
+function extractCampaignCode(campaignName?: string | null): string | null {
+  const match = campaignName?.match(/\b([A-Za-z]{2,5}\d{2,3})\b/);
+  return match?.[1]?.toLowerCase() ?? null;
+}
+
 function loadCosts(): CostsByCountry {
   const p = path.join(process.cwd(), "data", "product-costs.json");
   const parseCountry = (obj: unknown): Record<string, number> => {
@@ -551,6 +609,8 @@ export async function GET(req: NextRequest) {
         ? "glowmmi"
         : requestedBrand === "brand_balancea"
           ? "balancea"
+          : requestedBrand === "brand_pleena"
+            ? "pleena"
           : "all";
   const countryParam  = (searchParams.get("country") ?? "all").toUpperCase();
 
@@ -698,7 +758,8 @@ export async function GET(req: NextRequest) {
         for (const item of (order.line_items ?? [])) {
           if (isSkippableItem(item)) continue;
 
-          const name    = item.title ?? "Producto sin nombre";
+          const rawName = item.title ?? "Producto sin nombre";
+          const name    = canonicalProductName(store.brandId, rawName);
           const variant = (item.variant_title && item.variant_title !== "Default Title") ? item.variant_title : "";
           // Key now includes country so each product×country is a separate row
           const key     = `${name}||${variant}||${store.brandId}||${countryCode}`;
@@ -866,6 +927,47 @@ export async function GET(req: NextRequest) {
       ? adRows
       : adRows.filter((row) => adCountryCode(row) === countryParam);
 
+  const attributionCodeMap = new Map<
+    string,
+    {
+      brandId: string;
+      code: string | null;
+      canonicalProduct: string | null;
+      spend: number;
+      campaigns: Set<string>;
+    }
+  >();
+  for (const row of relevantAdRows) {
+    const code = extractCampaignCode(row.campaignName);
+    const canonicalProduct = code
+      ? CAMPAIGN_CODE_PRODUCTS[row.brandId]?.[code] ?? null
+      : null;
+    const key = `${row.brandId}||${code ?? "SIN_CODIGO"}`;
+    const current = attributionCodeMap.get(key) ?? {
+      brandId: row.brandId,
+      code,
+      canonicalProduct,
+      spend: 0,
+      campaigns: new Set<string>(),
+    };
+    current.spend += row.spend;
+    if (row.campaignName) current.campaigns.add(row.campaignName);
+    attributionCodeMap.set(key, current);
+  }
+  const attributionCodes = [...attributionCodeMap.values()]
+    .map((entry) => ({
+      brandId: entry.brandId,
+      code: entry.code,
+      canonicalProduct: entry.canonicalProduct,
+      spend: entry.spend,
+      campaignCount: entry.campaigns.size,
+      recognized: Boolean(entry.code && entry.canonicalProduct),
+    }))
+    .sort((a, b) => b.spend - a.spend);
+  const unknownAttributionCodes = attributionCodes.filter(
+    (entry) => !entry.recognized,
+  );
+
   const productAdSpend: Record<string, number> = {};
   const productCampaignPurchases: Record<string, number> = {};
   const productCampaignConversionValue: Record<string, number> = {};
@@ -921,6 +1023,10 @@ export async function GET(req: NextRequest) {
 
   for (const row of relevantAdRows) {
     const adDate = row.date.toISOString().slice(0, 10);
+    const campaignCode = extractCampaignCode(row.campaignName);
+    const canonicalCampaignName = campaignCode
+      ? CAMPAIGN_CODE_PRODUCTS[row.brandId]?.[campaignCode]
+      : undefined;
     let adKws = extractAdKeywords(row);
     // If campaign contains a known product code (e.g. "INS01", "TP01"), expand adKws
     // with that product's name keywords so it can match product rows correctly.
@@ -935,6 +1041,9 @@ export async function GET(req: NextRequest) {
       ? PRODUCT_ID_KEYWORDS[row.productId] ?? []
       : [];
     const matchesProduct = (entry: (typeof nameToKey)[number]) => {
+      if (canonicalCampaignName) {
+        return entry.normalizedName === normalizeName(canonicalCampaignName);
+      }
       if (deterministicKeywords.length > 0) {
         return deterministicKeywords.some((keyword) =>
           entry.normalizedName.includes(normalizeName(keyword)),
@@ -970,8 +1079,8 @@ export async function GET(req: NextRequest) {
           );
       if (matches.length === 0) {
         const campaignProducts = CAMPAIGN_CODE_PRODUCTS[row.brandId] ?? {};
-        const campaignCode = adKws.find((keyword) => campaignProducts[keyword]);
-        const canonicalName = campaignCode ? campaignProducts[campaignCode] : undefined;
+        const detectedCode = campaignCode ?? adKws.find((keyword) => campaignProducts[keyword]);
+        const canonicalName = detectedCode ? campaignProducts[detectedCode] : undefined;
         if (canonicalName) {
           const store = targetStores.find(
             ([, value]) => value.brandId === row.brandId,
@@ -1489,6 +1598,15 @@ export async function GET(req: NextRequest) {
       allocatedAdSpend: totals.adSpendUsd,
       difference: allocationDifference,
       byBrand: allocationByBrand,
+    },
+    campaignAttribution: {
+      ok: unknownAttributionCodes.length === 0,
+      codes: attributionCodes,
+      unknownCodes: unknownAttributionCodes,
+      unknownSpend: unknownAttributionCodes.reduce(
+        (sum, entry) => sum + entry.spend,
+        0,
+      ),
     },
     ...(includeDaily
       ? {

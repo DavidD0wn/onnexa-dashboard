@@ -25,6 +25,7 @@ const BRANDS = [
   { label: "Todas", value: "all" },
   { label: "Glowmmi", value: "brand_glowmmi", color: "#EC4899" },
   { label: "Balancea", value: "brand_balancea", color: "#10B981" },
+  { label: "Pleena", value: "brand_pleena", color: "#8B5CF6" },
 ];
 
 const C = {
@@ -52,7 +53,7 @@ function normalizeProductKey(name: string): string {
 }
 
 type CatalogProduct = {
-  brand: "glowmmi" | "balancea";
+  brand: "glowmmi" | "balancea" | "pleena";
   productId: string;
   title: string;
   status: "active" | "draft";
@@ -333,7 +334,7 @@ export default function TesteosPage() {
           </option>
           {testeables.map((p) => (
             <option key={p.id} value={p.id}>
-              {p.name} · {p.brandId === "brand_glowmmi" ? "Glowmmi" : "Balancea"}{p.shopifyStatus === "draft" ? " · Borrador" : ""}
+              {p.name} · {p.brandId === "brand_glowmmi" ? "Glowmmi" : p.brandId === "brand_balancea" ? "Balancea" : "Pleena"}{p.shopifyStatus === "draft" ? " · Borrador" : ""}
             </option>
           ))}
         </select>
