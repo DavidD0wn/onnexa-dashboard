@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(dir C:\\\\Users\\\\hamle\\\\Desktop\\\\onnexa-dashboard /b)"
+      "Bash(dir C:\\\\Users\\\\hamle\\\\Desktop\\\\onnexa-dashboard /b)",
+      "PowerShell(try { $r = Invoke-WebRequest -Uri \"https://onnexa-dashboard.vercel.app/api/meta-ads/sync\" -Method GET -TimeoutSec 30 -UseBasicParsing; Write-Output \"HTTP $\\($r.StatusCode\\)\"; Write-Output $r.Content.Substring\\(0, [Math]::Min\\(600, $r.Content.Length\\)\\) } catch { Write-Output \"ERROR: $\\($_.Exception.Message\\)\"; if \\($_.Exception.Response\\) { Write-Output \"Status: $\\([int]$_.Exception.Response.StatusCode\\)\" } })"
     ]
   }
 }
