@@ -41,6 +41,18 @@ function utcDay(date: Date): Date {
   );
 }
 
+async function runInBatches<T, R>(
+  items: readonly T[],
+  batchSize: number,
+  worker: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = [];
+  for (let index = 0; index < items.length; index += batchSize) {
+    results.push(...await Promise.all(items.slice(index, index + batchSize).map(worker)));
+  }
+  return results;
+}
+
 function profitForMetric(
   metric: {
     netRevenue: number;
@@ -147,7 +159,7 @@ export async function POST(req: Request) {
         OR: [{ adSpendFacebook: { not: 0 } }, { adSpend: { not: 0 } }],
       },
     });
-    for (const metric of previousMetrics) {
+    await runInBatches(previousMetrics, 10, async (metric) => {
       const nonFacebookSpend =
         metric.adSpendGoogle +
         metric.adSpendSnapchat +
@@ -164,10 +176,15 @@ export async function POST(req: Request) {
           cpa: null,
         },
       });
-      staleSpendCleared++;
-    }
+    });
+    staleSpendCleared = previousMetrics.length;
 
-    for (const row of consolidated.values()) {
+    const consolidatedResults = await runInBatches(
+      Array.from(consolidated.values()),
+      // Neon en el plan actual admite pocas transacciones interactivas a la vez.
+      // Dos mantiene la mejora de velocidad sin agotar el pool de conexiones.
+      2,
+      async (row) => {
       const dayStart = row.date;
       const dayEnd = new Date(row.date.getTime() + 86_400_000 - 1);
 
@@ -265,11 +282,15 @@ export async function POST(req: Request) {
         { timeout: 30_000 },
       );
 
+        return { ...result, adSpend: row.adSpend };
+      },
+    );
+    for (const result of consolidatedResults) {
       if (result.status === "created") created++;
       else if (result.status === "updated") updated++;
       else skipped++;
       duplicateRowsCleared += result.duplicates;
-      if (result.status !== "skipped") appliedSpend += row.adSpend;
+      if (result.status !== "skipped") appliedSpend += result.adSpend;
     }
 
     // La utilidad también debe quedar consistente en días que todavía no
@@ -277,7 +298,11 @@ export async function POST(req: Request) {
     const profitRows = await prisma.dailyMetric.findMany({
       where: { date: { gte: from, lte: to } },
     });
-    let profitRowsRecalculated = 0;
+    const profitUpdates: Array<{
+      id: string;
+      netProfit: number;
+      netMargin: number;
+    }> = [];
     for (const metric of profitRows) {
       const netRevenue =
         metric.netRevenue > 0 ? metric.netRevenue : metric.grossRevenue;
@@ -295,16 +320,23 @@ export async function POST(req: Request) {
         Math.abs(metric.netProfit - profit.netProfit) >= 0.005 ||
         Math.abs(metric.netMargin - profit.netMargin) >= 0.005
       ) {
-        await prisma.dailyMetric.update({
-          where: { id: metric.id },
-          data: {
-            netProfit: profit.netProfit,
-            netMargin: profit.netMargin,
-          },
+        profitUpdates.push({
+          id: metric.id,
+          netProfit: profit.netProfit,
+          netMargin: profit.netMargin,
         });
-        profitRowsRecalculated++;
       }
     }
+    await runInBatches(profitUpdates, 10, (update) =>
+      prisma.dailyMetric.update({
+        where: { id: update.id },
+        data: {
+          netProfit: update.netProfit,
+          netMargin: update.netMargin,
+        },
+      }),
+    );
+    const profitRowsRecalculated = profitUpdates.length;
 
     const difference = sourceSpend - appliedSpend;
     return NextResponse.json({

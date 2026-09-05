@@ -4,6 +4,7 @@ import {
   fetchShopifyPaginated,
   getShopifyAccessToken,
   getShopifyStore,
+  isShopifyRevenueOrder,
   shopifyRestUrl,
 } from "@/lib/integrations/shopify";
 import fs from "fs";
@@ -111,6 +112,7 @@ const CAMPAIGN_CODE_KEYWORDS: Record<string, string[]> = {
   "re01":  ["retinal", "retinal shot"],
   "rv01":  ["revivelift", "revive lift"],
   "rt01":  ["retinal", "retinal shot"],
+  "rs01":  ["retinal", "retinal shot"],
   "cd01":  ["cleardot", "clear dot"],
   // HB01 covers two brands:
   //   • Glowmmi  → "Mascarilla coreana para puntos negros" (keyword: "mascarilla")
@@ -142,6 +144,7 @@ const CAMPAIGN_CODE_PRODUCTS: Record<string, Record<string, string>> = {
     dp01: "Deep Collagen | Tu Bótox Natural Coreano",
     re01: "Retinal Shot – La fórmula nocturna para arrugas y poros marcados",
     rt01: "Retinal Shot – La fórmula nocturna para arrugas y poros marcados",
+    rs01: "Retinal Shot – La fórmula nocturna para arrugas y poros marcados",
     rv01: "ReviveLift™ — Borrador de ojeras y arrugas",
     hb01: "Mascarilla coreana para puntos negros — sin irritar piel sensible",
     cd01: "ClearDot™ — Deja de Cubrir el Granito. Se Va en 24 Horas.",
@@ -340,15 +343,16 @@ LIMIT 500`;
 
 async function fetchOrders(store: AnalyticsStore, since: string, until: string) {
   const sharedStore = getShopifyStore(store.key);
-  return fetchShopifyPaginated<any>(
+  const orders = await fetchShopifyPaginated<any>(
     sharedStore,
     shopifyRestUrl(sharedStore, "orders.json") +
-    `?status=any&financial_status=paid,partially_paid,partially_refunded,refunded` +
+    `?status=any` +
     `&created_at_min=${encodeURIComponent(since)}` +
     `&created_at_max=${encodeURIComponent(until)}&limit=250` +
-    `&fields=id,created_at,line_items,shipping_address,shipping_lines`,
+    `&fields=id,created_at,financial_status,cancelled_at,test,line_items,shipping_address,shipping_lines`,
     "orders",
   );
+  return orders.filter(isShopifyRevenueOrder);
 }
 
 /**
@@ -878,6 +882,7 @@ export async function GET(req: NextRequest) {
     fees: number; shipping: number; returns: number; taxes: number;
     cogs: number; netRevenue: number;
   }> = {};
+  const dailyBrandRevenue: Record<string, number> = {};
   try {
     const dmRows = await prisma.dailyMetric.findMany({
       where: { brandId: { in: brandIds }, date: { gte: dateFrom, lte: dateTo } },
@@ -911,8 +916,42 @@ export async function GET(req: NextRequest) {
       calibTotals[bck].taxes      += dm.taxes        ?? 0;
       calibTotals[bck].cogs       += dm.cogs         ?? 0;
       calibTotals[bck].netRevenue += dm.netRevenue   ?? 0;
+      const brandDayKey = `${dm.brandId}||${dateStr}`;
+      dailyBrandRevenue[brandDayKey] =
+        (dailyBrandRevenue[brandDayKey] ?? 0) + (dm.netRevenue ?? 0);
     }
   } catch { /* non-critical — falls back to estimates */ }
+
+  // Los contracargos no tienen productId ni countryId. Se reparten por la
+  // participación de revenue de cada producto dentro de su marca, la misma
+  // regla que usa el Dashboard al conciliar países.
+  const chargebacksByBrand: Record<string, number> = {};
+  const chargebacksByBrandDay: Record<string, number> = {};
+  try {
+    const chargebacks = await prisma.chargeback.findMany({
+      where: {
+        brandId: { in: brandIds },
+        date: { gte: dateFrom, lte: dateTo },
+        status: { not: "won" },
+      },
+      select: { brandId: true, date: true, amount: true },
+    });
+    for (const chargeback of chargebacks) {
+      chargebacksByBrand[chargeback.brandId] =
+        (chargebacksByBrand[chargeback.brandId] ?? 0) + chargeback.amount;
+      const day = chargeback.date.toISOString().slice(0, 10);
+      const brandDayKey = `${chargeback.brandId}||${day}`;
+      chargebacksByBrandDay[brandDayKey] =
+        (chargebacksByBrandDay[brandDayKey] ?? 0) + chargeback.amount;
+    }
+  } catch { /* instancia antigua sin tabla Chargeback */ }
+
+  const brandNetRevenue: Record<string, number> = {};
+  for (const [key, value] of Object.entries(calibTotals)) {
+    const [brandId] = key.split("||");
+    brandNetRevenue[brandId] =
+      (brandNetRevenue[brandId] ?? 0) + value.netRevenue;
+  }
 
   // ── Ad spend — per country when available ──────────────────────────────────
   const adRows   = await prisma.adSpend.findMany({
@@ -1246,9 +1285,14 @@ export async function GET(req: NextRequest) {
 
     const grossProfit  = netRevenueUsd - cogsUsd;
     const grossMargin  = netRevenueUsd > 0 ? (grossProfit / netRevenueUsd) * 100 : 0;
-    // netProfit = Net Revenue − COGS − AdSpend − Fees − Shipping − Taxes
+    const chargebacksUsd =
+      brandNetRevenue[p.brandId] > 0
+        ? (chargebacksByBrand[p.brandId] ?? 0) *
+          (netRevenueUsd / brandNetRevenue[p.brandId])
+        : 0;
+    // netProfit = Net Revenue − COGS − AdSpend − Fees − Shipping − Taxes − Chargebacks
     // (matches dashboard: net - cogs - shipping - fees - taxes - other - adSpend)
-    const netProfit    = grossProfit - adSpendUsd - feesUsd - shippingUsd - taxesUsd;
+    const netProfit    = grossProfit - adSpendUsd - feesUsd - shippingUsd - taxesUsd - chargebacksUsd;
     const netMargin    = netRevenueUsd > 0 ? (netProfit / netRevenueUsd) * 100 : 0;
     const roas         = adSpendUsd > 0 ? netRevenueUsd / adSpendUsd : null;
     const cpa          = adSpendUsd > 0 && p.orders > 0 ? adSpendUsd / p.orders : null;
@@ -1258,7 +1302,7 @@ export async function GET(req: NextRequest) {
     const roasAds = adSpendUsd > 0 && campaignConversionValue > 0 ? campaignConversionValue / adSpendUsd : null;
     // revenueUsd ya queda neto de devoluciones; no incluimos returns otra vez
     // en totalCost para evitar descontarlas dos veces.
-    const totalCost    = cogsUsd + adSpendUsd + feesUsd + shippingUsd + taxesUsd;
+    const totalCost    = cogsUsd + adSpendUsd + feesUsd + shippingUsd + taxesUsd + chargebacksUsd;
     const status       = calcStatus(netProfit, netMargin, cogsUsd, adSpendUsd, cpa, cpaBE, isDigital, isUpsell);
     const dataQuality  = calcDataQuality(cogsUsd, adSpendUsd, isDigital, isUpsell);
 
@@ -1332,7 +1376,7 @@ export async function GET(req: NextRequest) {
       revenueUsd: netRevenueUsd,
       revenueLocal: netRevenueUsd * cCfg.displayRate,
       priceUsd: p.unitPriceUsd,   // unit selling price for products table display
-      costPerUnit, cogsUsd, adSpendUsd, feesUsd, shippingUsd, taxesUsd,
+      costPerUnit, cogsUsd, adSpendUsd, feesUsd, shippingUsd, taxesUsd, chargebacksUsd,
       totalCost, returnsUsd,
       aov, cpaBE, isDigital, isUpsell,
       productType: isDigital ? "digital" : isUpsell ? "upsell" : "físico",
@@ -1436,9 +1480,15 @@ export async function GET(req: NextRequest) {
       const feesUsd = revenueUsd * finance.feeRate;
       const shippingUsd = revenueUsd * finance.shippingRate;
       const taxesUsd = revenueUsd * finance.taxRate;
+      const brandDayKey = `${product.brandId}||${date}`;
+      const chargebacksUsd =
+        (dailyBrandRevenue[brandDayKey] ?? 0) > 0
+          ? (chargebacksByBrandDay[brandDayKey] ?? 0) *
+            (revenueUsd / dailyBrandRevenue[brandDayKey])
+          : 0;
       const grossProfit = revenueUsd - cogsUsd;
       const netProfit =
-        grossProfit - adSpendUsd - feesUsd - shippingUsd - taxesUsd;
+        grossProfit - adSpendUsd - feesUsd - shippingUsd - taxesUsd - chargebacksUsd;
       const netMargin = revenueUsd > 0 ? (netProfit / revenueUsd) * 100 : 0;
 
       dailyRows.push({
@@ -1464,7 +1514,8 @@ export async function GET(req: NextRequest) {
         feesUsd,
         shippingUsd,
         taxesUsd,
-        totalCost: cogsUsd + adSpendUsd + feesUsd + shippingUsd + taxesUsd,
+        chargebacksUsd,
+        totalCost: cogsUsd + adSpendUsd + feesUsd + shippingUsd + taxesUsd + chargebacksUsd,
         grossProfit,
         netProfit,
         netMargin,
@@ -1509,6 +1560,7 @@ export async function GET(req: NextRequest) {
       feesUsd: 0,
       shippingUsd: 0,
       taxesUsd: 0,
+      chargebacksUsd: 0,
       totalCost: spend,
       grossProfit: 0,
       netProfit: -spend,
@@ -1538,12 +1590,13 @@ export async function GET(req: NextRequest) {
     feesUsd:     acc.feesUsd     + r.feesUsd,
     shippingUsd: acc.shippingUsd + r.shippingUsd,
     taxesUsd:    acc.taxesUsd    + r.taxesUsd,
+    chargebacksUsd: acc.chargebacksUsd + (r.chargebacksUsd ?? 0),
     totalCost:   acc.totalCost   + r.totalCost,
     grossProfit: acc.grossProfit + r.grossProfit,
     netProfit:   acc.netProfit   + r.netProfit,
   }), {
     revenueUsd: 0, units: 0, orders: 0, cogsUsd: 0, adSpendUsd: 0,
-    feesUsd: 0, shippingUsd: 0, taxesUsd: 0, totalCost: 0,
+    feesUsd: 0, shippingUsd: 0, taxesUsd: 0, chargebacksUsd: 0, totalCost: 0,
     grossProfit: 0, netProfit: 0,
   });
 

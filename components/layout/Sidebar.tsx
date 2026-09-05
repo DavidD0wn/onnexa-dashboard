@@ -309,6 +309,22 @@ export function Sidebar() {
     }
   };
 
+  const handleFromChange = (value: string) => {
+    setLocalFrom(value);
+    // En cuanto el rango sea válido, convertirlo en el período activo. Así el
+    // botón global "Actualizar" siempre usa las fechas visibles en el selector.
+    if (value && localTo && value <= localTo) {
+      setCustomRange(value, localTo);
+    }
+  };
+
+  const handleToChange = (value: string) => {
+    setLocalTo(value);
+    if (localFrom && value && localFrom <= value) {
+      setCustomRange(localFrom, value);
+    }
+  };
+
   const handleClear = () => {
     clearCustomRange();
     setLocalFrom("");
@@ -467,7 +483,7 @@ export function Sidebar() {
                 type="date"
                 value={localFrom}
                 max={localTo || undefined}
-                onChange={(e) => setLocalFrom(e.target.value)}
+                onChange={(e) => handleFromChange(e.target.value)}
                 style={{
                   width: "100%",
                   padding: "6px 8px",
@@ -490,7 +506,7 @@ export function Sidebar() {
                 value={localTo}
                 min={localFrom || undefined}
                 max={new Date().toISOString().split("T")[0]}
-                onChange={(e) => setLocalTo(e.target.value)}
+                onChange={(e) => handleToChange(e.target.value)}
                 style={{
                   width: "100%",
                   padding: "6px 8px",
@@ -524,7 +540,9 @@ export function Sidebar() {
                 transition: "background 0.15s ease",
               }}
             >
-              Ver ese período
+              {isCustom && customFrom === localFrom && customTo === localTo
+                ? "Período aplicado"
+                : "Aplicar período"}
             </button>
           </div>
         </div>

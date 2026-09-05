@@ -21,20 +21,22 @@ import path from "path";
 import {
   fetchShopifyPaginated,
   getShopifyStores,
+  isShopifyRevenueOrder,
   shopifyRestUrl,
   type ShopifyStoreConfig,
 } from "@/lib/integrations/shopify";
 
 // ─── Fetch orders with line_items ─────────────────────────────────────────────
 async function fetchOrders(store: ShopifyStoreConfig, since: string, until: string) {
-  return fetchShopifyPaginated<any>(
+  const orders = await fetchShopifyPaginated<any>(
     store,
     shopifyRestUrl(
       store,
-      `orders.json?status=any&financial_status=paid,partially_paid&created_at_min=${since}&created_at_max=${until}&limit=250&fields=id,created_at,line_items`,
+      `orders.json?status=any&created_at_min=${since}&created_at_max=${until}&limit=250&fields=id,created_at,financial_status,cancelled_at,test,line_items`,
     ),
     "orders",
   );
+  return orders.filter(isShopifyRevenueOrder);
 }
 
 // ─── Load product costs (JSON priority > DB) ──────────────────────────────────

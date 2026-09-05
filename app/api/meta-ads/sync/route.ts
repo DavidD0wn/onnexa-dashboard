@@ -42,6 +42,7 @@ const PRODUCT_CODE_MAP: Record<string, string> = {
   "brand_glowmmi:DP01":  "prod_glw_7931502067760",  // Deep Collagen
   "brand_glowmmi:RE01":  "prod_glw_7885424525360",  // Retinal Shot
   "brand_glowmmi:RT01":  "prod_glw_7885424525360",  // Retinal Shot (código nuevo)
+  "brand_glowmmi:RS01":  "prod_glw_7885424525360",  // Retinal Shot (código histórico)
   "brand_glowmmi:RV01":  "prod_glw_7901472784432",  // ReviveLift™
   "brand_glowmmi:HB01":  "prod_glw_7810722168880",   // Mascarilla coreana para puntos negros
   "brand_glowmmi:CD01":  "prod_glw_8010808098864",  // ClearDot™
@@ -163,21 +164,34 @@ export async function POST(req: NextRequest) {
     const dateTo   = body.dateTo   ?? localStr(today);
     const from30d  = new Date(); from30d.setDate(from30d.getDate() - 30);
     const dateFrom = body.dateFrom ?? localStr(from30d);
+    const skipRollup = body.skipRollup === true;
 
     const accounts = await prisma.metaAdsAccount.findMany({ where: { isActive: true } });
     if (!accounts.length) return NextResponse.json({ error: "Sin cuentas" }, { status: 404 });
 
     /* ── Step 0: Fetch + store REAL campaign statuses from Meta API ────────── */
-    for (const account of accounts) {
-      try {
-        const campStatuses = await fetchCampaignStatuses(account.accountId);
-        for (const c of campStatuses) {
-          await upsertCampaignStatus(c.id, c.name, account.accountId, account.brandId, c.status, c.effective_status);
+    const statusesByAccount = await Promise.all(
+      accounts.map(async (account) => {
+        try {
+          return { account, statuses: await fetchCampaignStatuses(account.accountId) };
+        } catch (e: any) {
+          console.warn(`[Meta Ads] Could not fetch campaign statuses for ${account.accountId}:`, e.message);
+          return { account, statuses: [] };
         }
-        console.log(`[Meta Ads] Campaign statuses synced for ${account.accountId}: ${campStatuses.length} campaigns`);
-      } catch (e: any) {
-        console.warn(`[Meta Ads] Could not fetch campaign statuses for ${account.accountId}:`, e.message);
+      }),
+    );
+    for (const { account, statuses } of statusesByAccount) {
+      for (const campaign of statuses) {
+        await upsertCampaignStatus(
+          campaign.id,
+          campaign.name,
+          account.accountId,
+          account.brandId,
+          campaign.status,
+          campaign.effective_status,
+        );
       }
+      console.log(`[Meta Ads] Campaign statuses synced for ${account.accountId}: ${statuses.length} campaigns`);
     }
 
     /* ── Step 1: Fetch rows POR CUENTA antes de tocar la DB ──────────────────
@@ -185,10 +199,13 @@ export async function POST(req: NextRequest) {
        (ok=false), NO se borran sus datos existentes — así nunca se pierde el
        histórico de una cuenta que tuvo un error transitorio (la causa de que
        "se vaya todo" el ad spend). */
-    const perAccount: { account: typeof accounts[number]; rows: any[]; ok: boolean }[] = [];
-    for (const account of accounts) {
-      const { rows, ok } = await fetchInsights(account.accountId, dateFrom, dateTo);
-      perAccount.push({ account, rows, ok });
+    const perAccount = await Promise.all(
+      accounts.map(async (account) => {
+        const result = await fetchInsights(account.accountId, dateFrom, dateTo);
+        return { account, ...result };
+      }),
+    );
+    for (const { account, ok } of perAccount) {
       if (!ok) {
         console.warn(`[Meta Ads] Cuenta ${account.accountId} (${account.brandId}) falló o trajo datos parciales — se CONSERVAN sus datos existentes (no se borran)`);
       }
@@ -315,17 +332,19 @@ export async function POST(req: NextRequest) {
        Usar el origin de la propia request (no un puerto fijo): si otra app
        ocupó el 3000 y el dashboard arrancó en 3001, el rollup debe llamarse a
        SÍ MISMO — no a la otra app. Evita el "choque" entre proyectos. */
-    try {
-      const baseUrl    = new URL(req.url).origin;
-      const rollupRes  = await fetch(`${baseUrl}/api/meta-ads/rollup`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ from: dateFrom, to: dateTo }),
-      });
-      const rollupData = await rollupRes.json().catch(() => ({}));
-      console.log("[Meta Ads] Rollup:", rollupData.message ?? rollupData);
-    } catch (re) {
-      console.warn("[Meta Ads] Rollup falló (no crítico):", (re as any).message);
+    if (!skipRollup) {
+      try {
+        const baseUrl    = new URL(req.url).origin;
+        const rollupRes  = await fetch(`${baseUrl}/api/meta-ads/rollup`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ from: dateFrom, to: dateTo }),
+        });
+        const rollupData = await rollupRes.json().catch(() => ({}));
+        console.log("[Meta Ads] Rollup:", rollupData.message ?? rollupData);
+      } catch (re) {
+        console.warn("[Meta Ads] Rollup falló (no crítico):", (re as any).message);
+      }
     }
 
     return NextResponse.json({ ok: true, recordsSaved: totalSaved, dateFrom, dateTo, skippedAccounts });

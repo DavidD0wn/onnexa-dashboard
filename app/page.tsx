@@ -14,6 +14,43 @@ import {
 import Link from "next/link";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
 
+async function postJsonWithTimeout(
+  url: string,
+  body: Record<string, unknown>,
+  timeoutMs = 180_000,
+): Promise<Record<string, any>> {
+  const controller = new AbortController();
+  const timeout = globalThis.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    const text = await response.text();
+    let data: Record<string, any> = {};
+    if (text.trim()) {
+      try {
+        data = JSON.parse(text) as Record<string, any>;
+      } catch {
+        throw new Error(`Respuesta inválida de ${url}`);
+      }
+    }
+    if (!response.ok) {
+      throw new Error(String(data.error ?? `HTTP ${response.status}`));
+    }
+    return data;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error(`Tiempo agotado en ${url}`);
+    }
+    throw error;
+  } finally {
+    globalThis.clearTimeout(timeout);
+  }
+}
+
 /* ─── Types ──────────────────────────────────────────────────── */
 interface DashboardData {
   totals: {
@@ -406,7 +443,7 @@ function ExplainerModal({
         { label: "− Fees / Pasarela",    value: `−${fmtC(t.fees)}`,       sub: "Estimado: 2.9% + $0.30 por transacción" },
         { label: "− Chargebacks",        value: `−${fmtC(t.chargebacks ?? 0)}`, sub: "Entrada manual" },
         { isDivider: true, label: "", value: "" },
-        { label: "= Net Profit",         value: fmtC(t.profit),           isTotal: true },
+        { label: "= Net Profit",         value: fmtC(t.realProfit),       isTotal: true },
       ],
       source: "Shopify + Meta Ads + /costos + Manual",
     },
@@ -454,7 +491,7 @@ function ExplainerModal({
     net_margin: {
       title: "Net Profit Margin", subtitle: "% de cada peso de revenue que queda como ganancia",
       rows: [
-        { label: "Net Profit",    value: fmtC(t.profit),              sub: "Ganancia después de todos los costos" },
+        { label: "Net Profit",    value: fmtC(t.realProfit),          sub: "Ganancia después de todos los costos" },
         { label: "÷ Revenue Neto",value: fmtC(t.net),                 sub: "Ingresos reales del período" },
         { label: "× 100",         value: "",                          sub: "Para expresar en porcentaje" },
         { isDivider: true, label: "", value: "" },
@@ -686,6 +723,8 @@ export default function Dashboard() {
   const explain = (key: string) => () => setExplainerKey(key);
   const [syncing, setSyncing] = useState(false);
   const [autoSyncing, setAutoSyncing] = useState(false);   // silent background sync on mount
+  const [syncStage, setSyncStage] = useState("");
+  const [syncFeedback, setSyncFeedback] = useState("");
   const [lastSynced, setLastSynced] = useState<string>("");
   const [productStats, setProductStats] = useState<{
     topProducts: Array<{ code: string; name: string; brandId: string; revenue: number; profit: number; orders: number; adSpend: number; cogs: number; margin: number; avgRoas: number | null; avgCpa: number | null }>;
@@ -728,10 +767,10 @@ export default function Dashboard() {
 
   // ── Sync helpers ─────────────────────────────────────────────────────────────
 
-  /** Sync ONLY Shopify orders (both stores). Used by the manual button.
+  /** Sync Shopify orders + Meta Ads. Used by the manual button.
    *
-   * ⚠️  Runs stores SEQUENTIALLY (not in parallel) to avoid concurrent SQLite writes:
-   *     Parallel syncs both call the rollup at the same time → write conflicts.
+   * Las fuentes se ejecutan en paralelo sin su rollup interno. Al final se hace
+   * una única consolidación, evitando trabajo duplicado y esperas de varios minutos.
    *
    * ⚠️  Always syncs at least 30 days regardless of the current date-range filter.
    *     Using Math.max(days, 3) was a bug: syncing only 3 days would trigger the
@@ -739,9 +778,11 @@ export default function Dashboard() {
    */
   const syncShopify = useCallback(async () => {
     setSyncing(true);
+    setSyncFeedback("");
+    setSyncStage("Preparando respaldo…");
     try {
       // Respaldo de seguridad antes de sincronizar (punto de restauración)
-      try { await fetch("/api/backup", { method: "POST" }); } catch { /* no crítico */ }
+      try { await postJsonWithTimeout("/api/backup", {}, 30_000); } catch { /* no crítico */ }
 
       // Sincroniza EXACTAMENTE el período seleccionado:
       // - Rango de fechas personalizado → manda from/to (ese rango tal cual).
@@ -750,46 +791,66 @@ export default function Dashboard() {
         ? { from: customFrom, to: customTo }
         : { days: Math.max(days, 2) };
 
-      await fetch("/api/shopify/sync", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ store: "glowmmi", ...payloadBase }),
-      });
-      await fetch("/api/shopify/sync", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ store: "balancea", ...payloadBase }),
-      });
-      await fetch("/api/shopify/sync", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ store: "pleena", ...payloadBase }),
-      });
-
-      // ── También sincroniza el AD SPEND (Meta Ads) del MISMO período ──
-      // El botón antes solo traía ventas; ahora también trae el gasto de pauta.
       const dateTo   = (isCustom && customTo)   ? customTo   : localDateStr();
       const dateFrom = (isCustom && customFrom) ? customFrom : daysAgoLocal(Math.max(days, 2) - 1);
-      try {
-        await fetch("/api/meta-ads/sync", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ dateFrom, dateTo }),
-        });
-        // Rollup: pasa el gasto a las métricas diarias del dashboard
-        await fetch("/api/meta-ads/rollup", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ from: dateFrom, to: dateTo }),
-        });
-      } catch { /* si Meta falla, al menos quedaron las ventas de Shopify */ }
+
+      // Shopify y Meta son fuentes independientes. Se actualizan juntas y cada
+      // una omite su rollup interno; al terminar hacemos UNA sola consolidación.
+      // Antes había hasta cinco rollups secuenciales y el botón tardaba >5 min.
+      setSyncStage("Actualizando tiendas y Meta…");
+      const jobs = [
+        {
+          label: "Glowmmi",
+          promise: postJsonWithTimeout("/api/shopify/sync", {
+            store: "glowmmi", ...payloadBase, skipRollup: true,
+          }),
+        },
+        {
+          label: "Balancea",
+          promise: postJsonWithTimeout("/api/shopify/sync", {
+            store: "balancea", ...payloadBase, skipRollup: true,
+          }),
+        },
+        {
+          label: "Pleena",
+          promise: postJsonWithTimeout("/api/shopify/sync", {
+            store: "pleena", ...payloadBase, skipRollup: true,
+          }),
+        },
+        {
+          label: "Meta Ads",
+          promise: postJsonWithTimeout("/api/meta-ads/sync", {
+            dateFrom, dateTo, skipRollup: true,
+          }),
+        },
+      ];
+      const jobResults = await Promise.allSettled(jobs.map((job) => job.promise));
+      const failed = jobResults.flatMap((result, index) =>
+        result.status === "rejected" ? [jobs[index].label] : [],
+      );
+
+      setSyncStage("Consolidando métricas…");
+      await postJsonWithTimeout(
+        "/api/meta-ads/rollup",
+        { from: dateFrom, to: dateTo },
+        120_000,
+      );
 
       setLastSynced(new Date().toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" }));
+      setSyncFeedback(
+        failed.length > 0
+          ? `Actualización parcial (${dateFrom} → ${dateTo}): ${failed.join(", ")}`
+          : `Actualizado: ${dateFrom} → ${dateTo}`,
+      );
       // Resetear el contador de 7 días: el AppLoader no re-sincronizará hasta dentro de una semana.
       if (typeof window !== "undefined") localStorage.setItem("onnexa_last_sync_at", String(Date.now()));
-    } catch { /* non-critical */ }
-    setSyncing(false);
-    load();
+    } catch (error) {
+      setSyncFeedback(error instanceof Error ? error.message : "No se pudo completar la actualización");
+    } finally {
+      setSyncStage("");
+      setSyncing(false);
+      load();
+    }
   }, [days, isCustom, customFrom, customTo, load]);
 
   /**
@@ -860,10 +921,10 @@ export default function Dashboard() {
   /* ── Derived metrics ─────────────────────────────────── */
   const totalCosts = t ? t.cogs + t.shipping + t.fees + t.adSpend + (t.chargebacks ?? 0) : 0;
   // True Profit-style Total Costs = Revenue - Net Profit (includes everything)
-  const totalCostsTP   = t ? t.net - t.profit : 0;
+  const totalCostsTP   = t ? t.net - t.realProfit : 0;
   // Net Profit Margin vs Net Revenue (True Profit style: profit / net_revenue)
-  const netMarginVsNet = t && t.net > 0 ? (t.profit / t.net) * 100 : 0;
-  const profitPerOrder   = t?.profitPerOrder ?? (t && t.orders > 0 ? t.profit / t.orders : 0);
+  const netMarginVsNet = t && t.net > 0 ? (t.realProfit / t.net) * 100 : 0;
+  const profitPerOrder   = t?.realProfitPerOrder ?? (t && t.orders > 0 ? t.realProfit / t.orders : 0);
   const cogsPerOrder     = t && t.orders > 0 ? t.cogs / t.orders : 0;
   const shippingPerOrder = t && t.orders > 0 ? t.shipping / t.orders : 0;
   const feesPerOrder     = t && t.orders > 0 ? t.fees / t.orders : 0;
@@ -880,7 +941,7 @@ export default function Dashboard() {
   const totalCostPerOrder = t && t.orders > 0 ? totalCosts / t.orders : 0;
   const hasAllData       = t ? (t.cogs > 0 && t.adSpend > 0 && t.shipping > 0) : false;
   const estadoGlobal     = t
-    ? getEstado(t.orders, t.adSpend, t.cogs > 0, t.profit, t.margin, t.cpa, t.cpaBe)
+    ? getEstado(t.orders, t.adSpend, t.cogs > 0, t.realProfit, t.realMargin, t.cpa, t.cpaBe)
     : "incompleto";
 
   /* ── Alertas ─────────────────────────────────────────── */
@@ -1049,11 +1110,21 @@ export default function Dashboard() {
               opacity: (syncing || autoSyncing) ? 0.7 : 1, transition: "all 0.2s",
             }}>
             <RefreshCw size={13} style={{ animation: syncing ? "spin 1s linear infinite" : "none" }} />
-            {syncing ? "Actualizando…" : "Actualizar (Ventas + Ads)"}
+            {syncing ? syncStage || "Actualizando…" : "Actualizar (Ventas + Ads)"}
             {lastSynced && !syncing && !autoSyncing && (
               <span style={{ fontSize: 10, opacity: 0.7, marginLeft: 2 }}>· {lastSynced}</span>
             )}
           </button>
+          {syncFeedback && !syncing && (
+            <span style={{
+              maxWidth: 220,
+              fontSize: 11,
+              fontWeight: 600,
+              color: syncFeedback.startsWith("Actualizado:") ? "#0E766E" : "#B45309",
+            }}>
+              {syncFeedback}
+            </span>
+          )}
         </div>
       </div>
 
@@ -1118,12 +1189,12 @@ export default function Dashboard() {
                 {/* 1. Net Profit */}
                 <KpiCard
                   label="Net Profit"
-                  value={fmtC(t.profit)}
+                  value={fmtC(t.realProfit)}
                   sub={`${netMarginVsNet.toFixed(2)}% margen neto`}
-                  color={t.profit >= 0 ? "#00A676" : "#DC2626"}
-                  icon={t.profit >= 0 ? TrendingUp : TrendingDown}
-                  alert={t.profit < 0}
-                  badge={{ text: t.profit >= 0 ? "Rentable ✓" : "En pérdida ✗", type: t.profit >= 0 ? "good" : "bad" }}
+                  color={t.realProfit >= 0 ? "#00A676" : "#DC2626"}
+                  icon={t.realProfit >= 0 ? TrendingUp : TrendingDown}
+                  alert={t.realProfit < 0}
+                  badge={{ text: t.realProfit >= 0 ? "Rentable ✓" : "En pérdida ✗", type: t.realProfit >= 0 ? "good" : "bad" }}
                   onExplain={explain("net_profit")}
                 />
 
@@ -1375,7 +1446,7 @@ export default function Dashboard() {
                     </div>
                     <div style={{ display: "flex", justifyContent: "space-between" }}>
                       <span style={{ fontSize: 11, color: "rgba(255,255,255,0.5)" }}>Utilidad</span>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: t.profit >= 0 ? "#34D399" : "#F87171" }}>{fmtC(t.profit)}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: t.realProfit >= 0 ? "#34D399" : "#F87171" }}>{fmtC(t.realProfit)}</span>
                     </div>
                   </div>
                 </div>
@@ -1498,8 +1569,8 @@ export default function Dashboard() {
                           <p style={{ fontSize: 12, fontWeight: 700, color: "var(--text-3)" }}>
                             {t.gross > 0 ? ((totalCosts / t.gross) * 100).toFixed(1) : 0}% del rev.
                           </p>
-                          <p style={{ fontSize: 11, color: t.profit >= 0 ? "var(--green)" : "var(--red)", marginTop: 4, fontWeight: 700 }}>
-                            Margen: {t.gross > 0 ? ((t.profit / t.gross) * 100).toFixed(1) : 0}%
+                          <p style={{ fontSize: 11, color: t.realProfit >= 0 ? "var(--green)" : "var(--red)", marginTop: 4, fontWeight: 700 }}>
+                            Margen: {t.gross > 0 ? ((t.realProfit / t.gross) * 100).toFixed(1) : 0}%
                           </p>
                         </div>
                       </div>
@@ -2147,13 +2218,13 @@ export default function Dashboard() {
                         <td style={{ textAlign: "right", color: "var(--text-2)" }}>{fmtC(t.shipping)}</td>
                         <td style={{ textAlign: "right", color: "var(--yellow)", fontWeight: 600 }}>{fmtC(t.adSpend)}</td>
                         <td style={{ textAlign: "right", color: "var(--text-2)" }}>{fmtC(t.fees)}</td>
-                        <td style={{ textAlign: "right", fontWeight: 700, color: t.profit >= 0 ? "var(--green)" : "var(--red)" }}>
-                          {fmtC(t.profit)}
+                        <td style={{ textAlign: "right", fontWeight: 700, color: t.realProfit >= 0 ? "var(--green)" : "var(--red)" }}>
+                          {fmtC(t.realProfit)}
                         </td>
                         <td style={{ textAlign: "right" }}>
                           <StatusBadge
-                            label={fmtPct(t.margin, 1)}
-                            type={t.margin >= 20 ? "good" : t.margin >= 10 ? "ok" : "bad"}
+                            label={fmtPct(t.realMargin, 1)}
+                            type={t.realMargin >= 20 ? "good" : t.realMargin >= 10 ? "ok" : "bad"}
                           />
                         </td>
                         <td style={{ textAlign: "right" }}>

@@ -72,6 +72,55 @@ export async function GET(req: Request) {
     })(),
   ]);
 
+  // Chargeback no guarda país. Para filtros y Product Analytics se reparte por
+  // el revenue de la marca en cada país durante el mismo período.
+  const allocationMetrics =
+    countryId && countryId !== "all"
+      ? await prisma.dailyMetric.findMany({
+          where: {
+            date: { gte: from, lte: to },
+            ...(brandId && brandId !== "all" && { brandId }),
+          },
+          select: { brandId: true, countryId: true, netRevenue: true },
+        })
+      : metrics;
+  const revenueByBrand = new Map<string, number>();
+  const revenueByBrandCountry = new Map<string, number>();
+  for (const metric of allocationMetrics) {
+    revenueByBrand.set(
+      metric.brandId,
+      (revenueByBrand.get(metric.brandId) ?? 0) + metric.netRevenue,
+    );
+    const key = `${metric.brandId}|${metric.countryId}`;
+    revenueByBrandCountry.set(
+      key,
+      (revenueByBrandCountry.get(key) ?? 0) + metric.netRevenue,
+    );
+  }
+  const chargebackByBrand = new Map<string, number>();
+  const chargebackByCountry = new Map<string, number>();
+  const chargebackByDay = new Map<string, number>();
+  for (const cb of chargebacks as any[]) {
+    if (cb.status === "won") continue;
+    const brandRevenue = revenueByBrand.get(cb.brandId) ?? 0;
+    for (const [key, revenue] of revenueByBrandCountry.entries()) {
+      const [candidateBrand, candidateCountry] = key.split("|");
+      if (candidateBrand !== cb.brandId) continue;
+      const allocated = brandRevenue > 0 ? cb.amount * (revenue / brandRevenue) : 0;
+      if (countryId && countryId !== "all" && candidateCountry !== countryId) continue;
+      chargebackByBrand.set(
+        cb.brandId,
+        (chargebackByBrand.get(cb.brandId) ?? 0) + allocated,
+      );
+      chargebackByCountry.set(
+        candidateCountry,
+        (chargebackByCountry.get(candidateCountry) ?? 0) + allocated,
+      );
+      const day = cb.date.toISOString().slice(0, 10);
+      chargebackByDay.set(day, (chargebackByDay.get(day) ?? 0) + allocated);
+    }
+  }
+
   // Build adSpend lookup maps from source-of-truth
   const adSpendByBrandDay = new Map<string, number>(); // "date|brandId" → total spend
   const adSpendByBrand    = new Map<string, number>(); // brandId → total spend
@@ -119,8 +168,9 @@ export async function GET(req: Request) {
   totals.profit = correctedProfit;
 
   // Chargebacks total (exclude "won" disputes)
-  const chargebackTotal = (chargebacks as any[]).reduce(
-    (s: number, r: any) => s + (r.status !== "won" ? r.amount : 0), 0
+  const chargebackTotal = [...chargebackByBrand.values()].reduce(
+    (sum, amount) => sum + amount,
+    0,
   );
 
   // Real profit = netProfit - chargebacks
@@ -175,6 +225,9 @@ export async function GET(req: Request) {
     value.profit = value.net - value.cogs - value.shipping - value.fees
       - value.handling - value.taxes - value.other - value.adSpend;
   }
+  for (const [date, amount] of chargebackByDay.entries()) {
+    if (byDate[date]) byDate[date].profit -= amount;
+  }
   const chartData = Object.entries(byDate)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([date, v]) => ({ date, ...v }));
@@ -210,10 +263,9 @@ export async function GET(req: Request) {
   }
 
   // Add chargebacks per brand
-  for (const cb of chargebacks as any[]) {
-    if (cb.status === "won") continue;
-    const brand = Object.values(byBrand).find((b: any) => b.brandId === cb.brandId);
-    if (brand) brand.chargebacks = (brand.chargebacks ?? 0) + cb.amount;
+  for (const brand of Object.values(byBrand) as any[]) {
+    brand.chargebacks = chargebackByBrand.get(brand.brandId) ?? 0;
+    brand.profit -= brand.chargebacks;
   }
 
   // By country
@@ -242,6 +294,8 @@ export async function GET(req: Request) {
     entry.adSpend = adSpendByCountry.get(entry.countryId) ?? 0;
     entry.profit = entry.net - entry.cogs - entry.shipping - entry.fees
       - entry.handling - entry.taxes - entry.other - entry.adSpend;
+    entry.chargebacks = chargebackByCountry.get(entry.countryId) ?? 0;
+    entry.profit -= entry.chargebacks;
   }
 
     return NextResponse.json({

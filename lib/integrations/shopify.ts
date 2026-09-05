@@ -1,6 +1,26 @@
 export type ShopifyStoreKey = "glowmmi" | "balancea" | "pleena";
 type ShopifyAuthType = "json" | "urlencoded";
 
+const REVENUE_FINANCIAL_STATUSES = new Set([
+  "paid",
+  "partially_paid",
+  "partially_refunded",
+  "refunded",
+]);
+
+/** Regla contable única usada por Dashboard, COGS y Product Analytics. */
+export function isShopifyRevenueOrder(order: {
+  financial_status?: string | null;
+  cancelled_at?: string | null;
+  test?: boolean | null;
+}): boolean {
+  return (
+    !order.test &&
+    !order.cancelled_at &&
+    REVENUE_FINANCIAL_STATUSES.has(order.financial_status ?? "")
+  );
+}
+
 export type ShopifyStoreConfig = {
   key: ShopifyStoreKey;
   shop: string;

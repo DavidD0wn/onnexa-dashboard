@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import {
   fetchShopifyPaginated,
   getShopifyStores,
+  isShopifyRevenueOrder,
   shopifyRestUrl,
   type ShopifyStoreConfig,
 } from "@/lib/integrations/shopify";
@@ -39,16 +40,17 @@ async function fetchOrders(
   since: string,
   until: string,
 ) {
-  return fetchShopifyPaginated<any>(
+  const orders = await fetchShopifyPaginated<any>(
     store,
     shopifyRestUrl(store, "orders.json") +
-      `?status=any&financial_status=paid,partially_paid,partially_refunded,refunded` +
+      `?status=any` +
       `&created_at_min=${encodeURIComponent(since)}` +
       `&created_at_max=${encodeURIComponent(until)}` +
       "&limit=250" +
-      "&fields=id,created_at,line_items",
+      "&fields=id,created_at,financial_status,cancelled_at,test,line_items",
     "orders",
   );
+  return orders.filter(isShopifyRevenueOrder);
 }
 
 export async function GET(req: NextRequest) {

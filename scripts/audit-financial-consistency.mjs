@@ -78,8 +78,8 @@ equal("COGS · P&L", dashboard.totals.cogs, pnl.total.data.cogs);
 equal("Ad spend · Product Analytics", dashboard.totals.adSpend, products.totals.adSpendUsd);
 equal("Ad spend · P&L", dashboard.totals.adSpend, pnl.total.data.adSpend);
 equal("Ad spend · Meta Ads", dashboard.totals.adSpend, meta.totals.spend);
-equal("Ganancia · Product Analytics", dashboard.totals.profit, products.totals.netProfit);
-equal("Ganancia · P&L", dashboard.totals.profit, pnl.total.data.netProfit);
+equal("Ganancia real · Product Analytics", dashboard.totals.realProfit, products.totals.netProfit);
+equal("Ganancia real · P&L", dashboard.totals.realProfit, pnl.total.data.netProfit);
 equal(
   "Ganancia · conciliación",
   dashboard.totals.profit,
@@ -150,7 +150,9 @@ for (const check of failed) {
 console.log(
   `Totales: pedidos=${dashboard.totals.orders}, unidades=${dashboard.totals.units}, ` +
     `neto=$${dashboard.totals.net.toFixed(2)}, COGS=$${dashboard.totals.cogs.toFixed(2)}, ` +
-    `Meta=$${dashboard.totals.adSpend.toFixed(2)}, ganancia=$${dashboard.totals.profit.toFixed(2)}`,
+    `Meta=$${dashboard.totals.adSpend.toFixed(2)}, ` +
+    `ganancia operativa=$${dashboard.totals.profit.toFixed(2)}, ` +
+    `ganancia real=$${dashboard.totals.realProfit.toFixed(2)}`,
 );
 
 if (!reconciliation.ok || !products.adSpendReconciliation.ok || failed.length) {

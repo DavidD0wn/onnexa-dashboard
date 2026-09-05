@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import {
   fetchShopifyPaginated,
   getShopifyStore,
+  isShopifyRevenueOrder,
   shopifyRestUrl,
   type ShopifyStoreConfig,
 } from "@/lib/integrations/shopify";
@@ -184,17 +185,18 @@ async function fetchOrders(
   since: string,
   until?: string,
 ): Promise<any[]> {
-  return fetchShopifyPaginated(
+  const orders = await fetchShopifyPaginated<any>(
     store,
     shopifyRestUrl(store, "orders.json") +
-    `?status=any&financial_status=paid,partially_paid,partially_refunded,refunded` +
+    `?status=any` +
     `&created_at_min=${encodeURIComponent(since)}` +
     (until ? `&created_at_max=${encodeURIComponent(until)}` : "") +
     `&limit=250` +
     // line_items para contar unidades físicas reales (qty × bundle_size)
-    `&fields=id,created_at,total_price,total_discounts,total_tax,shipping_lines,shipping_address,line_items`,
+    `&fields=id,created_at,financial_status,cancelled_at,test,total_price,total_discounts,total_tax,shipping_lines,shipping_address,line_items`,
     "orders",
   );
+  return orders.filter(isShopifyRevenueOrder);
 }
 
 /** Extrae cuántas unidades físicas hay en un bundle a partir del título y variante */
@@ -216,11 +218,11 @@ async function fetchRefunds(
   return fetchShopifyPaginated(
     store,
     shopifyRestUrl(store, "orders.json") +
-    `?status=any&financial_status=refunded,partially_refunded` +
+    `?status=any` +
     `&updated_at_min=${encodeURIComponent(since)}` +
     (until ? `&updated_at_max=${encodeURIComponent(until)}` : "") +
     `&limit=250` +
-    `&fields=id,created_at,updated_at,refunds`,
+    `&fields=id,created_at,updated_at,shipping_address,refunds`,
     "orders",
   );
 }
@@ -404,7 +406,11 @@ function groupByDate(
   // ── Paid orders ──
   for (const order of orders) {
     const dateKey     = localDateKey(order.created_at, STORE_OFFSET_MS);
-    const countryCode = (order.shipping_address?.country_code ?? "US").toUpperCase();
+    const rawCountryCode = (order.shipping_address?.country_code ?? "MX").toUpperCase();
+    // La app solo consolida MX, US y CL. Todos los demás destinos pertenecen
+    // al bucket operativo MX. Normalizar ANTES de crear la clave evita que
+    // ES/CO/CA creen buckets distintos con el mismo countryId y se sobrescriban.
+    const countryCode = COUNTRY_ID_MAP[rawCountryCode] ? rawCountryCode : "MX";
     const d             = ensure(dateKey, new Date(order.created_at), countryCode);
 
     // Select cost map for this order's shipping country (MX/US/CL); fall back to MX
@@ -457,7 +463,8 @@ function groupByDate(
 
   // ── Returns: sum refund amounts by refund created_at date ──
   for (const order of refundOrders) {
-    const countryCode = (order.shipping_address?.country_code ?? "US").toUpperCase();
+    const rawCountryCode = (order.shipping_address?.country_code ?? "MX").toUpperCase();
+    const countryCode = COUNTRY_ID_MAP[rawCountryCode] ? rawCountryCode : "MX";
     for (const refund of (order.refunds ?? [])) {
       const rawRefundTs = refund.created_at ?? order.updated_at ?? order.created_at;
       const refundDate  = localDateKey(rawRefundTs, STORE_OFFSET_MS);
@@ -481,11 +488,13 @@ export async function POST(req: Request) {
     days = 30,
     from: requestedFrom,
     to: requestedTo,
+    skipRollup = false,
   } = body as {
     store?: string;
     days?: number;
     from?: string;
     to?: string;
+    skipRollup?: boolean;
   };
   const isExplicitRange = Boolean(requestedFrom && requestedTo);
 
@@ -710,13 +719,18 @@ export async function POST(req: Request) {
     } catch { /* non-critical — estimated fees remain if this fails */ }
 
     // ── Auto: rollup Meta Ads adSpend → DailyMetric ──
-    try {
-      await fetch(`${base}/api/meta-ads/rollup`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ from: dateFrom, to: dateTo }),
-      });
-    } catch { /* non-critical */ }
+    // Los orquestadores que sincronizan varias tiendas usan skipRollup=true y
+    // ejecutan una única consolidación al final. Antes se repetía una vez por
+    // tienda, haciendo que el botón manual pareciera bloqueado varios minutos.
+    if (!skipRollup) {
+      try {
+        await fetch(`${base}/api/meta-ads/rollup`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ from: dateFrom, to: dateTo }),
+        });
+      } catch { /* non-critical */ }
+    }
 
     return NextResponse.json({
       store: cfg.shop,

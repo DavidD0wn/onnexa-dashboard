@@ -7,6 +7,7 @@ import {
   AlertCircle, BarChart2, Zap,
 } from "lucide-react";
 import { useCurrency, CURRENCY_INFO, type CurrencyCode } from "@/lib/currency";
+import { fetchJsonSafe } from "@/lib/fetch-json";
 
 interface CountryConfig {
   id: string;
@@ -80,6 +81,16 @@ interface SyncStatus {
   shopify?: { glowmmi?: any; balancea?: any };
   metaAds?: { recordsSaved?: number; error?: string };
   merge?: { updated?: number; skipped?: number; error?: string };
+  drive?: {
+    ok?: boolean;
+    lastSuccessfulDate?: string;
+    lastSuccessfulAt?: string;
+    weeksSaved?: number;
+    bootstrapped?: boolean;
+    error?: string;
+  };
+  dateFrom?: string;
+  dateTo?: string;
   timestamp?: string;
   totalOrders?: number;
 }
@@ -89,6 +100,18 @@ interface MergeStatus {
   withAds: number;
   withoutAds: number;
   lastMetaSync?: { status: string; recordsSaved: number; dateFrom: string; dateTo: string; createdAt: string } | null;
+}
+
+interface DriveStatus {
+  configured: boolean;
+  connected: boolean;
+  folderUrl?: string;
+  manifest?: {
+    lastSuccessfulDate?: string | null;
+    lastSuccessfulAt?: string | null;
+    weeks?: Record<string, unknown>;
+  } | null;
+  error?: string;
 }
 
 export default function ConfiguracionPage() {
@@ -101,16 +124,19 @@ export default function ConfiguracionPage() {
   // Sync state
   const [syncing, setSyncing]         = useState(false);
   const [syncResult, setSyncResult]   = useState<SyncStatus | null>(null);
-  const [syncDays, setSyncDays]       = useState(3);
   const [mergeStatus, setMergeStatus] = useState<MergeStatus | null>(null);
+  const [driveStatus, setDriveStatus] = useState<DriveStatus | null>(null);
   const [merging, setMerging]         = useState(false);
 
   useEffect(() => {
     // Load merge status on mount
-    fetch("/api/meta-ads/merge-daily")
-      .then((r) => r.json())
-      .then(setMergeStatus)
-      .catch(() => null);
+    void Promise.all([
+      fetchJsonSafe<MergeStatus>("/api/meta-ads/merge-daily"),
+      fetchJsonSafe<DriveStatus>("/api/finance-drive"),
+    ]).then(([merge, drive]) => {
+      if (merge) setMergeStatus(merge);
+      if (drive) setDriveStatus(drive);
+    });
   }, []);
 
   const runSync = async () => {
@@ -120,13 +146,17 @@ export default function ConfiguracionPage() {
       const res = await fetch("/api/shopify/autosync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ days: syncDays, secret: "onnexa2024" }),
+        body: JSON.stringify({ incremental: true }),
       });
-      const data = await res.json();
+      const body = await res.text();
+      const data = body ? JSON.parse(body) : { metaAds: { error: `Respuesta vacía (HTTP ${res.status})` } };
       setSyncResult(data);
-      // Refresh merge status
-      const mr = await fetch("/api/meta-ads/merge-daily").then((r) => r.json());
-      setMergeStatus(mr);
+      const [merge, drive] = await Promise.all([
+        fetchJsonSafe<MergeStatus>("/api/meta-ads/merge-daily"),
+        fetchJsonSafe<DriveStatus>("/api/finance-drive"),
+      ]);
+      if (merge) setMergeStatus(merge);
+      if (drive) setDriveStatus(drive);
     } catch (e: any) {
       setSyncResult({ metaAds: { error: e.message } });
     }
@@ -508,31 +538,26 @@ export default function ConfiguracionPage() {
               </div>
 
               <p style={{ fontSize: 12, color: "var(--text-3)", marginBottom: 16, lineHeight: 1.5 }}>
-                El sync corre automáticamente todos los días a las <strong>3:07am</strong>. Aquí puedes dispararlo manualmente para obtener datos al momento.
+                Actualiza únicamente desde el último día confirmado en Google Drive hasta hoy. El último día se repite para capturar ajustes atrasados.
               </p>
 
-              {/* Days selector */}
-              <div style={{ marginBottom: 16 }}>
-                <p style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)", marginBottom: 8 }}>
-                  Rango a sincronizar
+              <div style={{ marginBottom: 16, padding: "10px 12px", borderRadius: 10, background: "var(--bg-2)", border: "1px solid var(--border)" }}>
+                <p style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)", marginBottom: 4 }}>
+                  Almacenamiento compartido
                 </p>
-                <div style={{ display: "flex", gap: 6 }}>
-                  {[1, 3, 7, 14, 30].map((d) => (
-                    <button
-                      key={d}
-                      onClick={() => setSyncDays(d)}
-                      style={{
-                        flex: 1, padding: "7px 4px", borderRadius: 8, fontSize: 11, fontWeight: 700,
-                        cursor: "pointer", transition: "all 0.15s",
-                        background: syncDays === d ? "#10b981" : "var(--bg-2)",
-                        color: syncDays === d ? "#fff" : "var(--text-2)",
-                        border: `1.5px solid ${syncDays === d ? "#10b981" : "var(--border)"}`,
-                      }}
-                    >
-                      {d}d
-                    </button>
-                  ))}
-                </div>
+                <p style={{ fontSize: 12, fontWeight: 700, color: driveStatus?.connected ? "#10b981" : "#ef4444" }}>
+                  {driveStatus?.connected ? "✓ Google Drive conectado" : "⚠ Google Drive pendiente"}
+                </p>
+                {driveStatus?.manifest?.lastSuccessfulDate && (
+                  <p style={{ fontSize: 10, color: "var(--text-3)", marginTop: 3 }}>
+                    Guardado hasta {driveStatus.manifest.lastSuccessfulDate} · {Object.keys(driveStatus.manifest.weeks ?? {}).length} semanas
+                  </p>
+                )}
+                {driveStatus?.folderUrl && (
+                  <a href={driveStatus.folderUrl} target="_blank" rel="noreferrer" style={{ display: "inline-block", marginTop: 5, fontSize: 10, color: "#6366f1", fontWeight: 700 }}>
+                    Abrir Onnexa Finanzas ↗
+                  </a>
+                )}
               </div>
 
               {/* Sync button */}
@@ -552,7 +577,7 @@ export default function ConfiguracionPage() {
                 {syncing ? (
                   <><div style={{ width: 14, height: 14, borderRadius: "50%", border: "2px solid rgba(255,255,255,0.2)", borderTopColor: "var(--text-3)", animation: "spin 0.7s linear infinite" }} /> Sincronizando...</>
                 ) : (
-                  <><PlayCircle size={15} /> Sincronizar ahora ({syncDays} días)</>
+                  <><PlayCircle size={15} /> Actualizar desde último guardado</>
                 )}
               </button>
 
@@ -572,6 +597,15 @@ export default function ConfiguracionPage() {
                     {syncResult.metaAds?.error && (
                       <p style={{ color: "#ef4444" }}>⚠ Meta Ads: {syncResult.metaAds.error}</p>
                     )}
+                    {syncResult.dateFrom && syncResult.dateTo && (
+                      <p>📅 Rango: <strong style={{ color: "var(--text)" }}>{syncResult.dateFrom} → {syncResult.dateTo}</strong></p>
+                    )}
+                    {syncResult.drive?.ok && (
+                      <p>☁ Drive: <strong style={{ color: "#10b981" }}>guardado hasta {syncResult.drive.lastSuccessfulDate}</strong></p>
+                    )}
+                    {syncResult.drive?.error && (
+                      <p style={{ color: "#ef4444" }}>⚠ Drive: {syncResult.drive.error}</p>
+                    )}
                     {syncResult.merge?.updated !== undefined && (
                       <p>🔗 Merge: <strong style={{ color: "#10b981" }}>{syncResult.merge.updated} días</strong> actualizados con gasto real</p>
                     )}
@@ -586,7 +620,7 @@ export default function ConfiguracionPage() {
               <div style={{ marginTop: 12, padding: "10px 12px", borderRadius: 10, background: "rgba(99,102,241,0.06)", border: "1px solid rgba(99,102,241,0.15)", display: "flex", gap: 8, alignItems: "flex-start" }}>
                 <AlertCircle size={12} style={{ color: "#6366f1", marginTop: 1, flexShrink: 0 }} />
                 <p style={{ fontSize: 10, color: "var(--text-3)", lineHeight: 1.5 }}>
-                  El cron diario (3:07am) ejecuta Shopify → Meta Ads → Merge automáticamente. Los datos del dashboard siempre muestran la info más reciente.
+                  El cron ejecuta Shopify → Meta Ads → consolidación → Drive. El punto de avance solo cambia cuando todos los pasos terminan correctamente.
                 </p>
               </div>
             </div>
