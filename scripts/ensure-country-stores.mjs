@@ -22,6 +22,33 @@ const stores = [
     currency: "CLP",
     status: "active",
   },
+  {
+    id: "store_glowmmi_es",
+    brandId: "brand_glowmmi",
+    countryId: "country_es",
+    name: "Glowmmi España",
+    shopifyUrl: "glm-1694.myshopify.com",
+    currency: "EUR",
+    status: "active",
+  },
+  {
+    id: "store_balancea_es",
+    brandId: "brand_balancea",
+    countryId: "country_es",
+    name: "Balancea España",
+    shopifyUrl: "mp0vab-bw.myshopify.com",
+    currency: "EUR",
+    status: "active",
+  },
+  {
+    id: "store_pleena_es",
+    brandId: "brand_pleena",
+    countryId: "country_es",
+    name: "Pleena España",
+    shopifyUrl: "s31nvm-ng.myshopify.com",
+    currency: "EUR",
+    status: "active",
+  },
 ];
 
 try {

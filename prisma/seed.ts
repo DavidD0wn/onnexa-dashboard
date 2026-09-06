@@ -23,15 +23,18 @@ async function main() {
   const usa = await prisma.country.create({ data: { id: "country_us", name: "Estados Unidos", code: "US", currency: "USD", exchangeRateToUsd: 1.0, gatewayFeePercent: 2.9, gatewayFixedFee: 0.3, defaultShippingCost: 6.5, targetCpa: 15, targetMargin: 30 } });
   const mexico = await prisma.country.create({ data: { id: "country_mx", name: "México", code: "MX", currency: "MXN", exchangeRateToUsd: 17.2, gatewayFeePercent: 3.6, gatewayFixedFee: 3.0, defaultShippingCost: 90, targetCpa: 180, targetMargin: 28 } });
   const chile = await prisma.country.create({ data: { id: "country_cl", name: "Chile", code: "CL", currency: "CLP", exchangeRateToUsd: 920, gatewayFeePercent: 3.49, gatewayFixedFee: 0.0, defaultShippingCost: 4500, targetCpa: 8000, targetMargin: 25 } });
+  const spain = await prisma.country.create({ data: { id: "country_es", name: "España", code: "ES", currency: "EUR", exchangeRateToUsd: 0.8604, gatewayFeePercent: 2.9, gatewayFixedFee: 0.3, defaultShippingCost: 0, targetMargin: 30 } });
 
   await prisma.store.createMany({
     data: [
       { id: "store_glowmmi_us", brandId: glowmmi.id, countryId: usa.id, name: "Glowmmi USA", currency: "USD" },
       { id: "store_glowmmi_mx", brandId: glowmmi.id, countryId: mexico.id, name: "Glowmmi México", currency: "MXN" },
       { id: "store_glowmmi_cl", brandId: glowmmi.id, countryId: chile.id, name: "Glowmmi Chile", currency: "CLP" },
+      { id: "store_glowmmi_es", brandId: glowmmi.id, countryId: spain.id, name: "Glowmmi España", currency: "EUR" },
       { id: "store_balancea_us", brandId: balancea.id, countryId: usa.id, name: "Balancea USA", currency: "USD" },
       { id: "store_balancea_mx", brandId: balancea.id, countryId: mexico.id, name: "Balancea México", currency: "MXN" },
       { id: "store_balancea_cl", brandId: balancea.id, countryId: chile.id, name: "Balancea Chile", currency: "CLP" },
+      { id: "store_balancea_es", brandId: balancea.id, countryId: spain.id, name: "Balancea España", currency: "EUR" },
     ],
   });
 

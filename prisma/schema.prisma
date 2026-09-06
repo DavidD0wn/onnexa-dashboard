@@ -442,7 +442,7 @@ model Chargeback {
 // ── COGS por país, tienda, producto y oferta ──────────────────────────────
 model ProductCogsByCountry {
   id                     String    @id @default(cuid())
-  countryCode            String    // MX | US | CL
+  countryCode            String    // MX | US | CL | ES
   storeId                String    @default("all") // brand_glowmmi | brand_balancea | all
   storeName              String    @default("")
   brand                  String    @default("") // glowmmi | balancea

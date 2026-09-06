@@ -1,7 +1,7 @@
 {
   "_nota": "COGS en USD por país de envío. Claves 'Producto xN' = costo POR UNIDAD del escalón N del proveedor (el motor multiplica por unidades físicas). Claves de oferta sin xN (ej. '2 + 1 Free') = costo TOTAL de la oferta. Claves de título largo = costo x1 por unidad.",
-  "_version": 11,
-  "_updated": "2026-07-30 — agregados COGS MX de SlowGrow/Cyperus Rotundus: paquete x1 $10.48, x2 $16.23 y x3 $22.26.",
+  "_version": 12,
+  "_updated": "2026-09-06 — agregados COGS España por escalón para Jiyu Toner Pads, HerBiotic, Mouthwash y GOMFIT/Creatine Gummies.",
   "mx": {
     "Holy Basil x1": 11.14,
     "Holy Basil x2": 9.47,
@@ -411,5 +411,35 @@
     "FERTIL x3": 10.10,
     "Cutting Mix x4": 11.34,
     "CuttingMix x4": 11.34
+  },
+  "es": {
+    "Jiyu Toner Pads": 9.16,
+    "Jiyu Toner Pads x1": 9.16,
+    "Jiyu Toner Pads x2": 7.35,
+    "Jiyu Toner Pads x3": 6.9667,
+    "Jiyu Toner Pads x4": 6.9675,
+    "Toner Pads x1": 9.16,
+    "Toner Pads x2": 7.35,
+    "Toner Pads x3": 6.9667,
+    "Toner Pads x4": 6.9675,
+    "Toner Pads — K-Beauty Para Aclarar tus Zonas Íntimas": 9.16,
+    "HerBiotic": 8.66,
+    "HerBiotic x1": 8.66,
+    "HerBiotic x2": 7.165,
+    "HerBiotic x3": 6.6767,
+    "HerBiotic™ | Controla el mal olor y restaura la humedad íntima": 8.66,
+    "Mouthwash x1": 10.0,
+    "Mouthwash x2": 8.515,
+    "Mouthwash x3": 6.89,
+    "Mouthwash x4": 8.76,
+    "MOUTHWASH — Limpieza profunda en 30 segundos": 10.0,
+    "GOMFIT x1": 9.79,
+    "GOMFIT x2": 8.455,
+    "GOMFIT x3": 7.8867,
+    "GOMFIT x4": 7.6025,
+    "Creatine Gummies x1": 9.79,
+    "Creatine Gummies x2": 8.455,
+    "Creatine Gummies x3": 7.8867,
+    "Creatine Gummies x4": 7.6025
   }
 }

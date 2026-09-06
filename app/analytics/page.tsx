@@ -86,8 +86,8 @@ const usd  = (n: number, dec = 2) =>
 const pct  = (n: number) => `${n.toFixed(1)}%`;
 const profColor = (n: number) => n >= 0 ? "#10B981" : "#EF4444";
 
-const FLAG: Record<string, string> = { MX: "🇲🇽", US: "🇺🇸", CL: "🇨🇱" };
-const COUNTRY_NAME: Record<string, string> = { MX: "México", US: "EE.UU.", CL: "Chile" };
+const FLAG: Record<string, string> = { MX: "🇲🇽", US: "🇺🇸", CL: "🇨🇱", ES: "🇪🇸" };
+const COUNTRY_NAME: Record<string, string> = { MX: "México", US: "EE.UU.", CL: "Chile", ES: "España" };
 
 /* ─── Status config ──────────────────────────────── */
 const STATUS_CFG: Record<string, { color: string; bg: string }> = {
@@ -1230,6 +1230,7 @@ export default function ProductAnalyticsPage() {
             { v: "MX",  l: "🇲🇽 México" },
             { v: "US",  l: "🇺🇸 EE.UU." },
             { v: "CL",  l: "🇨🇱 Chile"  },
+            { v: "ES",  l: "🇪🇸 España" },
           ].map(s => (
             <button key={s.v} onClick={() => setCountryFilter(s.v)} style={{ padding: "6px 12px", borderRadius: 7, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600, background: countryFilter === s.v ? "#0E766E" : "transparent", color: countryFilter === s.v ? "#fff" : "rgba(255,255,255,0.5)" }}>{s.l}</button>
           ))}

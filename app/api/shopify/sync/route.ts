@@ -119,52 +119,64 @@ const COUNTRY_ID_MAP: Record<string, string> = {
   US: "country_us",
   MX: "country_mx",
   CL: "country_cl",
+  ES: "country_es",
+};
+
+const COUNTRY_RECORDS: Record<string, {
+  id: string;
+  name: string;
+  currency: string;
+  exchangeRateToUsd: number;
+  gatewayFeePercent: number;
+  gatewayFixedFee: number;
+  defaultShippingCost: number;
+}> = {
+  MX: { id: "country_mx", name: "México", currency: "MXN", exchangeRateToUsd: 17.3, gatewayFeePercent: 3.6, gatewayFixedFee: 0, defaultShippingCost: 3.5 },
+  US: { id: "country_us", name: "Estados Unidos", currency: "USD", exchangeRateToUsd: 1, gatewayFeePercent: 2.9, gatewayFixedFee: 0.3, defaultShippingCost: 5 },
+  CL: { id: "country_cl", name: "Chile", currency: "CLP", exchangeRateToUsd: 950, gatewayFeePercent: 3.5, gatewayFixedFee: 0.3, defaultShippingCost: 4 },
+  // 1 USD = 0.8604 EUR según la referencia BCE del 2026-09-04 (1 EUR = 1.1622 USD).
+  ES: { id: "country_es", name: "España", currency: "EUR", exchangeRateToUsd: 0.8604, gatewayFeePercent: 2.9, gatewayFixedFee: 0.3, defaultShippingCost: 0 },
 };
 
 type StoreConfig = ShopifyStoreConfig & { shopCurrencyRate: number };
 
 async function ensureStoreRecords(store: ShopifyStoreConfig): Promise<void> {
-  const countryCode = store.countryId.replace(/^country_/, "").toUpperCase();
-  await prisma.$transaction([
-    prisma.brand.upsert({
-      where: { id: store.brandId },
-      create: { id: store.brandId, name: store.brandName, status: "active" },
-      update: { name: store.brandName, status: "active" },
-    }),
-    prisma.country.upsert({
-      where: { id: store.countryId },
-      create: {
-        id: store.countryId,
-        name: countryCode === "MX" ? "México" : countryCode,
-        code: countryCode,
-        currency: store.currency,
-        exchangeRateToUsd: store.currency === "MXN" ? 1 / FALLBACK_MXN_RATE : 1,
-        gatewayFeePercent: store.gatewayPct * 100,
-        gatewayFixedFee: store.gatewayFixed,
-      },
-      update: {},
-    }),
-  ]);
-  await prisma.store.upsert({
-    where: { id: store.storeId },
-    create: {
-      id: store.storeId,
-      brandId: store.brandId,
-      countryId: store.countryId,
-      name: `${store.brandName} ${countryCode}`,
-      shopifyUrl: `https://${store.shop}`,
-      currency: store.currency,
-      status: "active",
-    },
-    update: {
-      brandId: store.brandId,
-      countryId: store.countryId,
-      name: `${store.brandName} ${countryCode}`,
-      shopifyUrl: `https://${store.shop}`,
-      currency: store.currency,
-      status: "active",
-    },
+  await prisma.brand.upsert({
+    where: { id: store.brandId },
+    create: { id: store.brandId, name: store.brandName, status: "active" },
+    update: { name: store.brandName, status: "active" },
   });
+
+  // Crear todas las ubicaciones admitidas antes de escribir DailyMetric. Así una
+  // venta de España nunca cae en México ni falla por una FK de Store inexistente.
+  for (const [countryCode, country] of Object.entries(COUNTRY_RECORDS)) {
+    await prisma.country.upsert({
+      where: { id: country.id },
+      create: { ...country, code: countryCode },
+      update: {},
+    });
+    const storeId = `store_${store.key}_${countryCode.toLowerCase()}`;
+    await prisma.store.upsert({
+      where: { id: storeId },
+      create: {
+        id: storeId,
+        brandId: store.brandId,
+        countryId: country.id,
+        name: `${store.brandName} ${countryCode}`,
+        shopifyUrl: `https://${store.shop}`,
+        currency: country.currency,
+        status: "active",
+      },
+      update: {
+        brandId: store.brandId,
+        countryId: country.id,
+        name: `${store.brandName} ${countryCode}`,
+        shopifyUrl: `https://${store.shop}`,
+        currency: country.currency,
+        status: "active",
+      },
+    });
+  }
 }
 
 function locationFor(
@@ -282,16 +294,17 @@ function lookupCostSync(
 }
 
 // ─── Country-aware cost maps ─────────────────────────────────────────────────
-// Returns { mx, us, cl } — each a flat { productName: costUSD } map.
+// Returns { mx, us, cl, es } — each a flat { productName: costUSD } map.
 // Callers select the right map based on the order's shipping country.
-type CostsByCountry = { mx: Record<string, number>; us: Record<string, number>; cl: Record<string, number> };
+type CountryCostKey = "mx" | "us" | "cl" | "es";
+type CostsByCountry = Record<CountryCostKey, Record<string, number>>;
 
 function addToCostMap(map: Record<string, number>, key: string, val: number) {
   map[key] = val; map[normName(key)] = val;
 }
 
 async function loadCostsByCountry(): Promise<CostsByCountry> {
-  const result: CostsByCountry = { mx: {}, us: {}, cl: {} };
+  const result: CostsByCountry = { mx: {}, us: {}, cl: {}, es: {} };
 
   try {
     // 1. product-costs.json — read each country section separately
@@ -300,7 +313,7 @@ async function loadCostsByCountry(): Promise<CostsByCountry> {
     const p    = path.join(process.cwd(), "data", "product-costs.json");
     if (fs.existsSync(p)) {
       const raw = JSON.parse(fs.readFileSync(p, "utf-8")) as Record<string, unknown>;
-      for (const cc of ["mx", "us", "cl"] as const) {
+      for (const cc of ["mx", "us", "cl", "es"] as const) {
         const flat = (raw[cc] ?? {}) as Record<string, unknown>;
         for (const [k, v] of Object.entries(flat)) {
           if (typeof v === "number" && v > 0) addToCostMap(result[cc], k, v);
@@ -314,7 +327,7 @@ async function loadCostsByCountry(): Promise<CostsByCountry> {
     const products = await prisma.product.findMany({ select: { name: true, supplierCostUsd: true } });
     for (const prod of products) {
       if (prod.supplierCostUsd && prod.supplierCostUsd > 0) {
-        for (const cc of ["mx", "us", "cl"] as const) {
+        for (const cc of ["mx", "us", "cl", "es"] as const) {
           if (!result[cc][prod.name]) addToCostMap(result[cc], prod.name, prod.supplierCostUsd);
         }
       }
@@ -323,7 +336,7 @@ async function loadCostsByCountry(): Promise<CostsByCountry> {
     const escalones = await (prisma as any).supplierEscalon?.findMany({ orderBy: { units: "asc" } }) ?? [];
     for (const e of escalones) {
       const costs: Record<string, number | undefined> = { mx: e.costMx, us: e.costUs, cl: e.costCl };
-      for (const cc of ["mx", "us", "cl"] as const) {
+      for (const cc of ["mx", "us", "cl", "es"] as const) {
         const c = costs[cc] ?? e.costUs ?? e.costMx ?? 0;
         if (c > 0 && !result[cc][e.productName]) addToCostMap(result[cc], e.productName, c);
       }
@@ -331,13 +344,18 @@ async function loadCostsByCountry(): Promise<CostsByCountry> {
     // 4. ProductCogsByCountry (highest priority — most specific)
     const cogsByCountry = await (prisma as any).productCogsByCountry?.findMany({
       where: { isActive: true },
-      select: { productBaseName: true, productCostUnitUsd: true, countryCode: true },
-      orderBy: { updatedAt: "desc" },
+      select: { productBaseName: true, offerName: true, unitsTotal: true, productCostUnitUsd: true, countryCode: true },
+      orderBy: { updatedAt: "asc" },
     }) ?? [];
     for (const c of cogsByCountry) {
       if (c.productCostUnitUsd > 0) {
-        const cc = ((c.countryCode as string | null)?.toLowerCase() ?? "mx") as "mx" | "us" | "cl";
-        if (result[cc]) addToCostMap(result[cc], c.productBaseName, c.productCostUnitUsd);
+        const cc = ((c.countryCode as string | null)?.toLowerCase() ?? "mx") as CountryCostKey;
+        if (!result[cc]) continue;
+        // La tabla guarda costo total y unitario por oferta. Registrar el nombre
+        // de oferta y el escalón xN evita que x2/x3/x4 terminen usando el x1.
+        addToCostMap(result[cc], c.offerName.trim(), c.productCostUnitUsd);
+        addToCostMap(result[cc], `${c.productBaseName} x${c.unitsTotal}`, c.productCostUnitUsd);
+        if (c.unitsTotal === 1) addToCostMap(result[cc], c.productBaseName, c.productCostUnitUsd);
       }
     }
   } catch { /* non-critical */ }
@@ -364,7 +382,7 @@ function groupByDate(
   orders: any[],
   refundOrders: any[],
   cfg: StoreConfig,
-  costsByCountry: CostsByCountry = { mx: {}, us: {}, cl: {} },
+  costsByCountry: CostsByCountry = { mx: {}, us: {}, cl: {}, es: {} },
   dailyRates: Record<string, number> = {}   // { "YYYY-MM-DD": MXN_per_USD } — empty = use cfg.shopCurrencyRate
 ) {
   // key = "YYYY-MM-DD" or "YYYY-MM-DD||MX" when splitByCountry=true
@@ -407,14 +425,14 @@ function groupByDate(
   for (const order of orders) {
     const dateKey     = localDateKey(order.created_at, STORE_OFFSET_MS);
     const rawCountryCode = (order.shipping_address?.country_code ?? "MX").toUpperCase();
-    // La app solo consolida MX, US y CL. Todos los demás destinos pertenecen
+    // La app consolida MX, US, CL y ES. Todos los demás destinos pertenecen
     // al bucket operativo MX. Normalizar ANTES de crear la clave evita que
     // ES/CO/CA creen buckets distintos con el mismo countryId y se sobrescriban.
     const countryCode = COUNTRY_ID_MAP[rawCountryCode] ? rawCountryCode : "MX";
     const d             = ensure(dateKey, new Date(order.created_at), countryCode);
 
-    // Select cost map for this order's shipping country (MX/US/CL); fall back to MX
-    const ccKey = countryCode === "US" ? "us" : countryCode === "CL" ? "cl" : "mx";
+    // Select cost map for this order's shipping country; fall back to MX.
+    const ccKey = countryCode.toLowerCase() as CountryCostKey;
     const flatCosts = costsByCountry[ccKey] ?? costsByCountry.mx ?? {};
 
     // Use the exchange rate for this order's specific date

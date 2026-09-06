@@ -9,12 +9,12 @@ import {
 } from "lucide-react";
 
 /* ─── Types ─────────────────────────────────────────────────────────────── */
-type CountryKey  = "MX" | "US" | "CL";
+type CountryKey  = "MX" | "US" | "CL" | "ES";
 type SubTab      = "catalogo" | "base" | "escalones" | "sincosto" | "historial";
 
 type CostDetail  = { product?: number; shipping?: number; refund?: number; fee?: number; price?: number };
-type CostsByCountry = { mx: Record<string,number>; us: Record<string,number>; cl: Record<string,number> };
-type DetailByCountry = { mx: Record<string,CostDetail>; us: Record<string,CostDetail>; cl: Record<string,CostDetail> };
+type CostsByCountry = Record<Lowercase<CountryKey>, Record<string, number>>;
+type DetailByCountry = Record<Lowercase<CountryKey>, Record<string, CostDetail>>;
 type AnalyticsEntry = { units: number; revenue: number; cogsUsd: number };
 
 // New model
@@ -59,6 +59,7 @@ const COUNTRY_CFG: Record<CountryKey, { flag: string; label: string; color: stri
   MX: { flag: "🇲🇽", label: "México", color: "#10B981" },
   US: { flag: "🇺🇸", label: "USA",    color: "#6366F1" },
   CL: { flag: "🇨🇱", label: "Chile",  color: "#F59E0B" },
+  ES: { flag: "🇪🇸", label: "España", color: "#EF4444" },
 };
 
 const BRAND_COLORS: Record<string,string> = { glowmmi: "#EC4899", balancea: "#10B981" };
@@ -72,7 +73,8 @@ function guessBrand(name: string): "glowmmi" | "balancea" | "unknown" {
   const n = name.toLowerCase();
   if (n.includes("airi") || n.includes("curva") || n.includes("smyle") || n.includes("cutting") ||
       n.includes("inositol") || n.includes("flexi") || n.includes("mouthwash") ||
-      n.includes("holy basil") || n.includes("debloted") || n.includes("herbio"))
+      n.includes("holy basil") || n.includes("debloted") || n.includes("herbio") ||
+      n.includes("gomfit") || n.includes("creatine") || n.includes("creatina"))
     return "balancea";
   if (n.includes("collar") || n.includes("joya") || n.includes("mama") || n.includes("pulsera"))
     return "unknown";
@@ -652,7 +654,7 @@ function EscalonesView({ country }: { country: CountryKey }) {
     fetch("/api/facturas/escalones").then(r => r.json()).then(d => { setEscalones(Array.isArray(d) ? d : []); setLoading(false); }).catch(() => setLoading(false));
   }, []);
 
-  const costKey = country === "MX" ? "costMx" : country === "US" ? "costUs" : "costCl";
+  const costKey = country === "MX" ? "costMx" : country === "US" ? "costUs" : country === "CL" ? "costCl" : null;
   const grouped = useMemo(() => {
     const map = new Map<string, { productCode: string; productName: string; tiers: Map<number, Escalon> }>();
     for (const e of escalones) {
@@ -693,7 +695,7 @@ function EscalonesView({ country }: { country: CountryKey }) {
                 onMouseLeave={ev => (ev.currentTarget.style.background = i % 2 === 0 ? "transparent" : "rgba(255,255,255,.01)")}>
                 <td style={{ padding: "8px 12px", color: "var(--text-3)", fontFamily: "monospace", fontSize: 11 }}>{g.productCode}</td>
                 <td style={{ padding: "8px 12px", color: "var(--text)", fontWeight: 500 }}>{g.productName}</td>
-                {allUnits.map(u => { const tier = g.tiers.get(u); const cost = tier ? (tier as any)[costKey] as number|null : null; return <td key={u} style={{ padding: "8px 12px", textAlign: "right" }}>{cost != null ? <span style={{ color: "#F59E0B", fontWeight: 600 }}>${usd(cost)}</span> : <span style={{ color: "var(--text-3)" }}>—</span>}</td>; })}
+                {allUnits.map(u => { const tier = g.tiers.get(u); const cost = tier && costKey ? (tier as any)[costKey] as number|null : null; return <td key={u} style={{ padding: "8px 12px", textAlign: "right" }}>{cost != null ? <span style={{ color: "#F59E0B", fontWeight: 600 }}>${usd(cost)}</span> : <span style={{ color: "var(--text-3)" }}>—</span>}</td>; })}
               </tr>
             ))}
           </tbody>
@@ -725,8 +727,8 @@ function HistorialView() {
 
 /* ─── Main Page ──────────────────────────────────────────────────────────── */
 export default function CostosPage() {
-  const [costs,       setCosts]       = useState<CostsByCountry>({ mx: {}, us: {}, cl: {} });
-  const [detail,      setDetail]      = useState<DetailByCountry>({ mx: {}, us: {}, cl: {} });
+  const [costs,       setCosts]       = useState<CostsByCountry>({ mx: {}, us: {}, cl: {}, es: {} });
+  const [detail,      setDetail]      = useState<DetailByCountry>({ mx: {}, us: {}, cl: {}, es: {} });
   const [analytics,   setAnalytics]   = useState<Record<string, any>>({});
   const [countryTab,  setCountryTab]  = useState<CountryKey>("MX");
   const [subTab,      setSubTab]      = useState<SubTab>("catalogo");
@@ -754,8 +756,8 @@ export default function CostosPage() {
       const analyticsData = await analyticsRes.json();
       const catalogData   = await catalogRes.json();
 
-      setCosts({ mx: costsData?.mx ?? {}, us: costsData?.us ?? {}, cl: costsData?.cl ?? {} });
-      setDetail(costsData?.detail ?? { mx: {}, us: {}, cl: {} });
+      setCosts({ mx: costsData?.mx ?? {}, us: costsData?.us ?? {}, cl: costsData?.cl ?? {}, es: costsData?.es ?? {} });
+      setDetail(costsData?.detail ?? { mx: {}, us: {}, cl: {}, es: {} });
 
       const aMap: Record<string, any> = {};
       for (const row of (analyticsData.rows ?? [])) {
@@ -886,7 +888,7 @@ export default function CostosPage() {
 
       {/* Country tabs */}
       <div style={{ display: "flex", gap: 4, borderBottom: "1px solid var(--border)", marginBottom: 0 }}>
-        {(["MX", "US", "CL"] as CountryKey[]).map(c => {
+        {(["MX", "US", "CL", "ES"] as CountryKey[]).map(c => {
           const cc = COUNTRY_CFG[c]; const active = countryTab === c;
           return (
             <button key={c} onClick={() => setCountryTab(c)} style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 22px", borderRadius: "8px 8px 0 0", border: `1px solid ${active ? "var(--border)" : "transparent"}`, borderBottom: active ? "1px solid var(--card)" : "1px solid transparent", background: active ? "var(--card)" : "transparent", color: active ? cc.color : "var(--text-3)", cursor: "pointer", fontSize: 13, fontWeight: active ? 700 : 500, marginBottom: active ? -1 : 0 }}>

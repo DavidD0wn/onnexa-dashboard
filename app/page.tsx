@@ -114,6 +114,7 @@ const COUNTRIES = [
   { label: "🇺🇸 USA",   value: "country_us" },
   { label: "🇲🇽 México", value: "country_mx" },
   { label: "🇨🇱 Chile",  value: "country_cl" },
+  { label: "🇪🇸 España", value: "country_es" },
 ];
 
 /* ─── FilterPill ─────────────────────────────────────────────── */

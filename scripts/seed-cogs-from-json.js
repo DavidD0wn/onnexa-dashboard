@@ -49,7 +49,7 @@ function extractBaseName(offerName) {
   console.log("Leyendo:", jsonPath, "(versión", data._version + ")");
 
   const rows = [];
-  for (const country of ["mx", "us", "cl"]) {
+  for (const country of ["mx", "us", "cl", "es"]) {
     const block = data[country];
     if (!block) continue;
     for (const [offerName, costPerUnit] of Object.entries(block)) {

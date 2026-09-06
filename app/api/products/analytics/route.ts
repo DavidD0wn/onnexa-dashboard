@@ -214,6 +214,7 @@ const COUNTRY_CFG: Record<string, {
   MX: { name: "México",  currency: "MXN", gatewayPct: 0.029, gatewayFixed: 0.30, shipping: 5.00, displayRate: 17.30 },
   US: { name: "EE.UU.",  currency: "USD", gatewayPct: 0.029, gatewayFixed: 0.30, shipping: 8.00, displayRate: 1.0   },
   CL: { name: "Chile",   currency: "CLP", gatewayPct: 0.029, gatewayFixed: 0.30, shipping: 6.00, displayRate: 900   },
+  ES: { name: "España",  currency: "EUR", gatewayPct: 0.029, gatewayFixed: 0.30, shipping: 0,    displayRate: 0.8604 },
 };
 
 type AnalyticsStore = (typeof STORES)[keyof typeof STORES];
@@ -418,7 +419,8 @@ async function fetchOrderUsdAmounts(
   return map;
 }
 
-type CostsByCountry = { mx: Record<string, number>; us: Record<string, number>; cl: Record<string, number> };
+type CountryCostKey = "mx" | "us" | "cl" | "es";
+type CostsByCountry = Record<CountryCostKey, Record<string, number>>;
 
 function normalizeName(n: string): string {
   return n.toLowerCase().replace(/[™®–—\-]/g, " ").replace(/\s+/g, " ").trim();
@@ -486,17 +488,55 @@ function loadCosts(): CostsByCountry {
     if (fs.existsSync(p)) {
       const raw = JSON.parse(fs.readFileSync(p, "utf-8")) as Record<string, unknown>;
       if (raw.mx && typeof raw.mx === "object") {
-        return { mx: parseCountry(raw.mx), us: parseCountry(raw.us ?? raw.mx), cl: parseCountry(raw.cl ?? raw.mx) };
+        return {
+          mx: parseCountry(raw.mx),
+          us: parseCountry(raw.us ?? raw.mx),
+          cl: parseCountry(raw.cl ?? raw.mx),
+          es: parseCountry(raw.es ?? raw.mx),
+        };
       }
       const flat: Record<string, number> = {};
       for (const [k, v] of Object.entries(raw)) {
         if (!k.startsWith("_") && typeof v === "number") flat[k] = v;
       }
       const flatNorm = parseCountry(flat);
-      return { mx: flatNorm, us: { ...flatNorm }, cl: { ...flatNorm } };
+      return { mx: flatNorm, us: { ...flatNorm }, cl: { ...flatNorm }, es: { ...flatNorm } };
     }
   } catch {}
-  return { mx: {}, us: {}, cl: {} };
+  return { mx: {}, us: {}, cl: {}, es: {} };
+}
+
+function setCountryCost(map: Record<string, number>, key: string, value: number) {
+  map[key] = value;
+  map[normalizeName(key)] = value;
+}
+
+async function mergeCountryCostsFromDb(costs: CostsByCountry): Promise<void> {
+  try {
+    const rows = await prisma.productCogsByCountry.findMany({
+      where: { isActive: true, countryCode: { in: ["MX", "US", "CL", "ES"] } },
+      select: {
+        countryCode: true,
+        productBaseName: true,
+        offerName: true,
+        unitsTotal: true,
+        productCostUnitUsd: true,
+      },
+      // Older first, newest last: the latest edit wins without losing other tiers.
+      orderBy: { updatedAt: "asc" },
+    });
+    for (const row of rows) {
+      if (row.productCostUnitUsd <= 0) continue;
+      const country = row.countryCode.toLowerCase() as CountryCostKey;
+      const map = costs[country];
+      if (!map) continue;
+      setCountryCost(map, row.offerName.trim(), row.productCostUnitUsd);
+      setCountryCost(map, `${row.productBaseName} x${row.unitsTotal}`, row.productCostUnitUsd);
+      if (row.unitsTotal === 1) setCountryCost(map, row.productBaseName, row.productCostUnitUsd);
+    }
+  } catch {
+    // JSON remains a complete fallback when the optional catalog table is unavailable.
+  }
 }
 
 async function loadCostsFromDb(): Promise<Record<string, number>> {
@@ -517,9 +557,10 @@ async function loadCostsFromDb(): Promise<Record<string, number>> {
         map[normalizeName(e.productName)] = cost;
       }
     }
-    // Also load from ProductCogsByCountry table (per-country cost entries)
+    // Only country-neutral DB rows belong in this generic fallback. Country-specific
+    // rows are loaded into `countryCosts` below and must never leak across countries.
     const cogsByCountry = await (prisma as any).productCogsByCountry?.findMany({
-      where: { isActive: true },
+      where: { isActive: true, countryCode: "ALL" },
       select: { productBaseName: true, productCostUnitUsd: true, countryCode: true },
       orderBy: { updatedAt: "desc" },
     }) ?? [];
@@ -670,6 +711,7 @@ export async function GET(req: NextRequest) {
   }
 
   const costs   = loadCosts();
+  await mergeCountryCostsFromDb(costs);
   const costsDb = await loadCostsFromDb();
 
   // ── Historical MXN/USD rates — one per day so each order uses the rate from its own date ──
@@ -731,12 +773,12 @@ export async function GET(req: NextRequest) {
 
       for (const order of orders) {
         const rawCC = ((order.shipping_address?.country_code ?? "MX") as string).toUpperCase();
-        const countryCode: string = ["US", "CL"].includes(rawCC) ? rawCC : "MX";
+        const countryCode: string = ["US", "CL", "ES"].includes(rawCC) ? rawCC : "MX";
 
         // Apply country filter
         if (countryParam !== "ALL" && countryCode !== countryParam) continue;
 
-        const countryKey   = countryCode.toLowerCase() as "mx" | "us" | "cl";
+        const countryKey   = countryCode.toLowerCase() as CountryCostKey;
         const countryCosts = costs[countryKey];
         const cCfg         = COUNTRY_CFG[countryCode] ?? COUNTRY_CFG.MX;
         const storeName    = `${store.brandName} ${cCfg.name}`;

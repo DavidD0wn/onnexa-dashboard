@@ -16,11 +16,13 @@ function inferCountryId(
   // Priority: explicit "CBO <country>" suffix (most specific signal)
   if (/CBO\s+(usa|us)\b/i.test(text))             return "country_us";
   if (/CBO\s+(chile|cl|ch)\b/i.test(text))         return "country_cl";
+  if (/CBO\s+(españa|espana|spain|es)\b/i.test(text)) return "country_es";
   if (/CBO\s+(mx|mexico|méxico|mex)\b/i.test(text)) return "country_mx";
 
   // General country keywords anywhere in the text
   if (/\b(usa|eeuu|united\s*states|estados\s*unidos)\b/i.test(text)) return "country_us";
   if (/\bchile\b/i.test(text))                    return "country_cl";
+  if (/\b(españa|espana|spain)\b/i.test(text))    return "country_es";
   if (/\b(mexico|méxico)\b/i.test(text))          return "country_mx";
 
   // Las cuentas de Meta están facturadas en USD aunque la mayoría de campañas

@@ -11,6 +11,7 @@
     "sync": "node scripts/sync.mjs --apply",
     "audit:finance": "node scripts/audit-financial-consistency.mjs",
     "backfill:finance": "node scripts/backfill-finance.mjs",
+    "upsert:cogs-spain": "node scripts/upsert-spain-cogs.mjs",
     "db:seed": "npx ts-node --compiler-options '{\"module\":\"CommonJS\"}' prisma/seed.ts",
     "db:studio": "npx prisma studio"
   },

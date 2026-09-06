@@ -28,23 +28,26 @@ async function main() {
     { id: "country_mx", name: "México",        code: "MX", currency: "MXN", exchangeRateToUsd: 17.3,  gatewayFeePercent: 3.6, gatewayFixedFee: 0.0,  defaultShippingCost: 3.5 },
     { id: "country_us", name: "Estados Unidos", code: "US", currency: "USD", exchangeRateToUsd: 1.0,  gatewayFeePercent: 2.9, gatewayFixedFee: 0.30, defaultShippingCost: 5.0 },
     { id: "country_cl", name: "Chile",          code: "CL", currency: "CLP", exchangeRateToUsd: 950.0, gatewayFeePercent: 3.5, gatewayFixedFee: 0.30, defaultShippingCost: 4.0 },
+    { id: "country_es", name: "España",         code: "ES", currency: "EUR", exchangeRateToUsd: 0.8604, gatewayFeePercent: 2.9, gatewayFixedFee: 0.30, defaultShippingCost: 0.0 },
   ];
   for (const c of countries) {
     await prisma.country.upsert({ where: { id: c.id }, create: c, update: c });
   }
-  console.log("✅ Países: México, USA, Chile");
+  console.log("✅ Países: México, USA, Chile, España");
 
   // ── Tiendas ──────────────────────────────────────────────────────────────────
   const stores = [
     { id: "store_glowmmi_us", brandId: "brand_glowmmi",  countryId: "country_us", name: "Glowmmi US",  shopifyUrl: "glm-1694.myshopify.com",  currency: "USD", status: "active" },
     { id: "store_glowmmi_mx", brandId: "brand_glowmmi",  countryId: "country_mx", name: "Glowmmi MX",  shopifyUrl: "glm-1694.myshopify.com",  currency: "MXN", status: "active" },
     { id: "store_glowmmi_cl", brandId: "brand_glowmmi",  countryId: "country_cl", name: "Glowmmi CL",  shopifyUrl: "glm-1694.myshopify.com",  currency: "CLP", status: "active" },
+    { id: "store_glowmmi_es", brandId: "brand_glowmmi",  countryId: "country_es", name: "Glowmmi ES",  shopifyUrl: "glm-1694.myshopify.com",  currency: "EUR", status: "active" },
     { id: "store_balancea_mx", brandId: "brand_balancea", countryId: "country_mx", name: "Balancea MX", shopifyUrl: "mp0vab-bw.myshopify.com", currency: "MXN", status: "active" },
+    { id: "store_balancea_es", brandId: "brand_balancea", countryId: "country_es", name: "Balancea ES", shopifyUrl: "mp0vab-bw.myshopify.com", currency: "EUR", status: "active" },
   ];
   for (const s of stores) {
     await prisma.store.upsert({ where: { id: s.id }, create: s, update: s });
   }
-  console.log("✅ Tiendas: Glowmmi US/MX/CL, Balancea MX");
+  console.log("✅ Tiendas: Glowmmi US/MX/CL/ES, Balancea MX/ES");
 
   // ── Cuentas de Meta Ads ──────────────────────────────────────────────────────
   const metaAccounts = [

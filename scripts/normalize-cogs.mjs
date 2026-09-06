@@ -16,7 +16,7 @@ const data = JSON.parse(fs.readFileSync(PATH, "utf-8"));
 
 const report = [];
 
-for (const cc of ["mx", "us", "cl"]) {
+for (const cc of ["mx", "us", "cl", "es"]) {
   const flat = data[cc];
   if (!flat) continue;
 
@@ -40,7 +40,7 @@ for (const cc of ["mx", "us", "cl"]) {
 }
 
 // CuttingMix x4 — nuevo escalón del proveedor: $45.35 total → 11.34/unidad
-for (const cc of ["mx", "us", "cl"]) {
+for (const cc of ["mx", "us", "cl", "es"]) {
   data[cc]["Cutting Mix x4"] = 11.34;
   data[cc]["CuttingMix x4"]  = 11.34;
 }

@@ -32,7 +32,7 @@ async function fetchOrders(store: ShopifyStoreConfig, since: string, until: stri
     store,
     shopifyRestUrl(
       store,
-      `orders.json?status=any&created_at_min=${since}&created_at_max=${until}&limit=250&fields=id,created_at,financial_status,cancelled_at,test,line_items`,
+      `orders.json?status=any&created_at_min=${since}&created_at_max=${until}&limit=250&fields=id,created_at,financial_status,cancelled_at,test,shipping_address,line_items`,
     ),
     "orders",
   );
@@ -44,47 +44,94 @@ function normalizeName(n: string) {
   return n.toLowerCase().replace(/[™®–—\-]/g, " ").replace(/\s+/g, " ").trim();
 }
 
-async function loadCosts(): Promise<Record<string, number>> {
+type CountryCostKey = "mx" | "us" | "cl" | "es";
+type CostsByCountry = Record<CountryCostKey, Record<string, number>>;
+
+const COUNTRY_ID_BY_CODE: Record<string, string> = {
+  MX: "country_mx",
+  US: "country_us",
+  CL: "country_cl",
+  ES: "country_es",
+};
+
+function setCost(map: Record<string, number>, key: string, value: number) {
+  map[key] = value;
+  map[normalizeName(key)] = value;
+}
+
+async function loadCosts(): Promise<CostsByCountry> {
   const jsonPath = path.join(process.cwd(), "data", "product-costs.json");
-  let jsonCosts: Record<string, number> = {};
+  const costs: CostsByCountry = { mx: {}, us: {}, cl: {}, es: {} };
   try {
     if (fs.existsSync(jsonPath)) {
       const raw = JSON.parse(fs.readFileSync(jsonPath, "utf-8")) as Record<string, unknown>;
-      for (const [k, v] of Object.entries(raw)) {
-        if (!k.startsWith("_") && typeof v === "number") jsonCosts[k] = v;
+      for (const country of ["mx", "us", "cl", "es"] as const) {
+        const block = raw[country];
+        if (!block || typeof block !== "object") continue;
+        for (const [key, value] of Object.entries(block as Record<string, unknown>)) {
+          if (typeof value === "number" && value > 0) setCost(costs[country], key, value);
+        }
       }
     }
   } catch {}
 
-  const dbCosts: Record<string, number> = {};
   try {
     const products = await prisma.product.findMany({ select: { name: true, supplierCostUsd: true } });
-    for (const p of products) {
-      if (p.supplierCostUsd && p.supplierCostUsd > 0) {
-        dbCosts[p.name] = p.supplierCostUsd;
-        dbCosts[normalizeName(p.name)] = p.supplierCostUsd;
+    for (const product of products) {
+      if (!product.supplierCostUsd || product.supplierCostUsd <= 0) continue;
+      for (const country of ["mx", "us", "cl", "es"] as const) {
+        if (!costs[country][normalizeName(product.name)]) {
+          setCost(costs[country], product.name, product.supplierCostUsd);
+        }
       }
     }
-    const escalones = await (prisma as any).supplierEscalon?.findMany({ orderBy: { units: "asc" } }) ?? [];
-    for (const e of escalones) {
-      const cost = e.costUs ?? e.costMx ?? e.costCl ?? 0;
-      if (cost > 0 && !dbCosts[e.productName]) {
-        dbCosts[e.productName] = cost;
-        dbCosts[normalizeName(e.productName)] = cost;
-      }
+
+    const rows = await prisma.productCogsByCountry.findMany({
+      where: { isActive: true, countryCode: { in: ["MX", "US", "CL", "ES"] } },
+      select: {
+        countryCode: true,
+        productBaseName: true,
+        offerName: true,
+        unitsTotal: true,
+        productCostUnitUsd: true,
+      },
+      orderBy: { updatedAt: "asc" },
+    });
+    for (const row of rows) {
+      if (row.productCostUnitUsd <= 0) continue;
+      const country = row.countryCode.toLowerCase() as CountryCostKey;
+      if (!costs[country]) continue;
+      setCost(costs[country], row.offerName.trim(), row.productCostUnitUsd);
+      setCost(costs[country], `${row.productBaseName} x${row.unitsTotal}`, row.productCostUnitUsd);
+      if (row.unitsTotal === 1) setCost(costs[country], row.productBaseName, row.productCostUnitUsd);
     }
   } catch {}
 
-  return { ...dbCosts, ...jsonCosts };
+  return costs;
 }
 
-function lookupCost(name: string, costs: Record<string, number>): number {
+function bundleSize(title: string, variant: string): number {
+  const variantMatch = variant.match(/\bx(\d+)\b/i) ?? variant.match(/^(\d+)\s*(unidades?|pcs?|units?)?$/i);
+  if (variantMatch) return Math.max(1, parseInt(variantMatch[1]));
+  const titleMatch = title.match(/\bx(\d+)\b/i);
+  return titleMatch ? Math.max(1, parseInt(titleMatch[1])) : 1;
+}
+
+function lookupCost(name: string, variant: string, costs: Record<string, number>): number {
   const base = name
     .split(/\s*[|—–]\s*/)[0]
     .replace(/[™®]/g, "")
     .trim();
   const normalizedName = normalizeName(name);
   const normalizedBase = normalizeName(base);
+  const normalizedVariant = normalizeName(variant);
+  if (variant) {
+    return (
+      costs[`${base} ${variant}`] ?? costs[`${normalizedBase} ${normalizedVariant}`] ??
+      costs[`${name} ${variant}`] ?? costs[`${normalizedName} ${normalizedVariant}`] ??
+      costs[name] ?? costs[base] ?? costs[normalizedName] ?? costs[normalizedBase] ?? 0
+    );
+  }
   return (
     costs[`${base} x1`] ?? costs[`${normalizedBase} x1`] ??
     costs[`${name} x1`] ?? costs[`${normalizedName} x1`] ??
@@ -111,8 +158,8 @@ export async function POST(req: NextRequest) {
 
   const costs = await loadCosts();
 
-  // brand+day → COGS in USD
-  const cogsByBrandDay: Record<string, number> = {};
+  // brand+country+day → COGS in USD
+  const cogsByBrandCountryDay: Record<string, number> = {};
   const missingCosts  = new Set<string>();
   let   totalOrders   = 0;
 
@@ -124,7 +171,11 @@ export async function POST(req: NextRequest) {
       for (const order of orders) {
         const dateKey = order.created_at?.slice(0, 10);
         if (!dateKey) continue;
-        const key = `${dateKey}|${store.brandId}`;
+        const rawCountryCode = String(order.shipping_address?.country_code ?? "MX").toUpperCase();
+        const countryCode = COUNTRY_ID_BY_CODE[rawCountryCode] ? rawCountryCode : "MX";
+        const countryId = COUNTRY_ID_BY_CODE[countryCode];
+        const countryCosts = costs[countryCode.toLowerCase() as CountryCostKey];
+        const key = `${dateKey}|${store.brandId}|${countryId}`;
 
         for (const item of (order.line_items ?? [])) {
           const name  = item.title ?? "";
@@ -141,13 +192,18 @@ export async function POST(req: NextRequest) {
             nLow.includes("bonus")
           ) continue;
 
-          const qty  = parseInt(item.quantity) || 1;
-          const cost = lookupCost(name, costs);
+          const qty = parseInt(item.quantity) || 1;
+          const variant = item.variant_title && item.variant_title !== "Default Title"
+            ? String(item.variant_title)
+            : "";
+          const physicalUnits = qty * bundleSize(name, variant);
+          const tierVariant = !variant && physicalUnits > 1 ? `x${physicalUnits}` : variant;
+          const cost = lookupCost(name, tierVariant, countryCosts);
 
           if (cost === 0) { missingCosts.add(name); continue; }
 
           // line_items.price is in shop currency (MXN) — but cost is in USD, no conversion needed
-          cogsByBrandDay[key] = (cogsByBrandDay[key] ?? 0) + qty * cost;
+          cogsByBrandCountryDay[key] = (cogsByBrandCountryDay[key] ?? 0) + physicalUnits * cost;
         }
       }
     } catch (e: any) {
@@ -158,11 +214,11 @@ export async function POST(req: NextRequest) {
   if (dryRun) {
     return NextResponse.json({
       dryRun: true,
-      days: Object.keys(cogsByBrandDay).length,
-      sampleEntries: Object.entries(cogsByBrandDay).slice(0, 10).map(([k, v]) => ({ key: k, cogs: +v.toFixed(2) })),
+      days: Object.keys(cogsByBrandCountryDay).length,
+      sampleEntries: Object.entries(cogsByBrandCountryDay).slice(0, 10).map(([k, v]) => ({ key: k, cogs: +v.toFixed(2) })),
       totalOrders,
       missingCosts: [...missingCosts].slice(0, 20),
-      costsLoaded: Object.keys(costs).length,
+      costsLoaded: Object.values(costs).reduce((sum, map) => sum + Object.keys(map).length, 0),
     });
   }
 
@@ -170,13 +226,13 @@ export async function POST(req: NextRequest) {
   let updated = 0;
   let skipped = 0;
 
-  for (const [key, cogsUsd] of Object.entries(cogsByBrandDay)) {
-    const [dateStr, brandId] = key.split("|");
+  for (const [key, cogsUsd] of Object.entries(cogsByBrandCountryDay)) {
+    const [dateStr, brandId, countryId] = key.split("|");
     const dayStart = new Date(dateStr + "T00:00:00Z");
     const dayEnd   = new Date(dateStr + "T23:59:59Z");
 
     const rows = await prisma.dailyMetric.findMany({
-      where: { brandId, date: { gte: dayStart, lte: dayEnd } },
+      where: { brandId, countryId, date: { gte: dayStart, lte: dayEnd } },
       orderBy: { grossRevenue: "desc" },
     });
 
@@ -208,8 +264,8 @@ export async function POST(req: NextRequest) {
     updated,
     skipped,
     totalOrders,
-    daysProcessed: Object.keys(cogsByBrandDay).length,
-    costsLoaded: Object.keys(costs).length,
+    daysProcessed: Object.keys(cogsByBrandCountryDay).length,
+    costsLoaded: Object.values(costs).reduce((sum, map) => sum + Object.keys(map).length, 0),
     missingCosts: [...missingCosts].slice(0, 30),
     from: from.toISOString().slice(0, 10),
     to:   to.toISOString().slice(0, 10),

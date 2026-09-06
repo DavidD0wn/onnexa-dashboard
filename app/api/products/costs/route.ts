@@ -6,10 +6,10 @@ import path from "path";
 const COSTS_PATH  = path.join(process.cwd(), "data", "product-costs.json");
 const DETAIL_PATH = path.join(process.cwd(), "data", "product-costs-detail.json");
 
-type CountryKey = "mx" | "us" | "cl";
-type CostsByCountry  = { mx: Record<string, number>;  us: Record<string, number>;  cl: Record<string, number> };
+type CountryKey = "mx" | "us" | "cl" | "es";
+type CostsByCountry = Record<CountryKey, Record<string, number>>;
 export type CostDetail = { product?: number; shipping?: number; refund?: number; fee?: number; price?: number };
-type DetailByCountry = { mx: Record<string, CostDetail>; us: Record<string, CostDetail>; cl: Record<string, CostDetail> };
+type DetailByCountry = Record<CountryKey, Record<string, CostDetail>>;
 
 /* ─── Helpers ─────────────────────────────────────────────────────────────── */
 function normalizeName(n: string): string {
@@ -28,14 +28,14 @@ function loadCosts(): CostsByCountry {
     if (fs.existsSync(COSTS_PATH)) {
       const raw = JSON.parse(fs.readFileSync(COSTS_PATH, "utf-8")) as Record<string, unknown>;
       if (raw.mx && typeof raw.mx === "object")
-        return { mx: parseCountry(raw.mx), us: parseCountry(raw.us ?? raw.mx), cl: parseCountry(raw.cl ?? raw.mx) };
+        return { mx: parseCountry(raw.mx), us: parseCountry(raw.us ?? raw.mx), cl: parseCountry(raw.cl ?? raw.mx), es: parseCountry(raw.es ?? raw.mx) };
       const flat: Record<string, number> = {};
       for (const [k, v] of Object.entries(raw))
         if (!k.startsWith("_") && typeof v === "number") flat[k] = v;
-      return { mx: flat, us: { ...flat }, cl: { ...flat } };
+      return { mx: flat, us: { ...flat }, cl: { ...flat }, es: { ...flat } };
     }
   } catch {}
-  return { mx: {}, us: {}, cl: {} };
+  return { mx: {}, us: {}, cl: {}, es: {} };
 }
 
 function saveCosts(data: CostsByCountry) {
@@ -59,10 +59,10 @@ function loadDetail(): DetailByCountry {
             if (v && typeof v === "object") out[k] = v as CostDetail;
         return out;
       };
-      return { mx: parse(raw.mx), us: parse(raw.us), cl: parse(raw.cl) };
+      return { mx: parse(raw.mx), us: parse(raw.us), cl: parse(raw.cl), es: parse(raw.es) };
     }
   } catch {}
-  return { mx: {}, us: {}, cl: {} };
+  return { mx: {}, us: {}, cl: {}, es: {} };
 }
 
 function saveDetail(data: DetailByCountry) {
@@ -96,7 +96,7 @@ export async function PATCH(req: NextRequest) {
   const costs  = loadCosts();
   const detail = loadDetail();
 
-  const targets: CountryKey[] = country ? [country as CountryKey] : ["mx", "us", "cl"];
+  const targets: CountryKey[] = country ? [country as CountryKey] : ["mx", "us", "cl", "es"];
   const normalizedName = normalizeName(name);
 
   for (const c of targets) {

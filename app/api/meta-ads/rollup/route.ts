@@ -30,7 +30,7 @@ function storeIdFor(brandId: string, countryId: string): string | null {
           ? "pleena"
           : null;
   const country = countryId.replace(/^country_/, "").toLowerCase();
-  return brand && ["mx", "us", "cl"].includes(country)
+  return brand && ["mx", "us", "cl", "es"].includes(country)
     ? `store_${brand}_${country}`
     : null;
 }

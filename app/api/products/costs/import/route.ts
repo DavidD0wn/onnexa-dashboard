@@ -4,6 +4,7 @@
  *   - "KPIs"       → costos para México
  *   - "KPIs Usa"   → costos para USA
  *   - "KPIs Ch"    → costos para Chile
+ *   - "KPIs España" → costos para España
  *   - "ESCALONES_COSTO" → escalones de costo por cantidad
  *
  * Columnas esperadas en sheets KPIs (flexible, busca por cabecera):
@@ -18,10 +19,10 @@ import path from "path";
 const COSTS_PATH  = path.join(process.cwd(), "data", "product-costs.json");
 const DETAIL_PATH = path.join(process.cwd(), "data", "product-costs-detail.json");
 
-type CountryKey = "mx" | "us" | "cl";
-type CostsByCountry  = { mx: Record<string, number>;  us: Record<string, number>;  cl: Record<string, number> };
+type CountryKey = "mx" | "us" | "cl" | "es";
+type CostsByCountry = Record<CountryKey, Record<string, number>>;
 type CostDetail = { product?: number; shipping?: number; refund?: number; fee?: number; price?: number };
-type DetailByCountry = { mx: Record<string, CostDetail>; us: Record<string, CostDetail>; cl: Record<string, CostDetail> };
+type DetailByCountry = Record<CountryKey, Record<string, CostDetail>>;
 
 /* ─── File I/O ─────────────────────────────────────────────────────────────── */
 function loadCosts(): CostsByCountry {
@@ -35,14 +36,14 @@ function loadCosts(): CostsByCountry {
             if (typeof v === "number") out[k] = v;
         return out;
       };
-      if (raw.mx) return { mx: parse(raw.mx), us: parse(raw.us ?? raw.mx), cl: parse(raw.cl ?? raw.mx) };
+      if (raw.mx) return { mx: parse(raw.mx), us: parse(raw.us ?? raw.mx), cl: parse(raw.cl ?? raw.mx), es: parse(raw.es ?? raw.mx) };
       const flat: Record<string, number> = {};
       for (const [k, v] of Object.entries(raw))
         if (!k.startsWith("_") && typeof v === "number") flat[k] = v;
-      return { mx: flat, us: { ...flat }, cl: { ...flat } };
+      return { mx: flat, us: { ...flat }, cl: { ...flat }, es: { ...flat } };
     }
   } catch {}
-  return { mx: {}, us: {}, cl: {} };
+  return { mx: {}, us: {}, cl: {}, es: {} };
 }
 
 function saveCosts(data: CostsByCountry) {
@@ -64,10 +65,10 @@ function loadDetail(): DetailByCountry {
             if (v && typeof v === "object") out[k] = v as CostDetail;
         return out;
       };
-      return { mx: parse(raw.mx), us: parse(raw.us), cl: parse(raw.cl) };
+      return { mx: parse(raw.mx), us: parse(raw.us), cl: parse(raw.cl), es: parse(raw.es) };
     }
   } catch {}
-  return { mx: {}, us: {}, cl: {} };
+  return { mx: {}, us: {}, cl: {}, es: {} };
 }
 
 function saveDetail(data: DetailByCountry) {
@@ -258,6 +259,7 @@ export async function POST(req: NextRequest) {
     const sheetMap: Array<{ keywords: string[]; country: CountryKey }> = [
       { keywords: ["kpis usa", "kpi usa", "kpis us", "kpi us"],      country: "us" },
       { keywords: ["kpis ch",  "kpi ch",  "kpis chile", "kpi chile"], country: "cl" },
+      { keywords: ["kpis españa", "kpi españa", "kpis spain", "kpi spain", "kpis es", "kpi es"], country: "es" },
       { keywords: ["kpis",     "kpi mx",  "kpi mexico", "mexico"],    country: "mx" },
     ];
 
