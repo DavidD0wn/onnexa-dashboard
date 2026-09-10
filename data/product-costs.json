@@ -1,11 +1,10 @@
 {
   "_nota": "COGS en USD por país de envío. Claves 'Producto xN' = costo POR UNIDAD del escalón N del proveedor (el motor multiplica por unidades físicas). Claves de oferta sin xN (ej. '2 + 1 Free') = costo TOTAL de la oferta. Claves de título largo = costo x1 por unidad.",
-  "_version": 12,
-  "_updated": "2026-09-06 — agregados COGS España por escalón para Jiyu Toner Pads, HerBiotic, Mouthwash y GOMFIT/Creatine Gummies.",
+  "_version": 14,
+  "_updated": "2026-09-10 — COGS por mercado: MX Limpiador de Lengua ($1.90) y Set bandas de resistencia para glúteos ($4.40); US Jabón íntimo natural suave ($2.00).",
   "mx": {
     "Limpiador de Lengua": 1.9,
     "Set bandas de resistencia para glúteos": 4.4,
-    "Jabón íntimo natural suave": 2.0,
     "Holy Basil x1": 11.14,
     "Holy Basil x2": 9.47,
     "Holy Basil x3": 8.78,
@@ -150,8 +149,6 @@
     "Cyperus Rotundus x3": 7.42
   },
   "us": {
-    "Limpiador de Lengua": 1.9,
-    "Set bandas de resistencia para glúteos": 4.4,
     "Jabón íntimo natural suave": 2.0,
     "ClearDot x1": 12.69,
     "ClearDot x2": 9.905,
@@ -291,9 +288,6 @@
     "CuttingMix x4": 11.34
   },
   "cl": {
-    "Limpiador de Lengua": 1.9,
-    "Set bandas de resistencia para glúteos": 4.4,
-    "Jabón íntimo natural suave": 2.0,
     "Holy Basil x1": 12.14,
     "Holy Basil x2": 10.24,
     "Holy Basil x3": 9.51,
@@ -422,9 +416,6 @@
     "CuttingMix x4": 11.34
   },
   "es": {
-    "Limpiador de Lengua": 1.9,
-    "Set bandas de resistencia para glúteos": 4.4,
-    "Jabón íntimo natural suave": 2.0,
     "Jiyu Toner Pads": 9.16,
     "Jiyu Toner Pads x1": 9.16,
     "Jiyu Toner Pads x2": 7.35,

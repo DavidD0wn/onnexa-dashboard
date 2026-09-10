@@ -16,6 +16,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { calculateProfit } from "@/lib/metrics";
 import fs from "fs";
 import path from "path";
 import {
@@ -245,11 +246,17 @@ export async function POST(req: NextRequest) {
       const share = totalRevenue > 0 ? row.grossRevenue / totalRevenue : 1 / rows.length;
       const rowCogs = cogsUsd * share;
 
-      // Recalc netProfit = netRevenue - fees - adSpend - cogs
-      const adSpend   = row.adSpend ?? 0;
-      const fees      = row.fees    ?? 0;
-      const netProfit = row.netRevenue - fees - adSpend - rowCogs;
-      const netMargin = row.grossRevenue > 0 ? (netProfit / row.grossRevenue) * 100 : 0;
+      // Keep profit aligned with the canonical formula used throughout the app.
+      const { netProfit, netMargin } = calculateProfit({
+        netRevenue: row.netRevenue,
+        cogs: rowCogs,
+        shippingCost: row.shippingCost,
+        fees: row.fees,
+        handlingFees: row.handlingFees,
+        taxes: row.taxes,
+        otherCosts: row.otherCosts,
+        adSpend: row.adSpend,
+      });
 
       await prisma.dailyMetric.update({
         where: { id: row.id },
