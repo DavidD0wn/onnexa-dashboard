@@ -11,6 +11,7 @@
   --bg-2:     #F9FAFB;
   --card:     #FFFFFF;
   --card-2:   #F9FAFB;
+  --summary-row: #EEF2F6;
 
   /* ── Borders & Shadows ───────────────── */
   --border:   #E5E7EB;
@@ -71,6 +72,7 @@
   --bg-2:     #161B22;
   --card:     #1C2433;
   --card-2:   #21303F;
+  --summary-row: #172334;
 
   --border:   #2D3748;
   --border-2: #3D4F6A;
@@ -251,6 +253,10 @@ body {
 }
 .data-table tbody tr:hover td {
   background: var(--bg-2);
+}
+.data-table tbody tr.summary-row > td,
+.data-table tbody tr.summary-row:hover > td {
+  background: var(--summary-row);
 }
 .data-table tbody tr:last-child td {
   border-bottom: none;

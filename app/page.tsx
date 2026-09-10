@@ -2205,10 +2205,10 @@ export default function Dashboard() {
                     </thead>
                     <tbody>
                       {/* Total row */}
-                      <tr style={{ background: "#F8FAFC" }}>
+                      <tr className="summary-row" style={{ borderTop: "1px solid var(--border)", borderBottom: "1px solid var(--border)" }}>
                         <td style={{ fontWeight: 700, color: "var(--text)" }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                            <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#12304A" }} />
+                            <div style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--primary)" }} />
                             Total General
                           </div>
                         </td>
