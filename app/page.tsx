@@ -960,7 +960,7 @@ export default function Dashboard() {
   if (t) {
     if (t.cogs === 0)    alertas.push({ icon: "⚠️", msg: "COGS en 0 — la utilidad mostrada es una estimación incompleta", type: "warn" });
     if (t.adSpend === 0) alertas.push({ icon: "📢", msg: "Sin pauta registrada — revisa que el Ad Spend esté sincronizado", type: "info" });
-    if (t.shipping === 0) alertas.push({ icon: "🚚", msg: "Sin flete registrado — los costos de envío no están reflejados", type: "warn" });
+    
     if (t.adSpend > 0 && t.orders === 0)
       alertas.push({ icon: "💸", msg: "Hay gasto en pauta pero 0 pedidos — revisa el creativo, la campaña y la landing", type: "error" });
     if (t.cpa !== null && breakEvenCpa !== null && t.cpa > breakEvenCpa)
