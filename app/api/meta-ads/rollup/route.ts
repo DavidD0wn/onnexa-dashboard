@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { calculateProfit } from "@/lib/metrics";
 
+export const runtime = "nodejs";
+export const maxDuration = 300;
+
 const BRAND_DEFAULTS: Record<
   string,
   { storeId: string; countryId: string }
@@ -118,7 +121,7 @@ export async function POST(req: Request) {
       where: { date: { gte: from, lte: to } },
     });
 
-    // Consolidar por país real mantiene separados MX, US y CL.
+    // Consolidar por país real mantiene separados MX, US, CL y ES.
     const consolidated = new Map<
       string,
       { brandId: string; countryId: string; date: Date; adSpend: number }
@@ -151,192 +154,140 @@ export async function POST(req: Request) {
     let appliedSpend = 0;
     let staleSpendCleared = 0;
 
-    // Empezar desde cero evita conservar pauta vieja cuando una campaña/día
-    // desaparece del rango recién sincronizado.
-    const previousMetrics = await prisma.dailyMetric.findMany({
-      where: {
-        date: { gte: from, lte: to },
-        OR: [{ adSpendFacebook: { not: 0 } }, { adSpend: { not: 0 } }],
-      },
+    // Leer el período una sola vez. La versión anterior abría una transacción y
+    // repetía findMany por cada día, lo que agotaba el pool de Neon en Vercel.
+    const metrics = await prisma.dailyMetric.findMany({
+      where: { date: { gte: from, lte: to } },
+      orderBy: { grossRevenue: "desc" },
     });
-    await runInBatches(previousMetrics, 10, async (metric) => {
-      const nonFacebookSpend =
+    const metricsByDay = new Map<string, typeof metrics>();
+    for (const metric of metrics) {
+      const key = `${metric.brandId}|${metric.countryId}|${utcDay(metric.date).toISOString()}`;
+      const rows = metricsByDay.get(key);
+      if (rows) rows.push(metric);
+      else metricsByDay.set(key, [metric]);
+    }
+
+    // Solo una fila DailyMetric recibe la pauta de cada marca/país/día. El resto
+    // queda en cero para impedir que el dashboard duplique el gasto.
+    const facebookByMetricId = new Map<string, number>();
+    const rowsToCreate: Array<{
+      date: Date;
+      brandId: string;
+      countryId: string;
+      storeId: string;
+      adSpend: number;
+    }> = [];
+
+    for (const row of consolidated.values()) {
+      const key = `${row.brandId}|${row.countryId}|${row.date.toISOString()}`;
+      const dayMetrics = metricsByDay.get(key) ?? [];
+      if (dayMetrics.length === 0) {
+        const defaults = BRAND_DEFAULTS[row.brandId];
+        const storeId = storeIdFor(row.brandId, row.countryId);
+        if (!defaults || !storeId) {
+          skipped++;
+          continue;
+        }
+        rowsToCreate.push({ ...row, storeId });
+        created++;
+        appliedSpend += row.adSpend;
+        continue;
+      }
+
+      const selected =
+        dayMetrics.find((metric) => !metric.id.startsWith("shopify_")) ??
+        dayMetrics[0];
+      facebookByMetricId.set(selected.id, row.adSpend);
+      duplicateRowsCleared += dayMetrics.filter(
+        (metric) => metric.id !== selected.id && metric.adSpendFacebook !== 0,
+      ).length;
+      updated++;
+      appliedSpend += row.adSpend;
+    }
+
+    const metricUpdates: Array<{
+      id: string;
+      adSpend: number;
+      adSpendFacebook: number;
+      netProfit: number;
+      netMargin: number;
+      roas: number;
+      cpa: number | null;
+    }> = [];
+    for (const metric of metrics) {
+      const facebookSpend = facebookByMetricId.get(metric.id) ?? 0;
+      const totalAdSpend =
+        facebookSpend +
         metric.adSpendGoogle +
         metric.adSpendSnapchat +
         metric.adSpendTiktok;
-      const profit = profitForMetric(metric, 0);
-      await prisma.dailyMetric.update({
-        where: { id: metric.id },
-        data: {
-          adSpend: nonFacebookSpend,
-          adSpendFacebook: 0,
-          netProfit: profit.netProfit,
-          netMargin: profit.netMargin,
-          roas: 0,
-          cpa: null,
-        },
-      });
-    });
-    staleSpendCleared = previousMetrics.length;
-
-    const consolidatedResults = await runInBatches(
-      Array.from(consolidated.values()),
-      // Neon en el plan actual admite pocas transacciones interactivas a la vez.
-      // Dos mantiene la mejora de velocidad sin agotar el pool de conexiones.
-      2,
-      async (row) => {
-      const dayStart = row.date;
-      const dayEnd = new Date(row.date.getTime() + 86_400_000 - 1);
-
-      const result = await prisma.$transaction(
-        async (tx) => {
-          const metrics = await tx.dailyMetric.findMany({
-            where: {
-              brandId: row.brandId,
-              countryId: row.countryId,
-              date: { gte: dayStart, lte: dayEnd },
-            },
-            orderBy: { grossRevenue: "desc" },
-          });
-
-          if (metrics.length === 0) {
-            const defaults = BRAND_DEFAULTS[row.brandId];
-            const storeId = storeIdFor(row.brandId, row.countryId);
-            if (!defaults || !storeId) {
-              return { status: "skipped" as const, duplicates: 0 };
-            }
-
-            await tx.dailyMetric.create({
-              data: {
-                date: dayStart,
-                brandId: row.brandId,
-                countryId: row.countryId,
-                storeId,
-                adSpend: row.adSpend,
-                adSpendFacebook: row.adSpend,
-                netProfit: -row.adSpend,
-                netMargin: 0,
-                roas: 0,
-                cpa: null,
-              },
-            });
-            return { status: "created" as const, duplicates: 0 };
-          }
-
-          const selected =
-            metrics.find((metric) => !metric.id.startsWith("shopify_")) ??
-            metrics[0];
-          const duplicates = metrics.filter(
-            (metric) => metric.id !== selected.id && metric.adSpend !== 0,
-          );
-
-          for (const duplicate of duplicates) {
-            const duplicateProfit = profitForMetric(duplicate, 0);
-            const nonFacebookSpend =
-              duplicate.adSpendGoogle +
-              duplicate.adSpendSnapchat +
-              duplicate.adSpendTiktok;
-            await tx.dailyMetric.update({
-              where: { id: duplicate.id },
-              data: {
-                adSpend: nonFacebookSpend,
-                adSpendFacebook: 0,
-                netProfit: duplicateProfit.netProfit,
-                netMargin: duplicateProfit.netMargin,
-                roas: 0,
-                cpa: null,
-              },
-            });
-          }
-
-          const profit = profitForMetric(selected, row.adSpend);
-          const totalAdSpend =
-            row.adSpend +
-            selected.adSpendGoogle +
-            selected.adSpendSnapchat +
-            selected.adSpendTiktok;
-          const roas =
-            row.adSpend > 0 ? profit.netRevenue / row.adSpend : 0;
-          const cpa =
-            row.adSpend > 0 && selected.ordersCount > 0
-              ? row.adSpend / selected.ordersCount
-              : null;
-
-          await tx.dailyMetric.update({
-            where: { id: selected.id },
-            data: {
-              adSpend: totalAdSpend,
-              adSpendFacebook: row.adSpend,
-              netProfit: profit.netProfit,
-              netMargin: profit.netMargin,
-              roas,
-              cpa,
-            },
-          });
-
-          return {
-            status: "updated" as const,
-            duplicates: duplicates.length,
-          };
-        },
-        { timeout: 30_000 },
-      );
-
-        return { ...result, adSpend: row.adSpend };
-      },
-    );
-    for (const result of consolidatedResults) {
-      if (result.status === "created") created++;
-      else if (result.status === "updated") updated++;
-      else skipped++;
-      duplicateRowsCleared += result.duplicates;
-      if (result.status !== "skipped") appliedSpend += result.adSpend;
-    }
-
-    // La utilidad también debe quedar consistente en días que todavía no
-    // tienen anuncios (por ejemplo, el día actual antes del cierre de Meta).
-    const profitRows = await prisma.dailyMetric.findMany({
-      where: { date: { gte: from, lte: to } },
-    });
-    const profitUpdates: Array<{
-      id: string;
-      netProfit: number;
-      netMargin: number;
-    }> = [];
-    for (const metric of profitRows) {
-      const netRevenue =
-        metric.netRevenue > 0 ? metric.netRevenue : metric.grossRevenue;
-      const profit = calculateProfit({
-        netRevenue,
-        cogs: metric.cogs,
-        shippingCost: metric.shippingCost,
-        fees: metric.fees,
-        handlingFees: metric.handlingFees,
-        taxes: metric.taxes,
-        otherCosts: metric.otherCosts,
-        adSpend: metric.adSpend,
-      });
-      if (
+      const profit = profitForMetric(metric, facebookSpend);
+      const roas = facebookSpend > 0 ? profit.netRevenue / facebookSpend : 0;
+      const cpa =
+        facebookSpend > 0 && metric.ordersCount > 0
+          ? facebookSpend / metric.ordersCount
+          : null;
+      const cpaChanged =
+        metric.cpa === null || cpa === null
+          ? metric.cpa !== cpa
+          : Math.abs(metric.cpa - cpa) >= 0.005;
+      const changed =
+        Math.abs(metric.adSpend - totalAdSpend) >= 0.005 ||
+        Math.abs(metric.adSpendFacebook - facebookSpend) >= 0.005 ||
         Math.abs(metric.netProfit - profit.netProfit) >= 0.005 ||
-        Math.abs(metric.netMargin - profit.netMargin) >= 0.005
-      ) {
-        profitUpdates.push({
-          id: metric.id,
-          netProfit: profit.netProfit,
-          netMargin: profit.netMargin,
-        });
+        Math.abs(metric.netMargin - profit.netMargin) >= 0.005 ||
+        Math.abs((metric.roas ?? 0) - roas) >= 0.005 ||
+        cpaChanged;
+      if (!changed) continue;
+
+      if (metric.adSpendFacebook !== 0 && facebookSpend === 0) {
+        staleSpendCleared++;
       }
+      metricUpdates.push({
+        id: metric.id,
+        adSpend: totalAdSpend,
+        adSpendFacebook: facebookSpend,
+        netProfit: profit.netProfit,
+        netMargin: profit.netMargin,
+        roas,
+        cpa,
+      });
     }
-    await runInBatches(profitUpdates, 10, (update) =>
+
+    // Dos escrituras concurrentes respetan el pool pequeño de Neon. No se usan
+    // transacciones interactivas: cada ejecución posterior es idempotente y
+    // termina cualquier lote que haya quedado incompleto.
+    await runInBatches(metricUpdates, 2, (update) =>
       prisma.dailyMetric.update({
         where: { id: update.id },
         data: {
+          adSpend: update.adSpend,
+          adSpendFacebook: update.adSpendFacebook,
           netProfit: update.netProfit,
           netMargin: update.netMargin,
+          roas: update.roas,
+          cpa: update.cpa,
         },
       }),
     );
-    const profitRowsRecalculated = profitUpdates.length;
+    await runInBatches(rowsToCreate, 2, (row) =>
+      prisma.dailyMetric.create({
+        data: {
+          date: row.date,
+          brandId: row.brandId,
+          countryId: row.countryId,
+          storeId: row.storeId,
+          adSpend: row.adSpend,
+          adSpendFacebook: row.adSpend,
+          netProfit: -row.adSpend,
+          netMargin: 0,
+          roas: 0,
+          cpa: null,
+        },
+      }),
+    );
+    const profitRowsRecalculated = metricUpdates.length;
 
     const difference = sourceSpend - appliedSpend;
     return NextResponse.json({
