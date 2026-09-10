@@ -507,12 +507,14 @@ export async function POST(req: Request) {
     from: requestedFrom,
     to: requestedTo,
     skipRollup = false,
+    forceReplace = false,
   } = body as {
     store?: string;
     days?: number;
     from?: string;
     to?: string;
     skipRollup?: boolean;
+    forceReplace?: boolean;
   };
   const isExplicitRange = Boolean(requestedFrom && requestedTo);
 
@@ -620,16 +622,16 @@ export async function POST(req: Request) {
         const prevShopifyRow = await prisma.dailyMetric.findUnique({
           where: { id: shopifyId },
         });
-        if (!isExplicitRange && prevShopifyRow && prevShopifyRow.ordersCount > 0) {
-          const dropRatio = 1 - (metrics.ordersCount / prevShopifyRow.ordersCount);
+        const currentMetric = existing ?? prevShopifyRow;
+        if (!forceReplace && currentMetric && currentMetric.ordersCount > 0) {
+          const dropRatio = 1 - (metrics.ordersCount / currentMetric.ordersCount);
           if (dropRatio > 0.5) {
-            console.warn(`[sync:${store}] SKIP defensivo ${bucketKey}: nuevo=${metrics.ordersCount} ord vs existente=${prevShopifyRow.ordersCount} (bajada ${(dropRatio*100).toFixed(0)}%)`);
+            console.warn(`[sync:${store}] SKIP defensivo ${bucketKey}: nuevo=${metrics.ordersCount} ord vs existente=${currentMetric.ordersCount} (bajada ${(dropRatio*100).toFixed(0)}%)`);
             synced++;
             continue;
           }
         }
 
-        const currentMetric = existing ?? prevShopifyRow;
         const profit = calculateProfit({
           netRevenue,
           cogs: metrics.cogs,
@@ -684,11 +686,10 @@ export async function POST(req: Request) {
       }
     }
 
-    // Con un rango explícito y una descarga completa, cualquier bucket
-    // shopify_* ausente es realmente obsoleto. Se elimina para que cancelaciones,
-    // cambios de país y días sin ventas no dejen cifras fantasma.
+    // Borrar días históricos exige forceReplace=true. Un refresh normal nunca
+    // debe eliminar ventas válidas si Shopify entrega una página incompleta.
     let staleToDelete: { id: string }[] = [];
-    if (isExplicitRange && errors.length === 0) {
+    if (isExplicitRange && forceReplace && errors.length === 0) {
       const candidates = await prisma.dailyMetric.findMany({
         where: {
           brandId: cfg.brandId,
