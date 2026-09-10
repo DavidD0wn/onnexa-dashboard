@@ -167,6 +167,7 @@ export async function POST(req: Request) {
   // Si ya existe una fila Sheet5/CUID para esa fecha+brand, borramos el shopify_*
   // para evitar doble conteo. Mantenemos shopify_* solo si no hay fila Sheet5.
   let cleanedShopify = 0;
+  let preservedConflicts = 0;
   try {
     const shopifyRows = await prisma.dailyMetric.findMany({
       // Nunca limpiar fuera del rango que acabamos de descargar. Antes una
@@ -178,7 +179,14 @@ export async function POST(req: Request) {
           lte: new Date(`${today}T23:59:59Z`),
         },
       },
-      select: { id: true, brandId: true, countryId: true, date: true },
+      select: {
+        id: true,
+        brandId: true,
+        countryId: true,
+        date: true,
+        ordersCount: true,
+        netRevenue: true,
+      },
     });
     for (const sr of shopifyRows) {
       const dayStart = new Date(Date.UTC(sr.date.getUTCFullYear(), sr.date.getUTCMonth(), sr.date.getUTCDate(), 0, 0, 0));
@@ -192,11 +200,25 @@ export async function POST(req: Request) {
         },
       });
       if (sheet5Row) {
-        await prisma.dailyMetric.delete({ where: { id: sr.id } });
-        cleanedShopify++;
+        // Una fila CUID también puede ser una fila técnica creada para guardar
+        // Meta Ads, con cero ventas. Borrar shopify_* solo por su existencia
+        // eliminó pedidos históricos válidos. Solo es duplicado si ambas filas
+        // contienen exactamente las mismas ventas.
+        const sameSales =
+          sheet5Row.ordersCount === sr.ordersCount &&
+          Math.abs(sheet5Row.netRevenue - sr.netRevenue) < 0.01;
+        if (sameSales && sr.ordersCount > 0) {
+          await prisma.dailyMetric.delete({ where: { id: sr.id } });
+          cleanedShopify++;
+        } else {
+          preservedConflicts++;
+        }
       }
     }
-    results.cleanup = { deletedShopifyDuplicates: cleanedShopify };
+    results.cleanup = {
+      deletedShopifyDuplicates: cleanedShopify,
+      preservedSalesConflicts: preservedConflicts,
+    };
   } catch (e: any) {
     results.cleanup = { error: e.message };
   }
