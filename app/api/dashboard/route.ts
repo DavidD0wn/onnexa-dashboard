@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-function utcDayStart(localDate: Date): Date {
-  return new Date(Date.UTC(localDate.getFullYear(), localDate.getMonth(), localDate.getDate()));
-}
-function utcDayEnd(localDate: Date): Date {
-  return new Date(Date.UTC(localDate.getFullYear(), localDate.getMonth(), localDate.getDate(), 23, 59, 59, 999));
+const STORE_UTC_OFFSET_HOURS = -5;
+
+function storeTodayKey(): string {
+  return new Date(Date.now() + STORE_UTC_OFFSET_HOURS * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10);
 }
 
 export async function GET(req: Request) {
@@ -22,12 +23,13 @@ export async function GET(req: Request) {
     from = new Date(fromParam + "T00:00:00.000Z");
     to   = new Date(toParam   + "T23:59:59.999Z");
   } else {
-    const days = parseInt(searchParams.get("days") ?? "30");
-    const today = new Date();
-    const fromLocal = new Date(today);
-    fromLocal.setDate(today.getDate() - (days - 1));
-    from = utcDayStart(fromLocal);
-    to   = utcDayEnd(today);
+    const parsedDays = parseInt(searchParams.get("days") ?? "30", 10);
+    const days = Number.isFinite(parsedDays) && parsedDays > 0 ? parsedDays : 30;
+    const todayKey = storeTodayKey();
+    const fromDate = new Date(todayKey + "T00:00:00.000Z");
+    fromDate.setUTCDate(fromDate.getUTCDate() - (days - 1));
+    from = fromDate;
+    to = new Date(todayKey + "T23:59:59.999Z");
   }
 
   const where: any = {
