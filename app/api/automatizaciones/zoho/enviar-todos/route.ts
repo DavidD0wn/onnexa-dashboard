@@ -35,22 +35,40 @@ export async function POST(req: NextRequest) {
       fallidos.push({ email: c.fromEmail, error: "borrador vacío" });
       continue;
     }
+    // Reservamos el borrador ANTES de hablar con Zoho. Si el correo sale pero
+    // la BD falla justo después, nunca volverá a entrar en otra tanda.
+    await prisma.zohoConversation.update({
+      where: { id: c.id },
+      data: { status: "sending", errorMsg: null },
+    });
+
     try {
       await enviarRespuesta(c.config?.emailAddress ?? "", c, texto);
-      await prisma.zohoConversation.update({
-        where: { id: c.id },
-        data:  { status: "replied", outboundText: texto },
-      });
-      enviados.push(c.fromEmail);
     } catch (e: any) {
-      // Un fallo no debe abortar la tanda: se marca y se sigue con el resto.
       const msg = String(e?.message ?? "error").slice(0, 300);
       fallidos.push({ email: c.fromEmail, error: msg });
       await prisma.zohoConversation.update({
         where: { id: c.id },
         data:  { status: "error", errorMsg: msg },
       }).catch(() => {});
+      continue;
     }
+
+    // El envío externo ya fue aceptado. Un fallo de registro no debe convertirlo
+    // en un borrador reenviable ni hacer creer que falló el correo.
+    try {
+      await prisma.zohoConversation.update({
+        where: { id: c.id },
+        data: { status: "replied", outboundText: texto, errorMsg: null },
+      });
+    } catch (e: any) {
+      const msg = `Correo enviado; registro pendiente: ${String(e?.message ?? "error")}`.slice(0, 300);
+      await prisma.zohoConversation.update({
+        where: { id: c.id },
+        data: { status: "sent_unrecorded", outboundText: texto, errorMsg: msg },
+      }).catch(() => {});
+    }
+    enviados.push(c.fromEmail);
   }
 
   const [pendientes, paraRevisar] = await Promise.all([

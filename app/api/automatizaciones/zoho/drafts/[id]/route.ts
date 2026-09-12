@@ -38,6 +38,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const mailbox = await mailboxOf(conv.configId);
 
+  // Sacarlo de "draft" antes del envío evita duplicados si Zoho acepta el
+  // correo y la escritura posterior en la base de datos falla.
+  await prisma.zohoConversation.update({
+    where: { id },
+    data: { status: "sending", errorMsg: null },
+  });
+
   try {
     // Misma implementación que el envío masivo (engancha el hilo con el Message-ID real)
     await enviarRespuesta(mailbox, conv, text);
@@ -49,10 +56,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: `No se pudo enviar: ${e.message}` }, { status: 500 });
   }
 
-  const updated = await prisma.zohoConversation.update({
-    where: { id },
-    data:  { status: "replied", outboundText: text },
-  });
+  let updated;
+  try {
+    updated = await prisma.zohoConversation.update({
+      where: { id },
+      data: { status: "replied", outboundText: text, errorMsg: null },
+    });
+  } catch (e: any) {
+    const msg = `Correo enviado; registro pendiente: ${String(e?.message ?? "error")}`.slice(0, 300);
+    updated = await prisma.zohoConversation.update({
+      where: { id },
+      data: { status: "sent_unrecorded", outboundText: text, errorMsg: msg },
+    });
+  }
 
   return NextResponse.json({ ok: true, conv: updated });
 }
