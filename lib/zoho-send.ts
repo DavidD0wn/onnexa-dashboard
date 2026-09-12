@@ -11,6 +11,7 @@
 //    al hilo del cliente en vez de llegar como correo suelto.
 // ─────────────────────────────────────────────────────────────────────────────
 import nodemailer from "nodemailer";
+import { prisma } from "@/lib/prisma";
 
 export function smtpFor(mailbox: string): { user: string; pass: string; name: string } {
   const isGlowmmi = /glowmmi/i.test(mailbox);
@@ -45,13 +46,81 @@ export function getPooledTransporter(user: string, pass: string): nodemailer.Tra
 }
 
 export interface ConvParaEnviar {
+  messageId?: string;
   fromEmail: string;
   subject: string | null;
   rfcMessageId?: string | null;
 }
 
+async function tokenOAuth(config: any): Promise<string> {
+  if (config.accessToken && config.tokenExpiry) {
+    const remaining = new Date(config.tokenExpiry).getTime() - Date.now();
+    if (remaining > 60_000) return config.accessToken;
+  }
+
+  const response = await fetch(`${config.authDomain}/oauth/v2/token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      refresh_token: config.refreshToken,
+      grant_type: "refresh_token",
+      client_id: process.env.ZOHO_CLIENT_ID ?? "",
+      client_secret: process.env.ZOHO_CLIENT_SECRET ?? "",
+    }),
+  });
+  const data = await response.json();
+  if (!response.ok || !data.access_token) {
+    throw new Error("Zoho no pudo renovar la autorización del buzón.");
+  }
+
+  const tokenExpiry = new Date(Date.now() + Number(data.expires_in ?? 3600) * 1000);
+  await prisma.zohoBotConfig.update({
+    where: { id: config.id },
+    data: { accessToken: data.access_token, tokenExpiry },
+  });
+  return data.access_token;
+}
+
+async function enviarConOAuth(mailbox: string, conv: ConvParaEnviar, texto: string): Promise<boolean> {
+  if (!conv.messageId) return false;
+  const config = await prisma.zohoBotConfig.findFirst({ where: { emailAddress: mailbox } });
+  if (!config) return false;
+
+  const token = await tokenOAuth(config);
+  const subject = conv.subject?.startsWith("Re:") ? conv.subject : `Re: ${conv.subject ?? ""}`;
+  const response = await fetch(
+    `${config.apiDomain}/api/accounts/${config.accountId}/messages/${conv.messageId}`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Zoho-oauthtoken ${token}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        fromAddress: mailbox,
+        toAddress: conv.fromEmail,
+        subject,
+        content: texto,
+        mailFormat: "plaintext",
+        action: "reply",
+      }),
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(`Zoho rechazó la respuesta por API (${response.status}).`);
+  }
+  return true;
+}
+
 /** Envía la respuesta enganchada al hilo del cliente. Lanza error si falla. */
 export async function enviarRespuesta(mailbox: string, conv: ConvParaEnviar, texto: string) {
+  // La cuenta ya está autorizada por OAuth. Es el canal principal porque no
+  // depende de una contraseña SMTP y responde sobre el mensaje original.
+  if (await enviarConOAuth(mailbox, conv, texto)) return;
+
+  // Respaldo para instalaciones antiguas que todavía no guardan messageId.
   const smtp = smtpFor(mailbox);
   if (!smtp.pass) {
     throw new Error(
