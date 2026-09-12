@@ -14,6 +14,7 @@ interface NovedadAlert {
 }
 
 interface Counts { critical: number; warning: number; info: number; total: number }
+interface StoreError { store: string; error: string }
 
 const TYPE_LABELS: Record<AlertType, string> = {
   unfulfilled:          "Sin enviar",
@@ -48,17 +49,20 @@ export default function NovedadesPage() {
   const [counts,  setCounts]  = useState<Counts | null>(null);
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState<string | null>(null);
+  const [storeErrors, setStoreErrors] = useState<StoreError[]>([]);
   const [filter,  setFilter]  = useState<"all"|Severity|AlertType>("all");
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   const load = useCallback(async () => {
-    setLoading(true); setError(null);
+    setLoading(true); setError(null); setStoreErrors([]);
     try {
       const res  = await fetch("/api/novedades");
-      const data = await res.json();
-      if (data.error) { setError(data.error); return; }
+      const text = await res.text();
+      const data = text ? JSON.parse(text) : {};
+      if (!res.ok || data.error) { setError(data.error ?? `El servidor respondió ${res.status}`); return; }
       setAlerts(data.alerts ?? []);
       setCounts(data.counts ?? null);
+      setStoreErrors(data.storeErrors ?? []);
       setLastUpdated(new Date());
     } catch (e: any) { setError(e.message); }
     finally { setLoading(false); }
@@ -142,6 +146,11 @@ export default function NovedadesPage() {
       </div>
 
       {error && <div style={{ padding: 14, borderRadius: 10, background: "#FEE2E2", color: "#991B1B", marginBottom: 16 }}>Error: {error}</div>}
+      {!error && storeErrors.length > 0 && (
+        <div style={{ padding: 14, borderRadius: 10, background: "#FEF3C7", color: "#92400E", marginBottom: 16 }}>
+          Alarmas parciales: no respondió {storeErrors.map((item) => item.store).join(", ")}.
+        </div>
+      )}
 
       {loading && (
         <div style={{ padding: 60, textAlign: "center" }}>

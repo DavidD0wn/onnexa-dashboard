@@ -26,6 +26,8 @@ interface SummaryData {
   recent: number;
 }
 
+interface StoreError { store: string; error: string }
+
 const MON_NAMES = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
 const DAY_NAMES = ["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"];
 
@@ -45,18 +47,21 @@ export default function PedidosPendientesPage() {
   const [summary, setSummary] = useState<SummaryData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState<string | null>(null);
-  const [store,   setStore]   = useState<"all"|"glowmmi"|"balancea">("all");
+  const [storeErrors, setStoreErrors] = useState<StoreError[]>([]);
+  const [store,   setStore]   = useState<"all"|"glowmmi"|"balancea"|"pleena">("all");
   const [search,  setSearch]  = useState("");
   const [urgency, setUrgency] = useState<"all"|"urgent"|"warning"|"recent">("all");
 
   const load = useCallback(async () => {
-    setLoading(true); setError(null);
+    setLoading(true); setError(null); setStoreErrors([]);
     try {
       const res  = await fetch(`/api/shopify/pending-orders?store=${store}`);
-      const data = await res.json();
-      if (data.error) { setError(data.error); return; }
+      const text = await res.text();
+      const data = text ? JSON.parse(text) : {};
+      if (!res.ok || data.error) { setError(data.error ?? `Shopify respondió ${res.status}`); return; }
       setOrders(data.orders ?? []);
       setSummary(data.summary ?? null);
+      setStoreErrors(data.storeErrors ?? []);
     } catch (e: any) { setError(e.message); }
     finally { setLoading(false); }
   }, [store]);
@@ -84,15 +89,15 @@ export default function PedidosPendientesPage() {
           <p style={{ fontSize: 13, color: "var(--text-3)", marginTop: 4 }}>Órdenes pagadas sin fulfillment — en tiempo real desde Shopify</p>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {(["all","glowmmi","balancea"] as const).map((s) => (
+          {(["all","glowmmi","balancea","pleena"] as const).map((s) => (
             <button key={s} onClick={() => setStore(s)} style={{
               padding: "7px 14px", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer",
               border: "1.5px solid",
-              borderColor: store === s ? (s === "glowmmi" ? "#EC4899" : s === "balancea" ? "#10B981" : "#6366f1") : "var(--border)",
-              background:  store === s ? (s === "glowmmi" ? "#EC4899" : s === "balancea" ? "#10B981" : "#6366f1") : "var(--card)",
+              borderColor: store === s ? (s === "glowmmi" ? "#EC4899" : s === "balancea" ? "#10B981" : s === "pleena" ? "#8B5CF6" : "#6366f1") : "var(--border)",
+              background:  store === s ? (s === "glowmmi" ? "#EC4899" : s === "balancea" ? "#10B981" : s === "pleena" ? "#8B5CF6" : "#6366f1") : "var(--card)",
               color: store === s ? "#fff" : "var(--text-2)",
             }}>
-              {s === "all" ? "Todas" : s === "glowmmi" ? "🛍️ Glowmmi" : "🌿 Balancea"}
+              {s === "all" ? "Todas" : s === "glowmmi" ? "🛍️ Glowmmi" : s === "balancea" ? "🌿 Balancea" : "✨ Pleena"}
             </button>
           ))}
           <button onClick={load} style={{
@@ -148,6 +153,11 @@ export default function PedidosPendientesPage() {
       </div>
 
       {error && <div style={{ padding: 14, borderRadius: 10, background: "#FEE2E2", color: "#991B1B", marginBottom: 16 }}>Error: {error}</div>}
+      {!error && storeErrors.length > 0 && (
+        <div style={{ padding: 14, borderRadius: 10, background: "#FEF3C7", color: "#92400E", marginBottom: 16 }}>
+          Datos parciales: no respondió {storeErrors.map((item) => item.store).join(", ")}.
+        </div>
+      )}
 
       {loading && (
         <div style={{ display: "flex", justifyContent: "center", padding: 60 }}>
@@ -189,7 +199,7 @@ export default function PedidosPendientesPage() {
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
                     <span style={{ fontWeight: 800, fontSize: 15, color: "var(--text)" }}>{order.name}</span>
                     <span style={{ width: 8, height: 8, borderRadius: "50%", background: order.brandColor, display: "inline-block" }} />
-                    <span style={{ fontSize: 12, color: "var(--text-3)" }}>{order.store === "glowmmi" ? "Glowmmi" : "Balancea"}</span>
+                    <span style={{ fontSize: 12, color: "var(--text-3)" }}>{order.store === "glowmmi" ? "Glowmmi" : order.store === "balancea" ? "Balancea" : "Pleena"}</span>
                     {order.country && <span style={{ fontSize: 11, color: "var(--text-3)", background: "var(--bg-2)", padding: "1px 7px", borderRadius: 10 }}>{order.country}</span>}
                   </div>
                   <p style={{ fontSize: 13, color: "var(--text-2)", marginBottom: 8 }}><strong>{order.customerName}</strong> · {order.email}</p>

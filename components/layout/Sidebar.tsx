@@ -9,7 +9,7 @@ import {
   LayoutDashboard, TrendingUp, BarChart2, Calendar, DollarSign,
   Megaphone, Package, BarChart3, Globe, Calculator, FlaskConical,
   Tag, Layers, CheckSquare, Upload, Truck, Bell, FileText,
-  Settings, ChevronDown, Moon, Sun, X, Telescope, Bot, Mail, Target, ShoppingBag, Table2, Users, AppWindow, Boxes, BookOpen, Flame,
+  Settings, ChevronDown, Moon, Sun, X, Telescope, Bot, Mail, ShoppingBag, Table2, Users, AppWindow, Boxes, BookOpen, Flame,
 } from "lucide-react";
 
 /* ── Mark ──────────────────────────────────────────────────── */
@@ -55,7 +55,6 @@ const GROUPS = [
     defaultOpen: false,
     items: [
       { label: "Ads",               href: "/ads",        icon: Megaphone   },
-      { label: "Testeos",           href: "/testeos",    icon: Target      },
       { label: "Mapa de Calor",     href: "/mapa-calor", icon: Flame       },
       { label: "Product Analytics", href: "/analytics",  icon: BarChart3   },
       { label: "COGS / Costos",     href: "/costos",     icon: DollarSign  },

@@ -10,43 +10,20 @@
  */
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import {
+  fetchShopifyPaginated,
+  getShopifyStores,
+  isShopifyStoreConfigured,
+  shopifyRestUrl,
+  type ShopifyStoreConfig,
+} from "@/lib/integrations/shopify";
 
-const STORES = {
-  glowmmi: {
-    shop: "glm-1694.myshopify.com",
-    clientId: process.env.SHOPIFY_GLOWMMI_CLIENT_ID ?? "",
-    clientSecret: process.env.SHOPIFY_GLOWMMI_CLIENT_SECRET ?? "",
-    authType: "json" as const, key: "glowmmi", brandColor: "#EC4899",
-  },
-  balancea: {
-    shop: "mp0vab-bw.myshopify.com",
-    clientId: process.env.SHOPIFY_BALANCEA_CLIENT_ID ?? "",
-    clientSecret: process.env.SHOPIFY_BALANCEA_CLIENT_SECRET ?? "",
-    authType: "urlencoded" as const, key: "balancea", brandColor: "#10B981",
-  },
-};
-
-async function getToken(s: typeof STORES[keyof typeof STORES]) {
-  const url  = `https://${s.shop}/admin/oauth/access_token`;
-  const body = s.authType === "urlencoded"
-    ? new URLSearchParams({ grant_type: "client_credentials", client_id: s.clientId, client_secret: s.clientSecret }).toString()
-    : JSON.stringify({ client_id: s.clientId, client_secret: s.clientSecret, grant_type: "client_credentials" });
-  const res  = await fetch(url, { method: "POST", headers: { "Content-Type": s.authType === "urlencoded" ? "application/x-www-form-urlencoded" : "application/json" }, body });
-  return (await res.json()).access_token as string;
-}
-
-async function fetchOrders(shop: string, token: string, params: string) {
-  const all: any[] = [];
-  let url = `https://${shop}/admin/api/${process.env.SHOPIFY_API_VERSION || "2026-07"}/orders.json?${params}&limit=250`;
-  while (url) {
-    const res  = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-    if (!res.ok) break;
-    const data = await res.json();
-    all.push(...(data.orders ?? []));
-    const next = (res.headers.get("Link") ?? "").match(/<([^>]+)>;\s*rel="next"/);
-    url = next ? next[1] : "";
-  }
-  return all;
+async function fetchOrders(store: ShopifyStoreConfig, params: string) {
+  return fetchShopifyPaginated<any>(
+    store,
+    shopifyRestUrl(store, `orders.json?${params}&limit=250`),
+    "orders",
+  );
 }
 
 /* Palabras clave en tags/notas que indican un problema de entrega confirmado */
@@ -69,17 +46,21 @@ export async function GET() {
     store?: string; brandColor?: string; shopUrl?: string;
     orderId?: string; createdAt: string; daysSince?: number;
   }[] = [];
+  const storeErrors: Array<{ store: string; error: string }> = [];
 
   const now = Date.now();
 
   // ── Shopify alerts ─────────────────────────────────────────────────────────
-  for (const store of Object.values(STORES)) {
+  const stores = Object.values(getShopifyStores());
+  for (const store of stores) {
     try {
-      const token = await getToken(store);
+      if (!isShopifyStoreConfigured(store)) {
+        throw new Error("Credenciales no configuradas");
+      }
 
       // 1. Unfulfilled >10 days
       const cutoff10 = new Date(now - 10 * 864e5).toISOString();
-      const unfulfilledOld = await fetchOrders(store.shop, token,
+      const unfulfilledOld = await fetchOrders(store,
         `fulfillment_status=unfulfilled&financial_status=paid&status=open&created_at_max=${cutoff10}&fields=id,name,created_at,email,customer,total_price,currency`
       );
       for (const o of unfulfilledOld) {
@@ -92,7 +73,7 @@ export async function GET() {
           detail:      `${o.name} — ${o.customer?.first_name ?? "cliente"} | ${o.currency} ${o.total_price}`,
           orderName:   o.name,
           store:       store.key,
-          brandColor:  store.brandColor,
+          brandColor:  store.color,
           shopUrl:     store.shop,
           orderId:     String(o.id),
           createdAt:   o.created_at,
@@ -102,7 +83,7 @@ export async function GET() {
 
       // 2. Fulfilled but no tracking >10 days
       const since30 = new Date(now - 30 * 864e5).toISOString();
-      const fulfilledOrders = await fetchOrders(store.shop, token,
+      const fulfilledOrders = await fetchOrders(store,
         `fulfillment_status=fulfilled&financial_status=paid&created_at_min=${since30}&fields=id,name,created_at,fulfillments,customer,total_price,currency`
       );
       for (const o of fulfilledOrders) {
@@ -120,7 +101,7 @@ export async function GET() {
               detail:     `${o.name} — cumplido pero sin tracking | ${o.currency} ${o.total_price}`,
               orderName:  o.name,
               store:      store.key,
-              brandColor: store.brandColor,
+              brandColor: store.color,
               shopUrl:    store.shop,
               orderId:    String(o.id),
               createdAt:  o.created_at,
@@ -132,7 +113,7 @@ export async function GET() {
 
       // 3. Recently cancelled (last 3 days)
       const since3 = new Date(now - 3 * 864e5).toISOString();
-      const cancelled = await fetchOrders(store.shop, token,
+      const cancelled = await fetchOrders(store,
         `status=cancelled&cancelled_at_min=${since3}&fields=id,name,created_at,cancelled_at,cancel_reason,total_price,currency,customer`
       );
       for (const o of cancelled) {
@@ -144,7 +125,7 @@ export async function GET() {
           detail:     `${o.name} — ${o.cancel_reason ?? "sin motivo"} | ${o.currency} ${o.total_price}`,
           orderName:  o.name,
           store:      store.key,
-          brandColor: store.brandColor,
+          brandColor: store.color,
           shopUrl:    store.shop,
           orderId:    String(o.id),
           createdAt:  o.cancelled_at ?? o.created_at,
@@ -156,7 +137,7 @@ export async function GET() {
       //    b) Órdenes cumplidas >28 días a USA
       //    c) Cualquier orden con tag de devolución/problema en los últimos 60 días
       const since60 = new Date(now - 60 * 864e5).toISOString();
-      const recentFulfilled = await fetchOrders(store.shop, token,
+      const recentFulfilled = await fetchOrders(store,
         `fulfillment_status=fulfilled&financial_status=paid&created_at_min=${since60}` +
         `&fields=id,name,created_at,fulfillments,customer,total_price,currency,shipping_address,tags`
       );
@@ -178,7 +159,7 @@ export async function GET() {
             detail:     `${o.name} — ${shippingCountry || "?"} | ${o.currency} ${o.total_price} | Tag: ${tags.slice(0, 60)}`,
             orderName:  o.name,
             store:      store.key,
-            brandColor: store.brandColor,
+            brandColor: store.color,
             shopUrl:    store.shop,
             orderId:    String(o.id),
             createdAt:  o.created_at,
@@ -197,7 +178,7 @@ export async function GET() {
             detail:     `${o.name} — enviado hace ${daysSinceFulfil} días, sin confirmación de entrega | ${o.currency} ${o.total_price}`,
             orderName:  o.name,
             store:      store.key,
-            brandColor: store.brandColor,
+            brandColor: store.color,
             shopUrl:    store.shop,
             orderId:    String(o.id),
             createdAt:  o.created_at,
@@ -216,7 +197,7 @@ export async function GET() {
             detail:     `${o.name} — enviado hace ${daysSinceFulfil} días sin confirmación | ${o.currency} ${o.total_price}`,
             orderName:  o.name,
             store:      store.key,
-            brandColor: store.brandColor,
+            brandColor: store.color,
             shopUrl:    store.shop,
             orderId:    String(o.id),
             createdAt:  o.created_at,
@@ -228,6 +209,7 @@ export async function GET() {
 
     } catch (e: any) {
       console.error(`[novedades] ${store.shop}:`, e.message);
+      storeErrors.push({ store: store.key, error: e.message });
     }
   }
 
@@ -288,5 +270,17 @@ export async function GET() {
     total:    alerts.length,
   };
 
-  return NextResponse.json({ alerts, counts });
+  const payload = {
+    alerts,
+    counts,
+    dataComplete: storeErrors.length === 0,
+    storeErrors,
+  };
+  if (storeErrors.length === stores.length) {
+    return NextResponse.json(
+      { ...payload, error: "Shopify no respondió para ninguna tienda. Las alarmas no están completas." },
+      { status: 502 },
+    );
+  }
+  return NextResponse.json(payload);
 }
