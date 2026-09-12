@@ -39,6 +39,21 @@ function hasDeliveryIssueTag(tags: string): boolean {
   return DELIVERY_ISSUE_TAGS.some((kw) => t.includes(kw));
 }
 
+function latestFulfillment(fulfillments: any[]): any {
+  const successful = (fulfillments ?? []).filter((item: any) => item?.status === "success");
+  const candidates = successful.length > 0 ? successful : (fulfillments ?? []).filter(Boolean);
+  return [...candidates].sort((a, b) =>
+    new Date(b.updated_at ?? b.created_at ?? 0).getTime() -
+    new Date(a.updated_at ?? a.created_at ?? 0).getTime()
+  )[0] ?? {};
+}
+
+const SHIPMENT_ISSUES: Record<string, { title: string; severity: "critical" | "warning" }> = {
+  failure: { title: "Problema confirmado por la paquetería", severity: "critical" },
+  attempted_delivery: { title: "Intento de entrega fallido", severity: "warning" },
+  ready_for_pickup: { title: "Pedido listo para recoger", severity: "warning" },
+};
+
 export async function GET() {
   const alerts: {
     id: string; type: string; severity: "critical"|"warning"|"info";
@@ -145,7 +160,12 @@ export async function GET() {
       for (const o of recentFulfilled) {
         const shippingCountry = (o.shipping_address?.country_code ?? "").toUpperCase();
         const tags            = o.tags ?? "";
-        const fulfillDate     = (o.fulfillments?.[0]?.created_at) ?? o.created_at;
+        const fulfillment     = latestFulfillment(o.fulfillments ?? []);
+        const shipmentStatus  = String(fulfillment.shipment_status ?? "").toLowerCase();
+        // Shopify/17TRACK ya confirmó la entrega: no generar alarmas por antigüedad.
+        if (shipmentStatus === "delivered") continue;
+
+        const fulfillDate     = fulfillment.created_at ?? o.created_at;
         const daysSinceFulfil = Math.floor((now - new Date(fulfillDate).getTime()) / 864e5);
 
         // Check by tag first (confirmed issues)
@@ -164,6 +184,25 @@ export async function GET() {
             orderId:    String(o.id),
             createdAt:  o.created_at,
             daysSince,
+          });
+          continue;
+        }
+
+        const shipmentIssue = SHIPMENT_ISSUES[shipmentStatus];
+        if (shipmentIssue) {
+          alerts.push({
+            id:         `shipment-${shipmentStatus}-${o.id}`,
+            type:       "delivery_issue",
+            severity:   shipmentIssue.severity,
+            title:      shipmentIssue.title,
+            detail:     `${o.name} — ${shippingCountry || "?"} | ${o.currency} ${o.total_price}`,
+            orderName:  o.name,
+            store:      store.key,
+            brandColor: store.color,
+            shopUrl:    store.shop,
+            orderId:    String(o.id),
+            createdAt:  fulfillment.updated_at ?? o.created_at,
+            daysSince:  daysSinceFulfil,
           });
           continue;
         }
@@ -263,15 +302,26 @@ export async function GET() {
     return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
   });
 
+  // Una sola alarma operativa por pedido. Como ya están ordenadas por severidad,
+  // se conserva primero la más importante y se eliminan duplicados heurísticos.
+  const seenOrders = new Set<string>();
+  const dedupedAlerts = alerts.filter((alert) => {
+    if (!alert.store || !alert.orderId) return true;
+    const key = `${alert.store}|${alert.orderId}`;
+    if (seenOrders.has(key)) return false;
+    seenOrders.add(key);
+    return true;
+  });
+
   const counts = {
-    critical: alerts.filter((a) => a.severity === "critical").length,
-    warning:  alerts.filter((a) => a.severity === "warning").length,
-    info:     alerts.filter((a) => a.severity === "info").length,
-    total:    alerts.length,
+    critical: dedupedAlerts.filter((a) => a.severity === "critical").length,
+    warning:  dedupedAlerts.filter((a) => a.severity === "warning").length,
+    info:     dedupedAlerts.filter((a) => a.severity === "info").length,
+    total:    dedupedAlerts.length,
   };
 
   const payload = {
-    alerts,
+    alerts: dedupedAlerts,
     counts,
     dataComplete: storeErrors.length === 0,
     storeErrors,
