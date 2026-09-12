@@ -19,7 +19,7 @@ function noiseReason(fromAddress: string, subject: string): string | null {
   const subj = (subject ?? "").toLowerCase();
 
   // 1) Rebotes y remitentes automáticos
-  if (/mailer-daemon|postmaster|no-?reply|donotreply|bounce@|notifications?@/.test(from))
+  if (/mailer-daemon|postmaster|no[_-]?reply|donotreply|bounce@|notifications?@/.test(from))
     return "remitente automático";
   if (/undelivered mail|delivery status notification|mail delivery (failed|subsystem)|returned to sender|failure notice/.test(subj))
     return "rebote de correo";
@@ -315,7 +315,7 @@ export async function GET() {
             try {
               const brandName = brandFromEmail(config.emailAddress);
               // Datos reales de Shopify (la IA NO debe inventar estados de envío)
-              const ctx = await getOrderContext(msg.fromAddress, fullText);
+              const ctx = await getOrderContext(msg.fromAddress, fullText, brandName);
               const draft = await generateDraft({
                 inbound:      fullText,
                 fromName:     msg.sender ?? null,
@@ -347,7 +347,7 @@ export async function GET() {
               // Pausa breve entre correos: el plan free de Groq limita por minuto
               await new Promise((r) => setTimeout(r, 1500));
               continue;
-            } catch (aiErr: any) {
+            } catch {
               // Si la IA falla, guardar para atención manual (no perder el correo).
               // upsert y no create: si el messageId ya existe, un create lanzaría
               // "Unique constraint failed" y abortaba TODO el buzón.
@@ -356,7 +356,7 @@ export async function GET() {
                   where:  { messageId: msg.messageId },
                   update: {
                     status:   "needs_attention",
-                    errorMsg: `IA falló: ${aiErr.message}`.slice(0, 300),
+                    errorMsg: "IA falló al generar el borrador. Reintenta la redacción.",
                   },
                   create: {
                     configId:    config.id,
@@ -367,7 +367,7 @@ export async function GET() {
                     inboundText: fullText,
                     status:      "needs_attention",
                     source:      "ai",
-                    errorMsg:    `IA falló: ${aiErr.message}`.slice(0, 300),
+                    errorMsg:    "IA falló al generar el borrador. Reintenta la redacción.",
                   },
                 });
               } catch { /* no romper el resto del buzón por un solo correo */ }

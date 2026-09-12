@@ -149,7 +149,10 @@ export async function generateDraft(input: {
   brandName:    "Glowmmi" | "Balancea";
   orderContext?: string | null;      // datos reales de Shopify (o null si no hay)
 }): Promise<AiDraft> {
-  const apiKey = process.env.GROQ_API_KEY;
+  // Vercel permite pegar valores multilínea por accidente. Tomar únicamente
+  // el primer token evita construir un header inválido si la clave quedó
+  // repetida y, además, impide que el valor completo termine en un error.
+  const apiKey = (process.env.GROQ_API_KEY ?? "").trim().split(/\s+/)[0];
   if (!apiKey) throw new Error("Falta GROQ_API_KEY en .env — créala gratis en groq.com");
 
   const contextBlock = input.orderContext?.trim()

@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
   for (const c of convs) {
     try {
       const brandName = brandFromEmail(c.config?.emailAddress ?? "");
-      const ctx = await getOrderContext(c.fromEmail, c.inboundText);
+      const ctx = await getOrderContext(c.fromEmail, c.inboundText, brandName);
       const draft = await generateDraft({
         inbound:      c.inboundText,
         fromName:     c.fromName,
@@ -48,6 +48,7 @@ export async function POST(req: NextRequest) {
           needsData:    JSON.stringify(draft.faltanDatos),
           orderContext: ctx.found ? ctx.text : null,
           status:       draft.escalar ? "escalated" : "draft",
+          errorMsg:     null,
         },
       });
       regen++;
