@@ -32,6 +32,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const conv = await prisma.zohoConversation.findUnique({ where: { id } });
   if (!conv) return NextResponse.json({ error: "Borrador no encontrado" }, { status: 404 });
+  if (conv.hidden || !["draft", "escalated", "needs_attention", "error"].includes(conv.status)) {
+    return NextResponse.json({ error: "Este correo ya no está pendiente de envío" }, { status: 409 });
+  }
 
   const text = String(body.text ?? conv.aiDraft ?? "").trim();
   if (!text) return NextResponse.json({ error: "El borrador está vacío" }, { status: 400 });
@@ -40,10 +43,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   // Sacarlo de "draft" antes del envío evita duplicados si Zoho acepta el
   // correo y la escritura posterior en la base de datos falla.
-  await prisma.zohoConversation.update({
-    where: { id },
+  const reserved = await prisma.zohoConversation.updateMany({
+    where: { id, hidden: false, status: { in: ["draft", "escalated", "needs_attention", "error"] } },
     data: { status: "sending", errorMsg: null },
   });
+  if (reserved.count !== 1) {
+    return NextResponse.json({ error: "Este correo ya está en proceso o fue enviado" }, { status: 409 });
+  }
 
   try {
     // Misma implementación que el envío masivo (engancha el hilo con el Message-ID real)

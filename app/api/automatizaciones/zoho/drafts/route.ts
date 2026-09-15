@@ -7,7 +7,7 @@ import { prisma } from "@/lib/prisma";
 // GET: lista los borradores (draft) y escalados (escalated) no ocultos
 export async function GET(req: NextRequest) {
   const status = req.nextUrl.searchParams.get("status"); // opcional
-  const where: any = { hidden: false, source: "ai" };
+  const where: any = { hidden: false, source: { in: ["ai", "manual"] } };
   if (status) where.status = status;
   else where.status = { in: ["draft", "escalated", "needs_attention"] };
 

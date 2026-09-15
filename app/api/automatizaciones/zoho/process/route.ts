@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { timingSafeEqual } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import nodemailer from "nodemailer";
 import { generateDraft } from "@/lib/ai-responder";
@@ -102,9 +103,9 @@ async function getInboxFolderId(config: any, token: string): Promise<string> {
 }
 
 /* ── Listar mensajes del inbox ─────────────────────────────────── */
-async function fetchMessages(config: any, token: string, folderId: string) {
+async function fetchMessages(config: any, token: string, folderId: string, start = 1, limit = 50) {
   const res = await fetch(
-    `${config.apiDomain}/api/accounts/${config.accountId}/messages/view?folderId=${folderId}&start=1&limit=50`,
+    `${config.apiDomain}/api/accounts/${config.accountId}/messages/view?folderId=${folderId}&start=${start}&limit=${limit}`,
     { headers: { Authorization: `Zoho-oauthtoken ${token}` } }
   );
   const data = await res.json();
@@ -450,5 +451,89 @@ export async function GET() {
     return NextResponse.json({ ok: true, results, pendientes });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
+  }
+}
+
+/* ── POST: sincronización manual, SIN IA ni respuestas automáticas ── */
+export async function POST(req: NextRequest) {
+  const expected = process.env.ZOHO_CLIENT_SECRET ?? "";
+  const supplied = req.headers.get("x-zoho-manual-key") ?? "";
+  const valid = expected.length > 0 && supplied.length === expected.length &&
+    timingSafeEqual(Buffer.from(supplied), Buffer.from(expected));
+  if (!valid) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+
+  const body = await req.json().catch(() => ({}));
+  const mailbox = String(body.mailbox ?? "").toLowerCase();
+  if (!["contact@glowmmi.store", "contact@balanceaa.store"].includes(mailbox)) {
+    return NextResponse.json({ error: "Buzón inválido" }, { status: 400 });
+  }
+  const start = Math.max(1, Math.min(2000, Math.floor(Number(body.start ?? 1)) || 1));
+  const limit = Math.max(1, Math.min(20, Math.floor(Number(body.limit ?? 20)) || 20));
+  const days = Math.max(1, Math.min(365, Math.floor(Number(body.days ?? 30)) || 30));
+  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+
+  try {
+    const config = await prisma.zohoBotConfig.findFirst({ where: { emailAddress: mailbox } });
+    if (!config) return NextResponse.json({ error: "Buzón no conectado" }, { status: 404 });
+    const token = await getAccessToken(config);
+    const folderId = await getInboxFolderId(config, token);
+    const messages = await fetchMessages(config, token, folderId, start, limit);
+    let imported = 0, alreadyRecorded = 0, noise = 0, older = 0, errors = 0;
+
+    for (const msg of messages) {
+      const receivedTime = Number(msg.receivedTime ?? 0);
+      if (receivedTime && receivedTime < cutoff) { older++; continue; }
+      const messageId = String(msg.messageId ?? "");
+      const fromEmail = String(msg.fromAddress ?? "").trim();
+      if (!messageId || !fromEmail || ["contact@glowmmi.store", "contact@balanceaa.store"].includes(fromEmail.toLowerCase())) continue;
+      const exists = await prisma.zohoConversation.findUnique({ where: { messageId }, select: { id: true } });
+      if (exists) { alreadyRecorded++; continue; }
+
+      const reason = noiseReason(fromEmail, String(msg.subject ?? ""));
+      if (reason) {
+        await prisma.zohoConversation.create({
+          data: {
+            configId: config.id, messageId, fromEmail,
+            fromName: msg.sender ?? null,
+            subject: msg.subject ?? "(sin asunto)",
+            inboundText: `[Descartado automáticamente: ${reason}]`,
+            status: "skipped", source: "filter",
+          },
+        });
+        noise++;
+        continue;
+      }
+
+      try {
+        const messageFolder = String(msg.folderId ?? folderId);
+        const [content, rfcMessageId] = await Promise.all([
+          getContent(config, token, messageFolder, messageId),
+          getRfcMessageId(config, token, messageFolder, messageId),
+        ]);
+        await prisma.zohoConversation.create({
+          data: {
+            configId: config.id, messageId, fromEmail,
+            fromName: msg.sender ?? null,
+            subject: msg.subject ?? "(sin asunto)",
+            inboundText: `${msg.subject ?? ""} ${content || stripHtml(msg.summary ?? "")}`.trim(),
+            rfcMessageId,
+            status: "needs_attention", source: "manual",
+          },
+        });
+        imported++;
+      } catch { errors++; }
+    }
+
+    // Una página intermedia no equivale a haber revisado todo el buzón.
+    if (messages.length < limit || older === messages.length) {
+      await prisma.zohoBotConfig.update({ where: { id: config.id }, data: { lastSyncAt: new Date() } });
+    }
+    return NextResponse.json({
+      ok: true, mailbox, start, limit, pageCount: messages.length,
+      imported, alreadyRecorded, noise, older, errors,
+      oldestReceivedTime: messages.length ? Math.min(...messages.map((m) => Number(m.receivedTime ?? Date.now()))) : null,
+    });
+  } catch (error: any) {
+    return NextResponse.json({ error: String(error?.message ?? "Fallo de Zoho").slice(0, 200) }, { status: 502 });
   }
 }
