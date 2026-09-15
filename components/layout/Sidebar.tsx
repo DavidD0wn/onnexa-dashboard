@@ -302,6 +302,18 @@ export function Sidebar() {
   const [localFrom, setLocalFrom] = useState(customFrom ?? "");
   const [localTo,   setLocalTo]   = useState(customTo   ?? "");
 
+  // "Hoy" para el tope del selector. Se calcula en el cliente tras montar,
+  // porque si se evalúa en el render estático (SSG) queda CONGELADO con la
+  // fecha del último deploy y el selector no deja pasar de ese día.
+  const [maxToday, setMaxToday] = useState("");
+  useEffect(() => {
+    const upd = () => setMaxToday(new Date().toLocaleDateString("en-CA")); // YYYY-MM-DD local
+    upd();
+    // Reajusta si la pestaña queda abierta y cruza la medianoche.
+    const id = setInterval(upd, 60 * 60 * 1000);
+    return () => clearInterval(id);
+  }, []);
+
   const handleApplyRange = () => {
     if (localFrom && localTo && localFrom <= localTo) {
       setCustomRange(localFrom, localTo);
@@ -504,7 +516,7 @@ export function Sidebar() {
                 type="date"
                 value={localTo}
                 min={localFrom || undefined}
-                max={new Date().toISOString().split("T")[0]}
+                max={maxToday || undefined}
                 onChange={(e) => handleToChange(e.target.value)}
                 style={{
                   width: "100%",
