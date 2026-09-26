@@ -15,7 +15,7 @@ type ProductRow = {
   countryCode: string; countryName: string;
   revenueUsd: number; revenueLocal: number;
   units: number; orders: number; lastSeen: string;
-  costPerUnit: number; cogsUsd: number; adSpendUsd: number; totalCost: number;
+  costPerUnit: number; cogsUsd: number; adSpendUsd: number; feesUsd: number; totalCost: number;
   aov: number; cpaBE: number | null;
   grossProfit: number; grossMargin: number;
   netProfit: number; netMargin: number;
@@ -30,7 +30,7 @@ type ProductRow = {
 
 type Totals = {
   revenueUsd: number; units: number; orders: number; uniqueOrders?: number;
-  cogsUsd: number; adSpendUsd: number; totalCost: number;
+  cogsUsd: number; adSpendUsd: number; feesUsd?: number; totalCost: number;
   grossProfit: number; grossMargin: number;
   netProfit: number; netMargin: number; roas: number | null;
 };
@@ -159,12 +159,13 @@ const ALL_COLS_COUNTRY: ColDef[] = [
   { key: "countryCode",       label: "País",         width: 110, always: true },
   { key: "storeName",         label: "Tienda",       width: 155 },
   { key: "revenueUsd",        label: "Revenue USD",  width: 125, right: true },
-  { key: "totalCost",         label: "Gasto Total",  width: 120, right: true, tooltip: "COGS + Ad Spend — costo total por producto" },
+  { key: "totalCost",         label: "Gasto Var. Total", width: 130, right: true, tooltip: "Gasto variable total: COGS + Ad Spend + Fees + Envío + Impuestos + Devoluciones" },
   { key: "units",             label: "Unidades",     width: 95,  right: true },
   { key: "orders",            label: "Pedidos",      width: 90,  right: true },
   { key: "aov",               label: "AOV",          width: 90,  right: true },
   { key: "cogsUsd",           label: "COGS Total",   width: 115, right: true },
   { key: "adSpendUsd",        label: "Ad Spend",     width: 115, right: true },
+  { key: "feesUsd",           label: "Fees",         width: 105, right: true, tooltip: "Comisiones de pasarela de pago (Shopify Payments) del producto" },
   { key: "cpa",               label: "CPA Real",     width: 95,  right: true, tooltip: "Gasto total en ads ÷ pedidos reales en Shopify" },
   { key: "cpaAds",            label: "CPA Ads",      width: 95,  right: true, tooltip: "Gasto en ads ÷ compras atribuidas por Meta Ads" },
   { key: "cpaBE",             label: "CPA BE",       width: 95,  right: true, tooltip: "CPA máximo para no perder dinero (Break Even)" },
@@ -172,8 +173,8 @@ const ALL_COLS_COUNTRY: ColDef[] = [
   { key: "roas",              label: "ROAS Blend.",  width: 90,  right: true, tooltip: "Revenue real en Shopify ÷ Ad Spend (Blended ROAS)" },
   { key: "grossProfit",       label: "Ut. Bruta",    width: 115, right: true },
   { key: "grossMargin",       label: "Mg. Bruto",    width: 100, right: true },
-  { key: "netProfit",         label: "Ut. Neta",     width: 115, right: true },
-  { key: "netMargin",         label: "Mg. Neto",     width: 100, right: true },
+  { key: "netProfit",         label: "Ut. Contrib", width: 115, right: true, tooltip: "Utilidad de contribución = Revenue − gastos variables" },
+  { key: "netMargin",         label: "Mg. Contrib", width: 105, right: true, tooltip: "Margen de contribución = Ut. contribución ÷ Revenue" },
   { key: "status",            label: "Estado",       width: 140 },
   { key: "dataQuality",       label: "DQ",           width: 130 },
   { key: "sessions",          label: "Visitas",      width: 90,  right: true },
@@ -192,8 +193,8 @@ const COLS_GENERAL = [
   { key: "adSpendUsd",  label: "Ad Spend",      width: 115, right: true },
   { key: "grossProfit", label: "Ut. Bruta",     width: 115, right: true },
   { key: "grossMargin", label: "Mg. Bruto",     width: 100, right: true },
-  { key: "netProfit",   label: "Ut. Neta",      width: 115, right: true },
-  { key: "netMargin",   label: "Mg. Neto",      width: 100, right: true },
+  { key: "netProfit",   label: "Ut. Contrib",   width: 115, right: true },
+  { key: "netMargin",   label: "Mg. Contrib",   width: 105, right: true },
   { key: "cpa",         label: "CPA",           width: 90,  right: true },
   { key: "roas",        label: "ROAS",          width: 85,  right: true },
   { key: "status",      label: "Estado",        width: 140 },
@@ -208,8 +209,8 @@ const COLS_STORE = [
   { key: "adSpendUsd",  label: "Ad Spend",      width: 115, right: true },
   { key: "cogsUsd",     label: "COGS",          width: 110, right: true },
   { key: "grossProfit", label: "Ut. Bruta",     width: 115, right: true },
-  { key: "netProfit",   label: "Ut. Neta",      width: 115, right: true },
-  { key: "netMargin",   label: "Mg. Neto",      width: 100, right: true },
+  { key: "netProfit",   label: "Ut. Contrib",   width: 115, right: true },
+  { key: "netMargin",   label: "Mg. Contrib",   width: 105, right: true },
   { key: "roas",        label: "ROAS",          width: 85,  right: true },
   { key: "cpa",         label: "CPA",           width: 90,  right: true },
   { key: "productCount",label: "Productos",     width: 90,  right: true },
@@ -757,7 +758,7 @@ export default function ProductAnalyticsPage() {
           name: r.name, variant: r.variant,
           brandId: r.brandId, brandName: r.brandName, brandColor: r.brandColor,
           revenueUsd: 0, units: 0, orders: 0, lastSeen: r.lastSeen,
-          costPerUnit: 0, cogsUsd: 0, adSpendUsd: 0, totalCost: 0,
+          costPerUnit: 0, cogsUsd: 0, adSpendUsd: 0, feesUsd: 0, totalCost: 0,
           aov: 0, cpaBE: null,
           grossProfit: 0, grossMargin: 0, netProfit: 0, netMargin: 0,
           roas: null, cpa: null, cpaAds: null, roasAds: null, campaignPurchases: 0, campaignConversionValue: 0,
@@ -773,6 +774,7 @@ export default function ProductAnalyticsPage() {
       g.orders                += r.orders;
       g.cogsUsd               += r.cogsUsd;
       g.adSpendUsd            += r.adSpendUsd;
+      g.feesUsd               += r.feesUsd;
       g.totalCost             += r.totalCost;        // sum API-calculated totalCost
       g.grossProfit           += r.grossProfit;      // sum API-calculated grossProfit
       g.netProfit             += r.netProfit;        // sum API-calculated netProfit (incl fees+shipping)
@@ -857,7 +859,8 @@ export default function ProductAnalyticsPage() {
   // ── Totals row ───────────────────────────────────
   type DisplayTotals = {
     count: number; revenueUsd: number; units: number; orders: number;
-    cogsUsd: number; adSpendUsd: number; grossProfit: number; netProfit: number;
+    cogsUsd: number; adSpendUsd: number; feesUsd: number; totalCost: number;
+    grossProfit: number; netProfit: number;
     campaignPurchases: number; campaignConversionValue: number;
     sessions: number; addToCart: number;
     aov: number; grossMargin: number; netMargin: number;
@@ -867,18 +870,21 @@ export default function ProductAnalyticsPage() {
 
   const computeTotals = (src: Array<{
     revenueUsd: number; units: number; orders: number; cogsUsd: number; adSpendUsd: number;
+    feesUsd?: number; totalCost?: number;
     grossProfit: number; netProfit: number;
     campaignPurchases?: number; campaignConversionValue?: number;
     sessions?: number | null; addToCart?: number | null;
   }>): DisplayTotals | null => {
     if (src.length === 0) return null;
-    type Acc = { revenueUsd: number; units: number; orders: number; cogsUsd: number; adSpendUsd: number; grossProfit: number; netProfit: number; campaignPurchases: number; campaignConversionValue: number; sessions: number; addToCart: number; count: number };
+    type Acc = { revenueUsd: number; units: number; orders: number; cogsUsd: number; adSpendUsd: number; feesUsd: number; totalCost: number; grossProfit: number; netProfit: number; campaignPurchases: number; campaignConversionValue: number; sessions: number; addToCart: number; count: number };
     const t = src.reduce((a: Acc, r): Acc => ({
       revenueUsd:              a.revenueUsd  + r.revenueUsd,
       units:                   a.units       + r.units,
       orders:                  a.orders      + r.orders,
       cogsUsd:                 a.cogsUsd     + r.cogsUsd,
       adSpendUsd:              a.adSpendUsd  + r.adSpendUsd,
+      feesUsd:                 a.feesUsd     + (r.feesUsd   ?? 0),
+      totalCost:               a.totalCost   + (r.totalCost ?? 0),
       grossProfit:             a.grossProfit + r.grossProfit,
       netProfit:               a.netProfit   + r.netProfit,
       campaignPurchases:       a.campaignPurchases       + (r.campaignPurchases       ?? 0),
@@ -886,7 +892,7 @@ export default function ProductAnalyticsPage() {
       sessions:                a.sessions    + (r.sessions  ?? 0),
       addToCart:               a.addToCart   + (r.addToCart ?? 0),
       count:                   a.count + 1,
-    }), { revenueUsd: 0, units: 0, orders: 0, cogsUsd: 0, adSpendUsd: 0, grossProfit: 0, netProfit: 0, campaignPurchases: 0, campaignConversionValue: 0, sessions: 0, addToCart: 0, count: 0 } as Acc);
+    }), { revenueUsd: 0, units: 0, orders: 0, cogsUsd: 0, adSpendUsd: 0, feesUsd: 0, totalCost: 0, grossProfit: 0, netProfit: 0, campaignPurchases: 0, campaignConversionValue: 0, sessions: 0, addToCart: 0, count: 0 } as Acc);
     return {
       ...t,
       aov:          t.orders > 0 ? t.revenueUsd / t.orders : 0,
@@ -996,6 +1002,8 @@ export default function ProductAnalyticsPage() {
       }
       case "adSpendUsd":
         return <span style={{ color: r.adSpendUsd > 0 ? "#f87171" : "rgba(255,255,255,0.3)" }}>{r.adSpendUsd > 0 ? `$${usd(r.adSpendUsd)}` : "—"}</span>;
+      case "feesUsd":
+        return <span style={{ color: r.feesUsd > 0 ? "#f87171" : "rgba(255,255,255,0.3)" }}>{r.feesUsd > 0 ? `($${usd(r.feesUsd)})` : "—"}</span>;
       case "totalCost": {
         const v = r.totalCost;
         if (v === 0) return <span style={{ color: "rgba(255,255,255,0.25)" }}>—</span>;
@@ -1120,8 +1128,9 @@ export default function ProductAnalyticsPage() {
       case "aov":         return <span style={{ color: "rgba(255,255,255,0.7)", fontWeight: 600, fontSize: 13 }}>{t.aov > 0 ? `$${usd(t.aov)}` : "—"}</span>;
       case "cogsUsd":     return t.cogsUsd > 0 ? <span style={red}>(${usd(t.cogsUsd)})</span> : <span style={dim}>—</span>;
       case "adSpendUsd":  return t.adSpendUsd > 0 ? <span style={red}>${usd(t.adSpendUsd)}</span> : <span style={dim}>—</span>;
+      case "feesUsd":     return (t.feesUsd ?? 0) > 0 ? <span style={red}>(${usd(t.feesUsd)})</span> : <span style={dim}>—</span>;
       case "totalCost": {
-        const v = t.cogsUsd + t.adSpendUsd;
+        const v = t.totalCost > 0 ? t.totalCost : (t.cogsUsd + t.adSpendUsd);
         if (v === 0) return <span style={dim}>—</span>;
         const pct_ = t.revenueUsd > 0 ? (v / t.revenueUsd) * 100 : 0;
         return (
@@ -1298,7 +1307,7 @@ export default function ProductAnalyticsPage() {
         <div style={{ display: "flex", gap: 12, marginBottom: 24, flexWrap: "wrap" }}>
           <KPI label="Revenue total"  value={`$${usd(visibleTotals.revenueUsd)}`}  sub={`${search || statusFilter !== "all" ? visibleTotals.orders : (totals.uniqueOrders ?? visibleTotals.orders)} pedidos`} icon={TrendingUp} accent="#0E766E" />
           <KPI label="Ut. Bruta"      value={`$${usd(visibleTotals.grossProfit)}`} sub={pct(visibleTotals.grossMargin)} icon={DollarSign}  accent={visibleTotals.grossProfit >= 0 ? "#10B981" : "#EF4444"} />
-          <KPI label="Ut. Neta"       value={`$${usd(visibleTotals.netProfit)}`}   sub={pct(visibleTotals.netMargin)}   icon={ShoppingCart} accent={visibleTotals.netProfit >= 0 ? "#10B981" : "#EF4444"} />
+          <KPI label="Ut. Contrib"    value={`$${usd(visibleTotals.netProfit)}`}   sub={pct(visibleTotals.netMargin)}   icon={ShoppingCart} accent={visibleTotals.netProfit >= 0 ? "#10B981" : "#EF4444"} />
           <KPI label="Ad Spend Meta"  value={`$${usd(visibleTotals.adSpendUsd)}`}
                sub={search || statusFilter !== "all" ? "Productos visibles" : adReconciliation?.ok ? "Conciliado con Meta" : `Diferencia $${usd(Math.abs(adReconciliation?.difference ?? 0))}`}
                icon={DollarSign} accent={adReconciliation?.ok ? "#10B981" : "#EF4444"} />
