@@ -342,6 +342,64 @@ LIMIT 500`;
   }
 }
 
+// ─── Shopify ShopifyQL — net_sales EXACTO en USD por producto×país ──────────
+// Fuente de verdad para el revenue: usa la conversión propia de Shopify (no una
+// tasa externa), y net_sales ya viene neto de descuentos y devoluciones. Así el
+// revenue del dashboard cuadra al centavo con el reporte de Shopify.
+function shopCountryToCode(name: string): string {
+  const n = (name ?? "").toLowerCase();
+  if (n === "united states" || n === "usa" || n === "us") return "US";
+  if (n === "spain" || n === "españa" || n === "espana") return "ES";
+  if (n === "chile") return "CL";
+  return "MX"; // Shopify agrupa el resto donde el dashboard también los manda
+}
+
+async function fetchProductNetSalesUsd(
+  shop: string, token: string, brandId: string, since: string, until: string,
+): Promise<Record<string, { netSalesUsd: number; netItemsSold: number }>> {
+  const sinceDate = since.slice(0, 10);
+  const untilDate = until.slice(0, 10);
+  const ql = `FROM sales SHOW net_sales, net_items_sold GROUP BY product_title, shipping_country WITH TOTALS, CURRENCY 'USD' SINCE ${sinceDate} UNTIL ${untilDate} ORDER BY net_sales DESC LIMIT 1000`;
+  try {
+    const res = await fetch(`https://${shop}/admin/api/${process.env.SHOPIFY_API_VERSION || "2026-07"}/graphql.json`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
+      body: JSON.stringify({
+        query: `{ shopifyqlQuery(query: ${JSON.stringify(ql)}) { parseErrors tableData { columns { name } rows } } }`,
+      }),
+      signal: AbortSignal.timeout(20_000),
+    });
+    if (!res.ok) { console.warn(`[net_sales] ${shop} HTTP ${res.status}`); return {}; }
+    const json = await res.json();
+    const result = json?.data?.shopifyqlQuery;
+    const pe = result?.parseErrors;
+    const hasParseErrors = Array.isArray(pe) ? pe.length > 0
+      : typeof pe === "string" ? (pe.trim() !== "" && pe.trim() !== "[]" && pe.trim() !== "null") : !!pe;
+    if (hasParseErrors) { console.warn(`[net_sales] ${shop} parse:`, JSON.stringify(pe).slice(0, 150)); return {}; }
+    const rawRows = result?.tableData?.rows;
+    if (!rawRows) return {};
+    const rows: any[] = typeof rawRows === "string" ? JSON.parse(rawRows) : rawRows;
+    const out: Record<string, { netSalesUsd: number; netItemsSold: number }> = {};
+    for (const row of rows) {
+      const title = row.product_title;
+      if (title == null || title === "") continue;
+      const canonical = canonicalProductName(brandId, String(title));
+      const cc = shopCountryToCode(String(row.shipping_country ?? ""));
+      const key = `${canonical}||${cc}`;
+      const ns = parseFloat(row.net_sales ?? "0") || 0;
+      const ni = parseInt(row.net_items_sold ?? "0") || 0;
+      if (!out[key]) out[key] = { netSalesUsd: 0, netItemsSold: 0 };
+      out[key].netSalesUsd  += ns;
+      out[key].netItemsSold += ni;
+    }
+    console.log(`[net_sales] ${shop} → ${Object.keys(out).length} producto×país`);
+    return out;
+  } catch (e: any) {
+    console.warn(`[net_sales] ${shop} error:`, e?.message);
+    return {};
+  }
+}
+
 async function fetchOrders(store: AnalyticsStore, since: string, until: string) {
   const sharedStore = getShopifyStore(store.key);
   const orders = await fetchShopifyPaginated<any>(
@@ -730,6 +788,8 @@ export async function GET(req: NextRequest) {
 
   // funnel data per store (fetched in parallel with orders)
   const funnelByStore: Record<string, Record<string, FunnelRow>> = {};
+  // net_sales EXACTO en USD (de Shopify) por marca → "canonicalName||COUNTRY".
+  const netSalesByStore: Record<string, Record<string, { netSalesUsd: number; netItemsSold: number }>> = {};
 
   const products: Record<string, {
     name: string; variant: string;
@@ -769,11 +829,13 @@ export async function GET(req: NextRequest) {
       const token  = await getToken(store);
       const sharedStore = getShopifyStore(store.key);
       const storeOffsetHours = sharedStore.storeUtcOffset ?? -5;
-      const [orders, funnel] = await Promise.all([
+      const [orders, funnel, netSalesUsd] = await Promise.all([
         fetchOrders(store, since, until),
         fetchFunnelData(store.shop, token, since, until),
+        fetchProductNetSalesUsd(store.shop, token, store.brandId, since, until),
       ]);
       funnelByStore[store.brandId] = funnel;
+      netSalesByStore[store.brandId] = netSalesUsd;
 
       for (const order of orders) {
         const rawCC = ((order.shipping_address?.country_code ?? "MX") as string).toUpperCase();
@@ -1288,6 +1350,9 @@ export async function GET(req: NextRequest) {
     taxRate: number;
     isDigital: boolean;
     isUpsell: boolean;
+    // Factor para repartir el net_sales EXACTO de Shopify entre los días
+    // (exactNetSales / revenueLocalNeto). null = usar el cálculo local.
+    exactRevenueFactor: number | null;
   }> = {};
 
   // ── Build final rows ────────────────────────────────────────────────────────
@@ -1326,6 +1391,22 @@ export async function GET(req: NextRequest) {
     const effectiveShippingRate = calibHasData ? ct!.shipping / ct!.netRevenue : 0;
     const effectiveTaxRate      = calibHasData ? ct!.taxes    / ct!.netRevenue : 0;
 
+    // Devoluciones REALES del producto (refunds de Shopify), no estimadas por
+    // DailyMetric. Se restan del revenue para cuadrar con net_sales de Shopify.
+    const returnsUsd   = p.returnsUsdReal;
+    // Revenue EXACTO: net_sales de Shopify en USD (su propia conversión, ya neto
+    // de descuentos y devoluciones) cuando está disponible → cuadra al centavo
+    // con el reporte de Shopify. Si Shopify no respondió, usamos el cálculo local
+    // neto de devoluciones como respaldo.
+    const exactNetSales = netSalesByStore[p.brandId]?.[`${p.name}||${p.countryCode}`]?.netSalesUsd;
+    const netRevenueAfterReturns = exactNetSales != null
+      ? Math.max(0, exactNetSales)
+      : Math.max(0, netRevenueUsd - returnsUsd);
+    // Factor para que la suma diaria (Testeos) iguale este total exacto.
+    const exactRevenueFactor = exactNetSales != null && netRevenueUsd > 0
+      ? exactNetSales / netRevenueUsd
+      : null;
+
     productFinancialConfig[key] = {
       revenueScale,
       cogsScale,
@@ -1334,16 +1415,12 @@ export async function GET(req: NextRequest) {
       taxRate: effectiveTaxRate,
       isDigital,
       isUpsell,
+      exactRevenueFactor,
     };
 
     const feesUsd      = netRevenueUsd * effectiveFeeRate;
     const shippingUsd  = netRevenueUsd * effectiveShippingRate;
     const taxesUsd     = netRevenueUsd * effectiveTaxRate;
-    // Devoluciones REALES del producto (refunds de Shopify), no estimadas por
-    // DailyMetric. Se restan del revenue para cuadrar con net_sales de Shopify.
-    const returnsUsd   = p.returnsUsdReal;
-    // Revenue neto de devoluciones = net_sales de Shopify (gross − desc − returns).
-    const netRevenueAfterReturns = Math.max(0, netRevenueUsd - returnsUsd);
 
     const aov              = p.orders > 0 ? netRevenueAfterReturns / p.orders : 0;
     const cogsPerOrder     = p.orders > 0 ? cogsUsd / p.orders : 0;
@@ -1542,8 +1619,12 @@ export async function GET(req: NextRequest) {
       // Revenue del día ANTES de devoluciones (para fees/shipping/taxes, igual
       // que el total, que aplica las tasas sobre el revenue calibrado bruto).
       const grossRevDay = Math.max(0, raw.revenueUsd * finance.revenueScale);
-      // Revenue neto de devoluciones reales del día (igual que el total).
-      const revenueUsd = Math.max(0, grossRevDay - (raw.returnsUsdReal ?? 0));
+      // Revenue neto del día. Si hay net_sales exacto de Shopify, repartimos ese
+      // total entre los días con el factor (para que la suma iguale al total
+      // exacto); si no, restamos las devoluciones reales del día.
+      const revenueUsd = finance.exactRevenueFactor != null
+        ? Math.max(0, grossRevDay * finance.exactRevenueFactor)
+        : Math.max(0, grossRevDay - (raw.returnsUsdReal ?? 0));
       const cogsUsd = raw.cogsUsd * finance.cogsScale;
       const adSpendUsd =
         finance.isDigital || finance.isUpsell

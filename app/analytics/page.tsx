@@ -69,7 +69,7 @@ type StoreRow = {
   storeKey: string; storeName: string; countryCode: string; countryName: string;
   brandName: string; brandColor: string;
   revenueUsd: number; orders: number; units: number;
-  cogsUsd: number; adSpendUsd: number; totalCost: number;
+  cogsUsd: number; adSpendUsd: number; feesUsd: number; totalCost: number;
   grossProfit: number; netProfit: number; netMargin: number;
   roas: number | null; cpa: number | null;
   productCount: number; topProduct: string;
@@ -191,6 +191,7 @@ const COLS_GENERAL = [
   { key: "orders",      label: "Pedidos",       width: 90,  right: true },
   { key: "cogsUsd",     label: "COGS Total",    width: 115, right: true },
   { key: "adSpendUsd",  label: "Ad Spend",      width: 115, right: true },
+  { key: "feesUsd",     label: "Fees",          width: 105, right: true },
   { key: "grossProfit", label: "Ut. Bruta",     width: 115, right: true },
   { key: "grossMargin", label: "Mg. Bruto",     width: 100, right: true },
   { key: "netProfit",   label: "Ut. Contrib",   width: 115, right: true },
@@ -207,6 +208,7 @@ const COLS_STORE = [
   { key: "orders",      label: "Pedidos",       width: 90,  right: true },
   { key: "units",       label: "Unidades",      width: 90,  right: true },
   { key: "adSpendUsd",  label: "Ad Spend",      width: 115, right: true },
+  { key: "feesUsd",     label: "Fees",          width: 105, right: true },
   { key: "cogsUsd",     label: "COGS",          width: 110, right: true },
   { key: "grossProfit", label: "Ut. Bruta",     width: 115, right: true },
   { key: "netProfit",   label: "Ut. Contrib",   width: 115, right: true },
@@ -815,7 +817,7 @@ export default function ProductAnalyticsPage() {
           countryCode: r.countryCode, countryName: r.countryName,
           brandName: r.brandName, brandColor: r.brandColor,
           revenueUsd: 0, orders: 0, units: 0,
-          cogsUsd: 0, adSpendUsd: 0, totalCost: 0,
+          cogsUsd: 0, adSpendUsd: 0, feesUsd: 0, totalCost: 0,
           grossProfit: 0, netProfit: 0, netMargin: 0,
           roas: null, cpa: null, productCount: 0, topProduct: "—",
           _products: [],
@@ -827,6 +829,7 @@ export default function ProductAnalyticsPage() {
       g.units       += r.units;
       g.cogsUsd     += r.cogsUsd;
       g.adSpendUsd  += r.adSpendUsd;
+      g.feesUsd     += r.feesUsd;
       g._products.push(r);
     }
     return Object.values(groups).map(g => {
@@ -1075,6 +1078,10 @@ export default function ProductAnalyticsPage() {
       }
       case "adSpendUsd":
         return <span style={{ color: r.adSpendUsd > 0 ? "#f87171" : "rgba(255,255,255,0.3)" }}>{r.adSpendUsd > 0 ? `$${usd(r.adSpendUsd)}` : "—"}</span>;
+      case "feesUsd": {
+        const v = (r as any).feesUsd ?? 0;
+        return <span style={{ color: v > 0 ? "#f87171" : "rgba(255,255,255,0.3)" }}>{v > 0 ? `($${usd(v)})` : "—"}</span>;
+      }
       case "revenueUsd": return <span style={{ color: "#fff", fontWeight: 600 }}>${usd(r.revenueUsd)}</span>;
       case "units": case "orders": return <span style={{ color: "rgba(255,255,255,0.8)" }}>{((r as any)[colKey] as number).toLocaleString()}</span>;
       case "status":     return renderStatus(r.status);
@@ -1102,6 +1109,10 @@ export default function ProductAnalyticsPage() {
         return <span style={{ color: "rgba(255,255,255,0.75)" }}>${v.toFixed(2)}</span>;
       }
       case "adSpendUsd": return <span style={{ color: r.adSpendUsd > 0 ? "#f87171" : "rgba(255,255,255,0.3)" }}>{r.adSpendUsd > 0 ? `$${usd(r.adSpendUsd)}` : "—"}</span>;
+      case "feesUsd": {
+        const v = (r as any).feesUsd ?? 0;
+        return <span style={{ color: v > 0 ? "#f87171" : "rgba(255,255,255,0.3)" }}>{v > 0 ? `($${usd(v)})` : "—"}</span>;
+      }
       case "cogsUsd":     return <span style={{ color: "#f59e0b" }}>${usd(r.cogsUsd)}</span>;
       case "orders": case "units": case "productCount":
         return <span style={{ color: "rgba(255,255,255,0.8)" }}>{((r as any)[colKey] as number).toLocaleString()}</span>;
