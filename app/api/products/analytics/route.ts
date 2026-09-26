@@ -350,7 +350,7 @@ async function fetchOrders(store: AnalyticsStore, since: string, until: string) 
     `?status=any` +
     `&created_at_min=${encodeURIComponent(since)}` +
     `&created_at_max=${encodeURIComponent(until)}&limit=250` +
-    `&fields=id,created_at,financial_status,cancelled_at,test,line_items,shipping_address,shipping_lines`,
+    `&fields=id,created_at,financial_status,cancelled_at,test,line_items,shipping_address,shipping_lines,refunds`,
     "orders",
   );
   return orders.filter(isShopifyRevenueOrder);
@@ -739,6 +739,9 @@ export async function GET(req: NextRequest) {
     revenueUsd: number; revenueLocal: number;
     units: number; orders: number; lastSeen: string;
     cogsUsd: number; unitPriceUsd: number;
+    // Devoluciones reales (refunds de Shopify) del producto, en USD. Shopify
+    // resta esto en net_sales; el dashboard debe hacer lo mismo para cuadrar.
+    returnsUsdReal: number;
   }> = {};
 
   // El mismo detalle anterior, separado por fecha. Testeos lo usa para
@@ -748,6 +751,7 @@ export async function GET(req: NextRequest) {
     units: number;
     orders: number;
     cogsUsd: number;
+    returnsUsdReal: number;
   }>> = {};
 
   // Revenue per brand+country for proportional ad spend distribution
@@ -801,6 +805,19 @@ export async function GET(req: NextRequest) {
           (s: number, l: any) => s + (parseFloat(l.price ?? "0") || 0), 0
         ) / orderEffectiveRate;
 
+        // Devoluciones reales por línea (Shopify las resta en net_sales).
+        // refund_line_items[].subtotal = monto reembolsado (neto de descuento)
+        // de esa línea, en la moneda de la tienda. Lo mapeamos por line_item_id
+        // para restarlo del revenue del producto, igual que Shopify.
+        const refundByLineId: Record<string, number> = {};
+        for (const rf of (order.refunds ?? [])) {
+          for (const rli of (rf.refund_line_items ?? [])) {
+            const lid = String(rli.line_item_id ?? "");
+            const sub = parseFloat(rli.subtotal ?? "0") || 0;
+            if (lid) refundByLineId[lid] = (refundByLineId[lid] ?? 0) + sub;
+          }
+        }
+
         for (const item of (order.line_items ?? [])) {
           if (isSkippableItem(item)) continue;
 
@@ -819,6 +836,8 @@ export async function GET(req: NextRequest) {
           const priceUsd      = (parseFloat(item.price) * qty - totalDiscount) / orderEffectiveRate;
           const priceLocal    = priceUsd * cCfg.displayRate;
           const date          = orderDate;
+          // Monto reembolsado de esta línea, en USD (para restarlo del revenue).
+          const refundedUsd   = (refundByLineId[String(item.id)] ?? 0) / orderEffectiveRate;
 
           // Escalón por cantidad: los pedidos llegan como título base + qty (sin variante),
           // así que primero probamos el costo del escalón "xN" del proveedor.
@@ -843,6 +862,7 @@ export async function GET(req: NextRequest) {
               units: 0, orders: 0, lastSeen: date,
               cogsUsd: 0,
               unitPriceUsd: 0,
+              returnsUsdReal: 0,
             };
           }
           products[key].revenueUsd   += priceUsd;
@@ -850,6 +870,7 @@ export async function GET(req: NextRequest) {
           products[key].units        += physicalUnits;
           products[key].orders       += 1;          // 1 por pedido, no por cantidad
           products[key].cogsUsd      += itemCogsUsd;
+          products[key].returnsUsdReal += refundedUsd;
           // Keep the latest unit price seen (most recent order wins)
           if (date >= products[key].lastSeen) products[key].unitPriceUsd = unitPriceUsd;
           if (date > products[key].lastSeen) products[key].lastSeen = date;
@@ -861,11 +882,13 @@ export async function GET(req: NextRequest) {
               units: 0,
               orders: 0,
               cogsUsd: 0,
+              returnsUsdReal: 0,
             };
             daily.revenueUsd += priceUsd;
             daily.units += physicalUnits;
             daily.orders += 1;
             daily.cogsUsd += itemCogsUsd;
+            daily.returnsUsdReal += refundedUsd;
             productDailyRaw[key][date] = daily;
           }
 
@@ -1184,6 +1207,7 @@ export async function GET(req: NextRequest) {
               lastSeen: adDate,
               cogsUsd: 0,
               unitPriceUsd: 0,
+              returnsUsdReal: 0,
             };
           }
           const normalizedName = normalizeName(canonicalName);
@@ -1315,16 +1339,19 @@ export async function GET(req: NextRequest) {
     const feesUsd      = netRevenueUsd * effectiveFeeRate;
     const shippingUsd  = netRevenueUsd * effectiveShippingRate;
     const taxesUsd     = netRevenueUsd * effectiveTaxRate;
-    const returnsUsd   =
-      ct && bcRevenue > 0 ? ct.returns * (p.revenueUsd / bcRevenue) : 0;
+    // Devoluciones REALES del producto (refunds de Shopify), no estimadas por
+    // DailyMetric. Se restan del revenue para cuadrar con net_sales de Shopify.
+    const returnsUsd   = p.returnsUsdReal;
+    // Revenue neto de devoluciones = net_sales de Shopify (gross − desc − returns).
+    const netRevenueAfterReturns = Math.max(0, netRevenueUsd - returnsUsd);
 
-    const aov              = p.orders > 0 ? netRevenueUsd / p.orders : 0;
+    const aov              = p.orders > 0 ? netRevenueAfterReturns / p.orders : 0;
     const cogsPerOrder     = p.orders > 0 ? cogsUsd / p.orders : 0;
     const gatewayPerOrder  = aov * cCfg.gatewayPct + cCfg.gatewayFixed;
     const cpaBE            = aov > 0 ? Math.max(0, aov - cogsPerOrder - gatewayPerOrder - (feesUsd / Math.max(p.orders,1))) : null;
 
-    const grossProfit  = netRevenueUsd - cogsUsd;
-    const grossMargin  = netRevenueUsd > 0 ? (grossProfit / netRevenueUsd) * 100 : 0;
+    const grossProfit  = netRevenueAfterReturns - cogsUsd;
+    const grossMargin  = netRevenueAfterReturns > 0 ? (grossProfit / netRevenueAfterReturns) * 100 : 0;
     const chargebacksUsd =
       brandNetRevenue[p.brandId] > 0
         ? (chargebacksByBrand[p.brandId] ?? 0) *
@@ -1333,8 +1360,8 @@ export async function GET(req: NextRequest) {
     // netProfit = Net Revenue − COGS − AdSpend − Fees − Shipping − Taxes − Chargebacks
     // (matches dashboard: net - cogs - shipping - fees - taxes - other - adSpend)
     const netProfit    = grossProfit - adSpendUsd - feesUsd - shippingUsd - taxesUsd - chargebacksUsd;
-    const netMargin    = netRevenueUsd > 0 ? (netProfit / netRevenueUsd) * 100 : 0;
-    const roas         = adSpendUsd > 0 ? netRevenueUsd / adSpendUsd : null;
+    const netMargin    = netRevenueAfterReturns > 0 ? (netProfit / netRevenueAfterReturns) * 100 : 0;
+    const roas         = adSpendUsd > 0 ? netRevenueAfterReturns / adSpendUsd : null;
     const cpa          = adSpendUsd > 0 && p.orders > 0 ? adSpendUsd / p.orders : null;
     const campaignPurchases       = productCampaignPurchases[key] ?? 0;
     const campaignConversionValue = productCampaignConversionValue[key] ?? 0;
@@ -1413,8 +1440,8 @@ export async function GET(req: NextRequest) {
 
     return {
       ...p,
-      revenueUsd: netRevenueUsd,
-      revenueLocal: netRevenueUsd * cCfg.displayRate,
+      revenueUsd: netRevenueAfterReturns,
+      revenueLocal: netRevenueAfterReturns * cCfg.displayRate,
       priceUsd: p.unitPriceUsd,   // unit selling price for products table display
       costPerUnit, cogsUsd, adSpendUsd, feesUsd, shippingUsd, taxesUsd, chargebacksUsd,
       totalCost, returnsUsd,
@@ -1510,16 +1537,21 @@ export async function GET(req: NextRequest) {
         units: 0,
         orders: 0,
         cogsUsd: 0,
+        returnsUsdReal: 0,
       };
-      const revenueUsd = Math.max(0, raw.revenueUsd * finance.revenueScale);
+      // Revenue del día ANTES de devoluciones (para fees/shipping/taxes, igual
+      // que el total, que aplica las tasas sobre el revenue calibrado bruto).
+      const grossRevDay = Math.max(0, raw.revenueUsd * finance.revenueScale);
+      // Revenue neto de devoluciones reales del día (igual que el total).
+      const revenueUsd = Math.max(0, grossRevDay - (raw.returnsUsdReal ?? 0));
       const cogsUsd = raw.cogsUsd * finance.cogsScale;
       const adSpendUsd =
         finance.isDigital || finance.isUpsell
           ? 0
           : (productDailyAdSpend[productKey]?.[date] ?? 0);
-      const feesUsd = revenueUsd * finance.feeRate;
-      const shippingUsd = revenueUsd * finance.shippingRate;
-      const taxesUsd = revenueUsd * finance.taxRate;
+      const feesUsd = grossRevDay * finance.feeRate;
+      const shippingUsd = grossRevDay * finance.shippingRate;
+      const taxesUsd = grossRevDay * finance.taxRate;
       const brandDayKey = `${product.brandId}||${date}`;
       const chargebacksUsd =
         (dailyBrandRevenue[brandDayKey] ?? 0) > 0
