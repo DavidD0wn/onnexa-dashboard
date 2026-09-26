@@ -1148,16 +1148,14 @@ export async function GET(req: NextRequest) {
           entry.countryCode === cc &&
           matchesProduct(entry),
       );
-      // Algunas campañas antiguas quedaron con país inferido por la moneda de
-      // la cuenta aunque el nombre no incluía país (p. ej. DB01 / INO01). Si el
-      // producto no tiene ventas en ese país, preservamos la atribución al
-      // producto usando sus filas de otros países en vez de mandarlo a
-      // "Meta Ads sin producto identificado".
-      let matches = countryMatches.length > 0
-        ? countryMatches
-        : nameToKey.filter(
-            (entry) => entry.brandId === row.brandId && matchesProduct(entry),
-          );
+      // Una campaña con país (ej. "CBO mx", "CBO es") pertenece SOLO a las filas
+      // de ESE país. Nunca repartimos su gasto hacia otros países: así España
+      // solo carga el gasto de campañas de España, y México/EE.UU. el suyo.
+      // Si el producto todavía no tiene ventas en ese país, más abajo se crea
+      // una fila sintética en el MISMO país (o cae a "Meta Ads sin producto
+      // identificado" de ese país). Antes se hacía fallback a las filas de otros
+      // países, lo que hacía que España cargara gasto de campañas de México.
+      let matches = countryMatches;
       if (matches.length === 0) {
         const campaignProducts = CAMPAIGN_CODE_PRODUCTS[row.brandId] ?? {};
         const detectedCode = campaignCode ?? adKws.find((keyword) => campaignProducts[keyword]);
