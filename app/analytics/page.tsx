@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import { localDateStr, daysAgoLocal } from "@/lib/utils";
 import {
   RefreshCw, ChevronUp, ChevronDown, Edit2, Check, X as XIcon,
@@ -602,7 +602,14 @@ export default function ProductAnalyticsPage() {
   const [showCalendar,  setShowCalendar]  = useState(false);
   const [store,         setStore]         = useState("all");
   const [countryFilter, setCountryFilter] = useState("all");
-  const [viewMode,      setViewMode]      = useState<ViewMode>("bycountry");
+  const [viewMode,      setViewMode]      = useState<ViewMode>("general");
+  // Productos expandidos en la vista General (para ver su desglose por país pegado debajo).
+  const [expandedGeneral, setExpandedGeneral] = useState<Set<string>>(new Set());
+  const toggleExpand = (key: string) => setExpandedGeneral(prev => {
+    const next = new Set(prev);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    return next;
+  });
   const [sortKey,       setSortKey]       = useState<SortKey>("revenueUsd");
   const [sortAsc,       setSortAsc]       = useState(false);
   const [search,        setSearch]        = useState("");
@@ -805,6 +812,17 @@ export default function ProductAnalyticsPage() {
         : "No rentable";
       return { ...g, grossProfit, grossMargin, netProfit, netMargin, roas, cpa, cpaAds, roasAds, totalCost, costPerUnit, aov };
     }).sort((a, b) => b.revenueUsd - a.revenueUsd);
+  }, [filteredRows]);
+
+  // Hijos (filas por país) de cada producto consolidado, para el despliegue expandible.
+  const childrenByProduct = useMemo(() => {
+    const map: Record<string, ProductRow[]> = {};
+    for (const r of filteredRows) {
+      const k = `${r.name}||${r.variant}||${r.brandId}`;
+      (map[k] ??= []).push(r);
+    }
+    for (const k of Object.keys(map)) map[k].sort((a, b) => b.revenueUsd - a.revenueUsd);
+    return map;
   }, [filteredRows]);
 
   // ── By Store view: aggregate by storeName ──
@@ -1087,6 +1105,23 @@ export default function ProductAnalyticsPage() {
       case "status":     return renderStatus(r.status);
       default: return <span style={{ color: "rgba(255,255,255,0.6)" }}>{String((r as any)[colKey] ?? "—")}</span>;
     }
+  };
+
+  /* ── Celda de fila HIJA (país) en la vista General expandible ── */
+  const renderGeneralChildCell = (colKey: string, r: ProductRow) => {
+    if (colKey === "name") {
+      return (
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 7, paddingLeft: 30, color: "rgba(255,255,255,0.6)", fontSize: 12.5 }}>
+          <span style={{ fontSize: 14 }}>{FLAG[r.countryCode] ?? "🏳️"}</span>
+          {r.countryName}
+        </span>
+      );
+    }
+    if (colKey === "countries") {
+      return <span style={{ fontSize: 13, opacity: 0.7 }}>{FLAG[r.countryCode] ?? r.countryCode}</span>;
+    }
+    // El resto de columnas reutilizan el render por país (mismos campos numéricos).
+    return renderColCell(colKey, r);
   };
 
   /* ── Render cell for By Store view ── */
@@ -1468,17 +1503,43 @@ export default function ProductAnalyticsPage() {
                 generalRows.length === 0
                   ? <tr><td colSpan={activeCols.length} style={{ padding: 40, textAlign: "center", color: "rgba(255,255,255,0.4)" }}>Sin datos para el período seleccionado</td></tr>
                   : <>
-                    {generalRows.map((r, i) => (
-                      <tr key={`${r.name}||${r.variant}||${r.brandId}`} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)", background: i % 2 === 0 ? "transparent" : "rgba(255,255,255,0.015)", transition: "background 0.1s" }}
-                        onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.04)")}
-                        onMouseLeave={e => (e.currentTarget.style.background = i % 2 === 0 ? "transparent" : "rgba(255,255,255,0.015)")}>
+                    {generalRows.map((r, i) => {
+                      const pKey = `${r.name}||${r.variant}||${r.brandId}`;
+                      const kids = childrenByProduct[pKey] ?? [];
+                      const canExpand = kids.length > 1;
+                      const isOpen = expandedGeneral.has(pKey);
+                      const parentBg = i % 2 === 0 ? "transparent" : "rgba(255,255,255,0.015)";
+                      return (
+                      <Fragment key={pKey}>
+                      <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.04)", background: isOpen ? "rgba(14,118,110,0.10)" : parentBg, transition: "background 0.1s", cursor: canExpand ? "pointer" : "default" }}
+                        onClick={() => canExpand && toggleExpand(pKey)}
+                        onMouseEnter={e => { if (!isOpen) e.currentTarget.style.background = "rgba(255,255,255,0.04)"; }}
+                        onMouseLeave={e => { if (!isOpen) e.currentTarget.style.background = parentBg; }}>
                         {COLS_GENERAL.map(col => (
-                          <td key={col.key} style={{ padding: "11px 14px", width: col.width, minWidth: col.width, textAlign: (col as any).right ? "right" : "left", fontSize: 13, position: (col as any).sticky ? "sticky" : undefined, left: (col as any).sticky ? 0 : undefined, background: (col as any).sticky ? (i % 2 === 0 ? "#1e293b" : "#1a2840") : undefined, zIndex: (col as any).sticky ? 1 : undefined }}>
-                            {renderGeneralCell(col.key, r)}
+                          <td key={col.key} style={{ padding: "11px 14px", width: col.width, minWidth: col.width, textAlign: (col as any).right ? "right" : "left", fontSize: 13, position: (col as any).sticky ? "sticky" : undefined, left: (col as any).sticky ? 0 : undefined, background: (col as any).sticky ? (isOpen ? "#173a37" : (i % 2 === 0 ? "#1e293b" : "#1a2840")) : undefined, zIndex: (col as any).sticky ? 1 : undefined }}>
+                            {col.key === "name" ? (
+                              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                                <span style={{ width: 16, display: "inline-flex", justifyContent: "center", color: canExpand ? "rgba(255,255,255,0.55)" : "transparent" }}>
+                                  {canExpand ? (isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />) : null}
+                                </span>
+                                {renderGeneralCell(col.key, r)}
+                              </span>
+                            ) : renderGeneralCell(col.key, r)}
                           </td>
                         ))}
                       </tr>
-                    ))}
+                      {isOpen && kids.map((child, ci) => (
+                        <tr key={`${pKey}||${child.countryCode}`} style={{ borderBottom: "1px solid rgba(255,255,255,0.03)", background: "rgba(0,0,0,0.18)" }}>
+                          {COLS_GENERAL.map(col => (
+                            <td key={col.key} style={{ padding: "8px 14px", width: col.width, minWidth: col.width, textAlign: (col as any).right ? "right" : "left", fontSize: 12.5, position: (col as any).sticky ? "sticky" : undefined, left: (col as any).sticky ? 0 : undefined, background: (col as any).sticky ? "#141f2e" : undefined, zIndex: (col as any).sticky ? 1 : undefined }}>
+                              {renderGeneralChildCell(col.key, child)}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                      </Fragment>
+                      );
+                    })}
                     {generalTotals && (
                       <tr style={{ borderTop: "2px solid rgba(14,118,110,0.5)", background: "#0e2420" }}>
                         {(COLS_GENERAL as unknown as ColDef[]).map(col => (
