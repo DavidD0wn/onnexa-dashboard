@@ -144,6 +144,11 @@ function lookupCost(name: string, variant: string, costs: Record<string, number>
 export async function POST(req: NextRequest) {
   const body   = await req.json().catch(() => ({}));
   const dryRun = body.dryRun === true;
+  const selectedStore = typeof body.store === "string" ? body.store : null;
+  const stores = getShopifyStores();
+  if (selectedStore && !(selectedStore in stores)) {
+    return NextResponse.json({ error: "Tienda no válida" }, { status: 400 });
+  }
 
   const today  = new Date();
   const days   = parseInt(body.days ?? "30") || 30;
@@ -164,7 +169,7 @@ export async function POST(req: NextRequest) {
   const missingCosts  = new Set<string>();
   let   totalOrders   = 0;
 
-  for (const store of Object.values(getShopifyStores())) {
+  for (const store of Object.values(stores).filter((entry) => !selectedStore || entry.key === selectedStore)) {
     try {
       const orders = await fetchOrders(store, since, until);
       totalOrders += orders.length;

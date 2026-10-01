@@ -695,11 +695,17 @@ function isDigitalProduct(name: string): boolean {
   return /ebook|eook|guía|guia|protocolo|recetario|calendario|hábitos|habitos|menú|menu|plan\s+\d+\s+d[ií]as|plan de gym|plan anti|método|metodo|ritual|agenda|21d|reto |challenge|poros bajo|poros abiertos|glow desde adentro|lifting desde dentro|rutina anti|tracker|c[oó]mo usarlo sin errores|despierta tu mejor versi[oó]n/i.test(name);
 }
 
-// Upsells y complementos sin pauta propia: se venden o entregan junto al producto principal.
-// Características: 0 ad spend (la campaña ya se pagó), 0 envío extra (va en la misma caja),
-// COGS mínimo o nulo según el producto. Son margen casi puro — no mostrar como "Datos incompletos".
-function isUpsellProduct(name: string): boolean {
+// Upsells y complementos se clasifican por producto, no por la presencia de COGS.
+// Algunos también tuvieron campañas propias; ese gasto se conserva cuando hay
+// una asignación explícita y verificada, como Apoyo Digestivo de Pleena.
+function isUpsellProduct(name: string, brandId?: string): boolean {
+  if (brandId === "brand_pleena" && /apoyo digestivo diario/i.test(name)) return true;
   return /rendimiento extendido|rendimiento m[aá]ximo|pureza extendida|reafirmante|vitamina c|youtful|fórmula pro|formula pro|protección de pedido|proteccion de pedido|brocha|brush|limpiador de lengua/i.test(name);
+}
+
+function hasDirectUpsellCampaign(name: string, brandId: string): boolean {
+  return brandId === "brand_pleena" &&
+    Object.values(PLEENA_CAMPAIGN_PRODUCTS).some((product) => normalizeName(product) === normalizeName(name));
 }
 
 // ─── Status + Data Quality ─────────────────────────────────────────────────────
@@ -1190,9 +1196,8 @@ export async function GET(req: NextRequest) {
   };
 
   const productKeys = Object.keys(products);
-  // Exclude digital products and upsells from ad matching.
-  // Ebooks and upsells are never the target of paid campaigns — they ride along with
-  // the physical product purchase. Matching them causes two bugs:
+  // Exclude digital products and upsells without a verified direct campaign.
+  // Matching unrelated add-ons causes two bugs:
   //   1. Short words like "glow" in ebook names match "glowfill" campaign keywords
   //      (substring match), stealing spend from the physical GlowFill product.
   //   2. Digital products accumulate ad spend, which makes their profit appear negative
@@ -1201,7 +1206,8 @@ export async function GET(req: NextRequest) {
     .filter(
       (key) =>
         !isDigitalProduct(products[key].name) &&
-        !isUpsellProduct(products[key].name),
+        (!isUpsellProduct(products[key].name, products[key].brandId) ||
+          hasDirectUpsellCampaign(products[key].name, products[key].brandId)),
     )
     .map(k => {
       const p = products[k];
@@ -1421,12 +1427,13 @@ export async function GET(req: NextRequest) {
     const key         = `${p.name}||${p.variant}||${p.brandId}||${p.countryCode}`;
     // Clasificación por nombre, nunca por COGS = 0.
     const isDigital   = isDigitalProduct(p.name);
-    const isUpsell    = !isDigital && isUpsellProduct(p.name);
+    const isUpsell    = !isDigital && isUpsellProduct(p.name, p.brandId);
 
     const bck         = `${p.brandId}||${p.countryCode}`;
     const bcRevenue   = brandCountryRevenue[bck] ?? 0;
-    // Digitales y upsells: 0 ad spend — no tienen campaña propia.
-    const directSpend = (isDigital || isUpsell) ? 0 : (productAdSpend[key] ?? 0);
+    // Un upsell solo recibe ad spend cuando su campaña propia está verificada.
+    const directSpend = (isDigital || (isUpsell && !hasDirectUpsellCampaign(p.name, p.brandId)))
+      ? 0 : (productAdSpend[key] ?? 0);
     // Nunca inventar atribución: la pauta sin producto verificable se presenta
     // en una fila separada, en lugar de prorratearla por ingresos.
     const adSpendUsd  = directSpend;
@@ -1512,7 +1519,9 @@ export async function GET(req: NextRequest) {
     // en totalCost para evitar descontarlas dos veces.
     const totalCost    = cogsUsd + adSpendUsd + feesUsd + shippingUsd + taxesUsd + chargebacksUsd;
     const status       = calcStatus(netProfit, netMargin, cogsUsd, adSpendUsd, cpa, cpaBE, isDigital, isUpsell);
-    const dataQuality  = calcDataQuality(cogsUsd, adSpendUsd, isDigital, isUpsell);
+    const dataQuality  = isUpsell && p.brandId === "brand_pleena" && /apoyo digestivo diario/i.test(p.name) && cogsUsd === 0
+      ? "COGS no informado"
+      : calcDataQuality(cogsUsd, adSpendUsd, isDigital, isUpsell);
 
     // Funnel data — matched by product name (normalized, multiple fallback keys)
     const funnelMap  = funnelByStore[p.brandId] ?? {};

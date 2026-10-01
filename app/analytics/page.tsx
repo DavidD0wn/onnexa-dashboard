@@ -105,6 +105,7 @@ const STATUS_CFG: Record<string, { color: string; bg: string }> = {
 const DQ_CFG: Record<string, { color: string }> = {
   "OK":                   { color: "#10B981" },
   "Falta COGS":           { color: "#F59E0B" },
+  "COGS no informado":    { color: "#F59E0B" },
   "Sin pauta registrada": { color: "#6366F1" },
   "Pauta sin producto identificado": { color: "#FB7185" },
 };
