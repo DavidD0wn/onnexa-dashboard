@@ -106,22 +106,26 @@ async function upsertCampaignStatus(
   });
 }
 
-function getPurchases(actions: any[]): number {
+type MetaActionValue = { action_type: string; value?: string | number };
+
+function purchaseActionValue(actions: MetaActionValue[] | undefined): number {
   if (!actions) return 0;
-  return actions
-    .filter((a) => ["purchase","omni_purchase"].includes(a.action_type))
-    .reduce((s, a) => s + parseFloat(a.value || "0"), 0);
+  // Meta can report one purchase under both labels; adding them doubles ROAS Ads.
+  const action = actions.find((a) => a.action_type === "omni_purchase")
+    ?? actions.find((a) => a.action_type === "purchase");
+  return action ? parseFloat(String(action.value || "0")) : 0;
 }
-function getConvValue(actionValues: any[]): number {
-  if (!actionValues) return 0;
-  return actionValues
-    .filter((a) => ["purchase","omni_purchase"].includes(a.action_type))
-    .reduce((s, a) => s + parseFloat(a.value || "0"), 0);
+function getPurchases(actions: MetaActionValue[]): number {
+  return purchaseActionValue(actions);
 }
-function getCPA(costPerAction: any[]): number | null {
+function getConvValue(actionValues: MetaActionValue[]): number {
+  return purchaseActionValue(actionValues);
+}
+function getCPA(costPerAction: MetaActionValue[]): number | null {
   if (!costPerAction) return null;
-  const pa = costPerAction.find((a) => ["purchase","omni_purchase"].includes(a.action_type));
-  return pa ? parseFloat(pa.value || "0") : null;
+  const pa = costPerAction.find((a) => a.action_type === "omni_purchase")
+    ?? costPerAction.find((a) => a.action_type === "purchase");
+  return pa ? parseFloat(String(pa.value || "0")) : null;
 }
 
 // Devuelve { rows, ok }. ok=false significa que la cuenta NO completó su
@@ -168,8 +172,11 @@ export async function POST(req: NextRequest) {
     const from30d  = new Date(); from30d.setDate(from30d.getDate() - 30);
     const dateFrom = body.dateFrom ?? localStr(from30d);
     const skipRollup = body.skipRollup === true;
+    const accountId = typeof body.accountId === "string" ? body.accountId : undefined;
 
-    const accounts = await prisma.metaAdsAccount.findMany({ where: { isActive: true } });
+    const accounts = await prisma.metaAdsAccount.findMany({
+      where: { isActive: true, ...(accountId ? { accountId } : {}) },
+    });
     if (!accounts.length) return NextResponse.json({ error: "Sin cuentas" }, { status: 404 });
 
     /* ── Step 0: Fetch + store REAL campaign statuses from Meta API ────────── */
@@ -341,7 +348,11 @@ export async function POST(req: NextRequest) {
         const rollupRes  = await fetch(`${baseUrl}/api/meta-ads/rollup`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ from: dateFrom, to: dateTo }),
+          body: JSON.stringify({
+            from: dateFrom,
+            to: dateTo,
+            ...(accountId ? { brandId: accounts[0].brandId } : {}),
+          }),
         });
         const rollupData = await rollupRes.json().catch(() => ({}));
         console.log("[Meta Ads] Rollup:", rollupData.message ?? rollupData);

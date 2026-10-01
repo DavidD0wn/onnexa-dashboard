@@ -130,6 +130,8 @@ const CAMPAIGN_CODE_KEYWORDS: Record<string, string[]> = {
   "mw01":  ["mouthwash"],
   "ast01": ["astaxanthin"],
   "cg01":  ["gomfit", "creatina", "gomita"],
+  // Pleena: código de campaña sin números (28/09/26 - RDS - CBO mx).
+  "rds":   ["reedle shot", "reedle"],
 };
 
 // Nombre canónico para conservar la pauta del producto incluso en períodos
@@ -161,7 +163,28 @@ const CAMPAIGN_CODE_PRODUCTS: Record<string, Record<string, string>> = {
     ast01: "Astaxanthin™ — El Rey Antioxidante que Protege tu Piel desde Adentro",
     cg01: "GOMFIT™ — Creatina en gomita para glúteos más firmes",
   },
+  brand_pleena: {
+    rds: "Reedle Shot™ — Menos Caída, Más Crecimiento y Más Densidad",
+  },
 };
+
+// PLE01 se reutilizó en Pleena para dos productos diferentes. Los enlaces de
+// los anuncios de cada campaña confirman esta asignación; no inferir por código.
+const PLEENA_CAMPAIGN_PRODUCTS: Record<string, string> = {
+  "20/06/26 - PLE01 - Mx": "Pleena™ Apoyo Digestivo Diario para Menos Hinchazón y Pesadez",
+  "29/06/26 - PLE01 - Mx": "Pleena™ Apoyo Digestivo Diario para Menos Hinchazón y Pesadez",
+  "01/07/26 - PLE01 - Mx": "Pleena™ Apoyo Digestivo Diario para Menos Hinchazón y Pesadez",
+  "14/07/26 - PLE01 - CBO": "Pleena™ — Frena la Caída, Estimula el Crecimiento y Luce un Cabello Más Denso",
+};
+
+function campaignProductName(brandId: string, campaignName: string | null): string | null {
+  if (brandId === "brand_pleena" && campaignName) {
+    const exact = PLEENA_CAMPAIGN_PRODUCTS[campaignName.trim()];
+    if (exact) return exact;
+  }
+  const code = extractCampaignCode(campaignName);
+  return code ? CAMPAIGN_CODE_PRODUCTS[brandId]?.[code] ?? null : null;
+}
 
 // productId is assigned during the Meta sync from the campaign code. Prefer
 // this deterministic mapping over fuzzy text matching whenever it exists.
@@ -524,7 +547,10 @@ function canonicalProductName(brandId: string, productName: string): string {
 
 function extractCampaignCode(campaignName?: string | null): string | null {
   const match = campaignName?.match(/\b([A-Za-z]{2,5}\d{2,3})\b/);
-  return match?.[1]?.toLowerCase() ?? null;
+  if (match) return match[1].toLowerCase();
+  // RDS es el código confirmado de Reedle Shot de Pleena; el resto de las
+  // siglas sin números no se atribuyen automáticamente.
+  return /\bRDS\b/i.test(campaignName ?? "") ? "rds" : null;
 }
 
 function loadCosts(): CostsByCountry {
@@ -1007,7 +1033,7 @@ export async function GET(req: NextRequest) {
   // to PA revenue gives totals that match the dashboard.
   const calibTotals: Record<string, {
     fees: number; shipping: number; returns: number; taxes: number;
-    cogs: number; netRevenue: number;
+    cogs: number; netRevenue: number; ordersCount: number; unitsSold: number;
   }> = {};
   const dailyBrandRevenue: Record<string, number> = {};
   try {
@@ -1015,7 +1041,8 @@ export async function GET(req: NextRequest) {
       where: { brandId: { in: brandIds }, date: { gte: dateFrom, lte: dateTo } },
       select: {
         date: true, brandId: true, countryId: true, grossRevenue: true,
-        netRevenue: true, fees: true, shippingCost: true, returns: true,
+        netRevenue: true, ordersCount: true, unitsSold: true,
+        fees: true, shippingCost: true, returns: true,
         taxes: true, cogs: true,
       },
     });
@@ -1034,7 +1061,7 @@ export async function GET(req: NextRequest) {
       if (!calibTotals[bck]) {
         calibTotals[bck] = {
           fees: 0, shipping: 0, returns: 0, taxes: 0, cogs: 0,
-          netRevenue: 0,
+          netRevenue: 0, ordersCount: 0, unitsSold: 0,
         };
       }
       calibTotals[bck].fees       += dm.fees        ?? 0;
@@ -1043,6 +1070,8 @@ export async function GET(req: NextRequest) {
       calibTotals[bck].taxes      += dm.taxes        ?? 0;
       calibTotals[bck].cogs       += dm.cogs         ?? 0;
       calibTotals[bck].netRevenue += dm.netRevenue   ?? 0;
+      calibTotals[bck].ordersCount += dm.ordersCount ?? 0;
+      calibTotals[bck].unitsSold += dm.unitsSold ?? 0;
       const brandDayKey = `${dm.brandId}||${dateStr}`;
       dailyBrandRevenue[brandDayKey] =
         (dailyBrandRevenue[brandDayKey] ?? 0) + (dm.netRevenue ?? 0);
@@ -1105,10 +1134,10 @@ export async function GET(req: NextRequest) {
   >();
   for (const row of relevantAdRows) {
     const code = extractCampaignCode(row.campaignName);
-    const canonicalProduct = code
-      ? CAMPAIGN_CODE_PRODUCTS[row.brandId]?.[code] ?? null
-      : null;
-    const key = `${row.brandId}||${code ?? "SIN_CODIGO"}`;
+    const canonicalProduct = campaignProductName(row.brandId, row.campaignName);
+    const key = row.brandId === "brand_pleena"
+      ? `${row.brandId}||${row.campaignName ?? "SIN_CAMPANA"}`
+      : `${row.brandId}||${code ?? "SIN_CODIGO"}`;
     const current = attributionCodeMap.get(key) ?? {
       brandId: row.brandId,
       code,
@@ -1127,7 +1156,7 @@ export async function GET(req: NextRequest) {
       canonicalProduct: entry.canonicalProduct,
       spend: entry.spend,
       campaignCount: entry.campaigns.size,
-      recognized: Boolean(entry.code && entry.canonicalProduct),
+      recognized: Boolean(entry.canonicalProduct),
     }))
     .sort((a, b) => b.spend - a.spend);
   const unknownAttributionCodes = attributionCodes.filter(
@@ -1190,9 +1219,7 @@ export async function GET(req: NextRequest) {
   for (const row of relevantAdRows) {
     const adDate = row.date.toISOString().slice(0, 10);
     const campaignCode = extractCampaignCode(row.campaignName);
-    const canonicalCampaignName = campaignCode
-      ? CAMPAIGN_CODE_PRODUCTS[row.brandId]?.[campaignCode]
-      : undefined;
+    const canonicalCampaignName = campaignProductName(row.brandId, row.campaignName) ?? undefined;
     let adKws = extractAdKeywords(row);
     // If campaign contains a known product code (e.g. "INS01", "TP01"), expand adKws
     // with that product's name keywords so it can match product rows correctly.
@@ -1244,7 +1271,7 @@ export async function GET(req: NextRequest) {
       if (matches.length === 0) {
         const campaignProducts = CAMPAIGN_CODE_PRODUCTS[row.brandId] ?? {};
         const detectedCode = campaignCode ?? adKws.find((keyword) => campaignProducts[keyword]);
-        const canonicalName = detectedCode ? campaignProducts[detectedCode] : undefined;
+        const canonicalName = canonicalCampaignName ?? (detectedCode ? campaignProducts[detectedCode] : undefined);
         if (canonicalName) {
           const store = targetStores.find(
             ([, value]) => value.brandId === row.brandId,
@@ -1355,6 +1382,38 @@ export async function GET(req: NextRequest) {
     exactRevenueFactor: number | null;
   }> = {};
 
+  // ShopifyQL ofrece el reparto más preciso entre productos, pero su conversión
+  // a USD puede diferir ligeramente de la usada por DailyMetric (Dashboard/P&L).
+  // Conservar las proporciones de ShopifyQL y cerrar cada marca×país contra el
+  // mismo revenue financiero evita que ROAS y utilidad discrepen entre secciones.
+  const productRevenueCandidate: Record<string, number> = {};
+  const candidateRevenueByCountry: Record<string, number> = {};
+  const liveUnitsByCountry: Record<string, number> = {};
+  for (const [key, product] of Object.entries(products)) {
+    const bucket = `${product.brandId}||${product.countryCode}`;
+    const calibration = calibTotals[bucket];
+    const baseRevenue = brandCountryRevenue[bucket] ?? 0;
+    const revenueScale = calibration && calibration.netRevenue > 0 && baseRevenue > 0
+      ? calibration.netRevenue / baseRevenue
+      : 1;
+    const exactNetSales = netSalesByStore[product.brandId]?.[`${product.name}||${product.countryCode}`]?.netSalesUsd;
+    const candidate = exactNetSales != null
+      ? Math.max(0, exactNetSales)
+      : Math.max(0, product.revenueUsd * revenueScale - product.returnsUsdReal);
+    productRevenueCandidate[key] = candidate;
+    candidateRevenueByCountry[bucket] = (candidateRevenueByCountry[bucket] ?? 0) + candidate;
+    liveUnitsByCountry[bucket] = (liveUnitsByCountry[bucket] ?? 0) + product.units;
+  }
+  const salesSyncGaps = Object.entries(calibTotals).flatMap(([bucket, saved]) => {
+    const liveOrders = brandCountryOrderIds[bucket]?.size ?? 0;
+    const liveUnits = liveUnitsByCountry[bucket] ?? 0;
+    if (liveOrders === saved.ordersCount && liveUnits === saved.unitsSold) return [];
+    const [brandId, countryCode] = bucket.split("||");
+    return [{ brandId, countryCode, liveOrders, savedOrders: saved.ordersCount,
+      liveUnits, savedUnits: saved.unitsSold }];
+  });
+  const staleRevenueBuckets = new Set(salesSyncGaps.map(({ brandId, countryCode }) => `${brandId}||${countryCode}`));
+
   // ── Build final rows ────────────────────────────────────────────────────────
   const rows: any[] = Object.values(products).map(p => {
     const cCfg     = COUNTRY_CFG[p.countryCode] ?? COUNTRY_CFG.MX;
@@ -1399,12 +1458,17 @@ export async function GET(req: NextRequest) {
     // con el reporte de Shopify. Si Shopify no respondió, usamos el cálculo local
     // neto de devoluciones como respaldo.
     const exactNetSales = netSalesByStore[p.brandId]?.[`${p.name}||${p.countryCode}`]?.netSalesUsd;
-    const netRevenueAfterReturns = exactNetSales != null
-      ? Math.max(0, exactNetSales)
-      : Math.max(0, netRevenueUsd - returnsUsd);
+    const revenueCandidate = productRevenueCandidate[key] ?? Math.max(0, netRevenueUsd - returnsUsd);
+    const candidateBucketTotal = candidateRevenueByCountry[bck] ?? 0;
+    // Nunca forzar las ventas nuevas de Shopify al cierre viejo si la
+    // sincronización de pedidos/unidades todavía está atrasada.
+    const revenueMatchScale = calibHasData && candidateBucketTotal > 0 && !staleRevenueBuckets.has(bck)
+      ? ct!.netRevenue / candidateBucketTotal
+      : 1;
+    const netRevenueAfterReturns = revenueCandidate * revenueMatchScale;
     // Factor para que la suma diaria (Testeos) iguale este total exacto.
-    const exactRevenueFactor = exactNetSales != null && netRevenueUsd > 0
-      ? exactNetSales / netRevenueUsd
+    const exactRevenueFactor = (exactNetSales != null || revenueMatchScale !== 1) && netRevenueUsd > 0
+      ? netRevenueAfterReturns / netRevenueUsd
       : null;
 
     productFinancialConfig[key] = {
@@ -1443,7 +1507,7 @@ export async function GET(req: NextRequest) {
     const campaignPurchases       = productCampaignPurchases[key] ?? 0;
     const campaignConversionValue = productCampaignConversionValue[key] ?? 0;
     const cpaAds  = adSpendUsd > 0 && campaignPurchases > 0 ? adSpendUsd / campaignPurchases : null;
-    const roasAds = adSpendUsd > 0 && campaignConversionValue > 0 ? campaignConversionValue / adSpendUsd : null;
+    const roasAds = adSpendUsd > 0 ? campaignConversionValue / adSpendUsd : null;
     // revenueUsd ya queda neto de devoluciones; no incluimos returns otra vez
     // en totalCost para evitar descontarlas dos veces.
     const totalCost    = cogsUsd + adSpendUsd + feesUsd + shippingUsd + taxesUsd + chargebacksUsd;
@@ -1805,6 +1869,7 @@ export async function GET(req: NextRequest) {
       difference: allocationDifference,
       byBrand: allocationByBrand,
     },
+    salesSyncGaps,
     campaignAttribution: {
       ok: unknownAttributionCodes.length === 0,
       codes: attributionCodes,

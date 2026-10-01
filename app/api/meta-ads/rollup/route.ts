@@ -97,6 +97,7 @@ function profitForMetric(
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => ({}));
+    const brandId = typeof body.brandId === "string" ? body.brandId : undefined;
     const from = body.from
       ? new Date(body.from + "T00:00:00Z")
       : new Date("2020-01-01T00:00:00Z");
@@ -118,7 +119,7 @@ export async function POST(req: Request) {
     const grouped = await prisma.adSpend.groupBy({
       by: ["brandId", "countryId", "date"],
       _sum: { spend: true },
-      where: { date: { gte: from, lte: to } },
+      where: { date: { gte: from, lte: to }, ...(brandId ? { brandId } : {}) },
     });
 
     // Consolidar por país real mantiene separados MX, US, CL y ES.
@@ -157,7 +158,7 @@ export async function POST(req: Request) {
     // Leer el período una sola vez. La versión anterior abría una transacción y
     // repetía findMany por cada día, lo que agotaba el pool de Neon en Vercel.
     const metrics = await prisma.dailyMetric.findMany({
-      where: { date: { gte: from, lte: to } },
+      where: { date: { gte: from, lte: to }, ...(brandId ? { brandId } : {}) },
       orderBy: { grossRevenue: "desc" },
     });
     const metricsByDay = new Map<string, typeof metrics>();
