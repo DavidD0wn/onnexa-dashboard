@@ -12,6 +12,7 @@ import {
   incrementalStartDate,
   readFinanceManifest,
 } from "@/lib/finance-drive";
+import { prepareDailyFinancialReport, previousBusinessDate } from "@/lib/daily-financial-report";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -233,6 +234,22 @@ export async function POST(req: Request) {
     (results.metaAds?.skippedAccounts?.length ?? 0) === 0;
   const rollupOk = !results.rollup?.error;
   const coreSyncOk = shopifyOk && metaOk && rollupOk;
+
+  // El cron existente corre a las 12:00 UTC = 7:00 a. m. Colombia.
+  // Preparar ayer únicamente después de una sincronización completa.
+  if (coreSyncOk) {
+    try {
+      const report = await prepareDailyFinancialReport(base, previousBusinessDate());
+      results.dailyFinancialReport = { status: report.status, date: report.date };
+    } catch (error) {
+      results.dailyFinancialReport = {
+        error: error instanceof Error ? error.message : String(error),
+      };
+      console.error("[Daily Financial Report] preparation failed", error);
+    }
+  } else {
+    results.dailyFinancialReport = { error: "Sincronización incompleta; no se preparó el reporte." };
+  }
 
   if (financeDriveConfigured() && coreSyncOk) {
     try {

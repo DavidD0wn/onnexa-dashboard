@@ -1118,7 +1118,7 @@ export async function GET(req: NextRequest) {
   // ── Ad spend — per country when available ──────────────────────────────────
   const adRows   = await prisma.adSpend.findMany({
     where: { brandId: { in: brandIds }, platform: "facebook", date: { gte: dateFrom, lte: dateTo } },
-    select: { date: true, brandId: true, countryId: true, productId: true, spend: true, purchases: true, conversionValue: true, campaignName: true, adsetName: true, adName: true },
+    select: { date: true, brandId: true, countryId: true, productId: true, spend: true, impressions: true, clicks: true, purchases: true, conversionValue: true, campaignName: true, adsetName: true, adName: true },
   });
   const adCountryCode = (row: (typeof adRows)[number]): string | null => {
     return row.countryId ? (codeById[row.countryId] ?? null) : null;
@@ -1172,6 +1172,8 @@ export async function GET(req: NextRequest) {
   const productAdSpend: Record<string, number> = {};
   const productCampaignPurchases: Record<string, number> = {};
   const productCampaignConversionValue: Record<string, number> = {};
+  const productCampaignImpressions: Record<string, number> = {};
+  const productCampaignClicks: Record<string, number> = {};
   const unmatchedBrandCountrySpend: Record<string, number> = {};
   const productDailyAdSpend: Record<string, Record<string, number>> = {};
   const unmatchedDailySpend: Record<string, number> = {};
@@ -1339,6 +1341,10 @@ export async function GET(req: NextRequest) {
           productCampaignConversionValue[match.key] =
             (productCampaignConversionValue[match.key] ?? 0) +
             (row.conversionValue ?? 0) * share;
+          productCampaignImpressions[match.key] =
+            (productCampaignImpressions[match.key] ?? 0) + (row.impressions ?? 0) * share;
+          productCampaignClicks[match.key] =
+            (productCampaignClicks[match.key] ?? 0) + (row.clicks ?? 0) * share;
         }
       } else {
         addUnmatchedSpend(bck, adDate, row.spend);
@@ -1361,6 +1367,8 @@ export async function GET(req: NextRequest) {
           addDailySpend(k, adDate, row.spend * share);
           productCampaignPurchases[k] = (productCampaignPurchases[k] ?? 0) + (row.purchases ?? 0) * share;
           productCampaignConversionValue[k] = (productCampaignConversionValue[k] ?? 0) + (row.conversionValue ?? 0) * share;
+          productCampaignImpressions[k] = (productCampaignImpressions[k] ?? 0) + (row.impressions ?? 0) * share;
+          productCampaignClicks[k] = (productCampaignClicks[k] ?? 0) + (row.clicks ?? 0) * share;
         }
       }
     }
@@ -1515,6 +1523,11 @@ export async function GET(req: NextRequest) {
     const campaignConversionValue = productCampaignConversionValue[key] ?? 0;
     const cpaAds  = adSpendUsd > 0 && campaignPurchases > 0 ? adSpendUsd / campaignPurchases : null;
     const roasAds = adSpendUsd > 0 ? campaignConversionValue / adSpendUsd : null;
+    const campaignImpressions = productCampaignImpressions[key] ?? 0;
+    const campaignClicks = productCampaignClicks[key] ?? 0;
+    const metaCtr = campaignImpressions > 0 ? campaignClicks / campaignImpressions * 100 : null;
+    const metaCpc = campaignClicks > 0 ? adSpendUsd / campaignClicks : null;
+    const metaCpm = campaignImpressions > 0 ? adSpendUsd / campaignImpressions * 1000 : null;
     // revenueUsd ya queda neto de devoluciones; no incluimos returns otra vez
     // en totalCost para evitar descontarlas dos veces.
     const totalCost    = cogsUsd + adSpendUsd + feesUsd + shippingUsd + taxesUsd + chargebacksUsd;
@@ -1600,6 +1613,7 @@ export async function GET(req: NextRequest) {
       grossProfit, grossMargin,
       netProfit, netMargin,
       roas, cpa, cpaAds, roasAds, campaignPurchases, campaignConversionValue,
+      campaignImpressions, campaignClicks, metaCtr, metaCpc, metaCpm,
       status, dataQuality,
       sessions, addToCart, reachedCheckout, addToCartRate, conversionRate,
     };
@@ -1660,6 +1674,11 @@ export async function GET(req: NextRequest) {
       roasAds: null,
       campaignPurchases: 0,
       campaignConversionValue: 0,
+      campaignImpressions: 0,
+      campaignClicks: 0,
+      metaCtr: null,
+      metaCpc: null,
+      metaCpm: null,
       status: "Revisar campaña",
       dataQuality: "Pauta sin producto identificado",
       sessions: null,

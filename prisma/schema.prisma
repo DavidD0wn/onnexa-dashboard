@@ -591,3 +591,20 @@ model EbookSend {
   @@index([productKey])
   @@index([customerEmail])
 }
+
+// Un registro por fecha de negocio (America/Bogota). El estado "sending"
+// bloquea reintentos ambiguos después de que Zoho pueda haber aceptado el mail.
+model DailyFinancialReport {
+  date          String   @id
+  status        String   @default("ready") // ready | sending | sent | failed
+  subject       String
+  body          String   @db.Text
+  recipient     String
+  errorMsg      String?  @db.Text
+  preparedAt    DateTime @default(now())
+  sendingAt     DateTime?
+  sentAt        DateTime?
+  resendCount   Int      @default(0)
+  lastResentAt  DateTime?
+  updatedAt     DateTime @updatedAt
+}
