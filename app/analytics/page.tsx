@@ -157,6 +157,21 @@ const TYPE_CFG: Record<ProductType, { label: string; color: string; bg: string; 
 /* ─── Column definitions per view ───────────────── */
 type ColDef = { key: string; label: string; width: number; right?: boolean; sticky?: boolean; always?: boolean; tooltip?: string };
 
+/* Aplica un orden manual (arrastre) a las filas. Las filas sin posición manual
+   quedan al final conservando su orden actual (estable). */
+function applyManualOrder<T>(rows: T[], keyFn: (r: T) => string, manual: string[]): T[] {
+  if (!manual.length) return rows;
+  const idx = new Map(manual.map((k, i) => [k, i] as const));
+  return rows
+    .map((r, i) => [r, i] as const)
+    .sort((a, b) => {
+      const ia = idx.has(keyFn(a[0])) ? (idx.get(keyFn(a[0])) as number) : Infinity;
+      const ib = idx.has(keyFn(b[0])) ? (idx.get(keyFn(b[0])) as number) : Infinity;
+      return ia !== ib ? ia - ib : a[1] - b[1];
+    })
+    .map((x) => x[0]);
+}
+
 const ALL_COLS_COUNTRY: ColDef[] = [
   { key: "name",              label: "Producto",     width: 250, sticky: true, always: true },
   { key: "countryCode",       label: "País",         width: 110, always: true },
@@ -175,10 +190,10 @@ const ALL_COLS_COUNTRY: ColDef[] = [
   { key: "netProfit",         label: "UT. Contrib.", width: 115, right: true, tooltip: "Utilidad de contribución = Revenue − gastos variables" },
   { key: "netMargin",         label: "MG. Contrib.", width: 105, right: true, tooltip: "Margen de contribución = UT. Contrib. ÷ Revenue" },
   { key: "roas",              label: "ROAS Blend",  width: 105, right: true, tooltip: "Revenue real neto de Shopify ÷ Ad Spend real asignado al producto. Métrica principal de rentabilidad." },
-  { key: "cpa",               label: "CPA Real",     width: 95,  right: true, tooltip: "Gasto total en ads ÷ pedidos reales en Shopify" },
-  { key: "cpaBE",             label: "CPA BE",       width: 95,  right: true, tooltip: "CPA máximo para no perder dinero (Break Even)" },
   { key: "roasAds",           label: "ROAS Ads",     width: 100, right: true, tooltip: "Valor de compras atribuidas por Meta Ads ÷ Ad Spend real. Puede diferir del ROAS Blend." },
+  { key: "cpa",               label: "CPA Real",     width: 95,  right: true, tooltip: "Gasto total en ads ÷ pedidos reales en Shopify" },
   { key: "cpaAds",            label: "CPA Ads",      width: 95,  right: true, tooltip: "Gasto en ads ÷ compras atribuidas por Meta Ads" },
+  { key: "cpaBE",             label: "CPA BE",       width: 95,  right: true, tooltip: "CPA máximo para no perder dinero (Break Even)" },
   { key: "dataQuality",       label: "DQ",           width: 130 },
   { key: "sessions",          label: "Visitas",      width: 90,  right: true },
   { key: "addToCart",         label: "Al Carrito",   width: 95,  right: true },
@@ -626,6 +641,37 @@ export default function ProductAnalyticsPage() {
   const [colOrder,      setColOrder]      = useState<string[]>(ALL_COLS_COUNTRY.map(c => c.key));
   const [hiddenColKeys, setHiddenColKeys] = useState<Set<string>>(new Set<string>());
 
+  // ── Orden manual de filas por arrastre (persistido por vista). Vacío = orden por revenue. ──
+  const [manualCountryOrder, setManualCountryOrder] = useState<string[]>([]);
+  const [manualGeneralOrder, setManualGeneralOrder] = useState<string[]>([]);
+  const [dragRowKey, setDragRowKey] = useState<string | null>(null);
+  useEffect(() => {
+    try {
+      const c = localStorage.getItem("analytics_row_order_country");
+      const g = localStorage.getItem("analytics_row_order_general");
+      if (c) setManualCountryOrder(JSON.parse(c));
+      if (g) setManualGeneralOrder(JSON.parse(g));
+    } catch {}
+  }, []);
+  const handleRowDrop = (
+    targetKey: string, visibleKeys: string[],
+    manual: string[], setManual: (o: string[]) => void, storageKey: string,
+  ) => {
+    if (!dragRowKey || dragRowKey === targetKey) { setDragRowKey(null); return; }
+    let order = manual.length ? [...manual] : [...visibleKeys];
+    if (!order.includes(dragRowKey)) order.push(dragRowKey);
+    if (!order.includes(targetKey)) order.push(targetKey);
+    order.splice(order.indexOf(dragRowKey), 1);
+    order.splice(order.indexOf(targetKey), 0, dragRowKey);
+    setManual(order);
+    try { localStorage.setItem(storageKey, JSON.stringify(order)); } catch {}
+    setDragRowKey(null);
+  };
+  const clearManualOrder = () => {
+    setManualCountryOrder([]); setManualGeneralOrder([]);
+    try { localStorage.removeItem("analytics_row_order_country"); localStorage.removeItem("analytics_row_order_general"); } catch {}
+  };
+
   const tableWrapRef   = useRef<HTMLDivElement>(null);
   const topScrollRef   = useRef<HTMLDivElement>(null);
   const [tableMinW,    setTableMinW]   = useState(0);
@@ -664,8 +710,8 @@ export default function ProductAnalyticsPage() {
   useEffect(() => {
     // Nueva disposición financiera: no reutilizar el orden anterior, que ocultaba
     // ROAS Blend entre las columnas de atribución de Meta.
-    const savedOrder  = localStorage.getItem("analytics_col_order_v2");
-    const savedHidden = localStorage.getItem("analytics_col_hidden_v2");
+    const savedOrder  = localStorage.getItem("analytics_col_order_v3");
+    const savedHidden = localStorage.getItem("analytics_col_hidden_v3");
     const allKeys     = ALL_COLS_COUNTRY.map(c => c.key);
     if (savedOrder) {
       try {
@@ -683,8 +729,8 @@ export default function ProductAnalyticsPage() {
   }, []);
 
   const saveColConfig = (order: string[], hidden: Set<string>) => {
-    localStorage.setItem("analytics_col_order_v2",  JSON.stringify(order));
-    localStorage.setItem("analytics_col_hidden_v2", JSON.stringify([...hidden]));
+    localStorage.setItem("analytics_col_order_v3",  JSON.stringify(order));
+    localStorage.setItem("analytics_col_hidden_v3", JSON.stringify([...hidden]));
   };
 
   const DAYS_OPTS = [
@@ -836,6 +882,10 @@ export default function ProductAnalyticsPage() {
     return map;
   }, [filteredRows]);
 
+  // Claves de fila y aplicación del orden manual (arrastre) por vista.
+  const countryKeyFn = (r: ProductRow) => `${r.name}||${r.variant}||${r.brandId}||${r.countryCode}`;
+  const generalKeyFn = (r: { name: string; variant: string; brandId: string }) => `${r.name}||${r.variant}||${r.brandId}`;
+
   // ── By Store view: aggregate by storeName ──
   const storeRows = useMemo((): StoreRow[] => {
     const groups: Record<string, StoreRow & { _products: ProductRow[] }> = {};
@@ -891,6 +941,16 @@ export default function ProductAnalyticsPage() {
       return sortAsc ? (av as number) - (bv as number) : (bv as number) - (av as number);
     });
   }, [filteredRows, sortKey, sortAsc]);
+
+  // Filas finales con el orden manual (arrastre) aplicado encima del orden por columna.
+  const countryRowsSorted = useMemo(
+    () => applyManualOrder(countryRows, countryKeyFn, manualCountryOrder),
+    [countryRows, manualCountryOrder],
+  );
+  const generalRowsSorted = useMemo(
+    () => applyManualOrder(generalRows, generalKeyFn, manualGeneralOrder),
+    [generalRows, manualGeneralOrder],
+  );
 
   const cogsConfigured = rows.some(r => r.costPerUnit > 0);
 
@@ -1252,6 +1312,11 @@ export default function ProductAnalyticsPage() {
           </p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
+          {((viewMode === "bycountry" && manualCountryOrder.length > 0) || (viewMode === "general" && manualGeneralOrder.length > 0)) && (
+            <button onClick={clearManualOrder} title="Volver al orden automático (por revenue)" style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 14px", borderRadius: 10, border: "1px solid rgba(245,158,11,0.4)", background: "rgba(245,158,11,0.12)", color: "#f59e0b", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
+              ↕ Orden manual · restaurar
+            </button>
+          )}
           {viewMode === "bycountry" && (
             <button onClick={() => setShowCustomize(true)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 16px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.7)", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
               ⚙ Personalizar
@@ -1521,7 +1586,7 @@ export default function ProductAnalyticsPage() {
                 generalRows.length === 0
                   ? <tr><td colSpan={activeCols.length} style={{ padding: 40, textAlign: "center", color: "rgba(255,255,255,0.4)" }}>Sin datos para el período seleccionado</td></tr>
                   : <>
-                    {generalRows.map((r, i) => {
+                    {generalRowsSorted.map((r, i) => {
                       const pKey = `${r.name}||${r.variant}||${r.brandId}`;
                       const kids = childrenByProduct[pKey] ?? [];
                       const canExpand = kids.length > 1;
@@ -1529,14 +1594,17 @@ export default function ProductAnalyticsPage() {
                       const parentBg = i % 2 === 0 ? "transparent" : "rgba(255,255,255,0.015)";
                       return (
                       <Fragment key={pKey}>
-                      <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.04)", background: isOpen ? "rgba(14,118,110,0.10)" : parentBg, transition: "background 0.1s", cursor: canExpand ? "pointer" : "default" }}
+                      <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.04)", background: dragRowKey === pKey ? "rgba(14,118,110,0.22)" : isOpen ? "rgba(14,118,110,0.10)" : parentBg, transition: "background 0.1s", cursor: canExpand ? "pointer" : "default" }}
                         onClick={() => canExpand && toggleExpand(pKey)}
+                        onDragOver={e => { e.preventDefault(); }}
+                        onDrop={() => handleRowDrop(pKey, generalRowsSorted.map(generalKeyFn), manualGeneralOrder, setManualGeneralOrder, "analytics_row_order_general")}
                         onMouseEnter={e => { if (!isOpen) e.currentTarget.style.background = "rgba(255,255,255,0.04)"; }}
                         onMouseLeave={e => { if (!isOpen) e.currentTarget.style.background = parentBg; }}>
                         {COLS_GENERAL.map(col => (
                           <td key={col.key} style={{ padding: "11px 14px", width: col.width, minWidth: col.width, textAlign: (col as any).right ? "right" : "left", fontSize: 13, position: (col as any).sticky ? "sticky" : undefined, left: (col as any).sticky ? 0 : undefined, background: (col as any).sticky ? (isOpen ? "#173a37" : (i % 2 === 0 ? "#1e293b" : "#1a2840")) : undefined, zIndex: (col as any).sticky ? 1 : undefined }}>
                             {col.key === "name" ? (
                               <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                                <span draggable onDragStart={e => { e.stopPropagation(); setDragRowKey(pKey); }} onClick={e => e.stopPropagation()} title="Arrastra para reordenar" style={{ cursor: "grab", color: "rgba(255,255,255,0.3)", fontSize: 13, lineHeight: 1, userSelect: "none" }}>⠿</span>
                                 <span style={{ width: 16, display: "inline-flex", justifyContent: "center", color: canExpand ? "rgba(255,255,255,0.55)" : "transparent" }}>
                                   {canExpand ? (isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />) : null}
                                 </span>
@@ -1572,17 +1640,28 @@ export default function ProductAnalyticsPage() {
                 countryRows.length === 0
                   ? <tr><td colSpan={activeCols.length} style={{ padding: 40, textAlign: "center", color: "rgba(255,255,255,0.4)" }}>Sin datos para el período seleccionado</td></tr>
                   : <>
-                    {countryRows.map((r, i) => (
-                      <tr key={`${r.name}||${r.variant}||${r.brandId}||${r.countryCode}`} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)", background: i % 2 === 0 ? "transparent" : "rgba(255,255,255,0.015)", transition: "background 0.1s" }}
+                    {countryRowsSorted.map((r, i) => {
+                      const rKey = `${r.name}||${r.variant}||${r.brandId}||${r.countryCode}`;
+                      const rowBg = dragRowKey === rKey ? "rgba(14,118,110,0.22)" : i % 2 === 0 ? "transparent" : "rgba(255,255,255,0.015)";
+                      return (
+                      <tr key={rKey} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)", background: rowBg, transition: "background 0.1s" }}
+                        onDragOver={e => { e.preventDefault(); }}
+                        onDrop={() => handleRowDrop(rKey, countryRowsSorted.map(countryKeyFn), manualCountryOrder, setManualCountryOrder, "analytics_row_order_country")}
                         onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.04)")}
-                        onMouseLeave={e => (e.currentTarget.style.background = i % 2 === 0 ? "transparent" : "rgba(255,255,255,0.015)")}>
+                        onMouseLeave={e => (e.currentTarget.style.background = rowBg)}>
                         {activeCols.map((col: ColDef) => (
                           <td key={col.key} style={{ padding: "11px 14px", width: col.width, minWidth: col.width, textAlign: col.right ? "right" : "left", fontSize: 13, position: col.sticky ? "sticky" : undefined, left: col.sticky ? 0 : undefined, background: col.sticky ? (i % 2 === 0 ? "#1e293b" : "#1a2840") : undefined, zIndex: col.sticky ? 1 : undefined }}>
-                            {renderColCell(col.key, r)}
+                            {col.key === "name" ? (
+                              <span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
+                                <span draggable onDragStart={e => { e.stopPropagation(); setDragRowKey(rKey); }} title="Arrastra para reordenar" style={{ cursor: "grab", color: "rgba(255,255,255,0.3)", fontSize: 13, lineHeight: 1, userSelect: "none" }}>⠿</span>
+                                {renderColCell(col.key, r)}
+                              </span>
+                            ) : renderColCell(col.key, r)}
                           </td>
                         ))}
                       </tr>
-                    ))}
+                      );
+                    })}
                     {bycountryTotals && (
                       <tr style={{ borderTop: "2px solid rgba(14,118,110,0.5)", background: "#0e2420" }}>
                         {activeCols.map((col: ColDef) => (
