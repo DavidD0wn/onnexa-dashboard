@@ -25,14 +25,53 @@ const dateLabel = (date: string) => `${date.slice(8, 10)}/${date.slice(5, 7)}/${
 
 type ProductRow = {
   name: string; variant?: string; brandName: string; countryName: string;
+  productType: string;
   revenueUsd: number; adSpendUsd: number; cogsUsd: number; feesUsd: number;
   shippingUsd: number; taxesUsd: number; chargebacksUsd: number;
   orders: number; units: number; netProfit: number; netMargin: number;
   roas: number | null; roasAds: number | null; cpaAds: number | null;
-  campaignPurchases: number; campaignImpressions: number; campaignClicks: number;
+  campaignPurchases: number; campaignConversionValue: number;
+  campaignImpressions: number; campaignClicks: number;
   metaCtr: number | null; metaCpc: number | null; metaCpm: number | null;
   dataQuality?: string;
 };
+
+function physicalProductsOnly(source: ProductRow[]): ProductRow[] {
+  const grouped = new Map<string, ProductRow>();
+  for (const row of source) {
+    if (row.productType !== "físico") continue; // Excluye upsells, incluso los físicos.
+    if (!(row.orders > 0 || row.units > 0 ||
+      [row.revenueUsd, row.adSpendUsd, row.cogsUsd, row.feesUsd].some((value) => Math.abs(value) > 0.001))) continue;
+    const key = `${row.brandName}\u0000${row.name}`;
+    const existing = grouped.get(key);
+    if (!existing) {
+      grouped.set(key, { ...row, variant: "" });
+      continue;
+    }
+    for (const field of [
+      "revenueUsd", "adSpendUsd", "cogsUsd", "feesUsd", "shippingUsd",
+      "taxesUsd", "chargebacksUsd", "orders", "units", "netProfit",
+      "campaignPurchases", "campaignConversionValue", "campaignImpressions", "campaignClicks",
+    ] as const) {
+      existing[field] += row[field];
+    }
+    const countries = new Set([...existing.countryName.split(" + "), row.countryName]);
+    existing.countryName = [...countries].join(" + ");
+    if (row.dataQuality && row.dataQuality !== existing.dataQuality) {
+      existing.dataQuality = [existing.dataQuality, row.dataQuality].filter(Boolean).join("; ");
+    }
+  }
+  return [...grouped.values()].map((row) => ({
+    ...row,
+    netMargin: row.revenueUsd > 0 ? row.netProfit / row.revenueUsd * 100 : 0,
+    roas: row.adSpendUsd > 0 ? row.revenueUsd / row.adSpendUsd : null,
+    roasAds: row.adSpendUsd > 0 ? row.campaignConversionValue / row.adSpendUsd : null,
+    cpaAds: row.campaignPurchases > 0 ? row.adSpendUsd / row.campaignPurchases : null,
+    metaCtr: row.campaignImpressions > 0 ? row.campaignClicks / row.campaignImpressions * 100 : null,
+    metaCpc: row.campaignClicks > 0 ? row.adSpendUsd / row.campaignClicks : null,
+    metaCpm: row.campaignImpressions > 0 ? row.adSpendUsd / row.campaignImpressions * 1000 : null,
+  })).sort((a, b) => b.revenueUsd - a.revenueUsd);
+}
 
 async function readJson(base: string, path: string) {
   const response = await fetch(`${base}${path}`, { cache: "no-store" });
@@ -70,24 +109,29 @@ export async function buildDailyFinancialReport(base: string, date: string) {
       throw new Error(`Product Analytics y Dashboard no concilian en ${label}.`);
     }
   }
-  const rows = (analytics.rows as ProductRow[]).filter(
-    (r) => r.orders > 0 || r.units > 0 ||
-      [r.revenueUsd, r.adSpendUsd, r.cogsUsd, r.feesUsd].some((value) => Math.abs(value) > 0.001),
-  );
+  const rows = physicalProductsOnly(analytics.rows as ProductRow[]);
+  const physical = rows.reduce((sum, row) => ({
+    revenue: sum.revenue + row.revenueUsd,
+    adSpend: sum.adSpend + row.adSpendUsd,
+    cogs: sum.cogs + row.cogsUsd,
+    fees: sum.fees + row.feesUsd,
+    profit: sum.profit + row.netProfit,
+  }), { revenue: 0, adSpend: 0, cogs: 0, fees: 0, profit: 0 });
   const lines = [
     "REPORTE FINANCIERO DIARIO",
     `Fecha: ${dateLabel(date)} · Zona horaria: ${TIME_ZONE}`,
     "Importes en USD. Revenue = ingreso neto de Shopify; profit incluye COGS, pauta, fees y demás costos registrados.",
     "",
-    "RESUMEN GENERAL",
-    `Revenue total: ${money(t.revenueUsd)}`,
-    `Ads Spend: ${money(t.adSpendUsd)}`,
-    `COGS: ${money(t.cogsUsd)}`,
-    `Fees: ${money(t.feesUsd)}`,
-    `Margen neto: ${t.revenueUsd > 0 ? pct(t.netMargin) : "No aplicable"}`,
-    `Profit/Loss: ${t.netProfit >= 0 ? "+" : ""}${money(t.netProfit)}`,
-    `ROAS financiero (Shopify / pauta): ${ratio(t.roas)}`,
-    `Productos con actividad: ${rows.length}`,
+    "RESUMEN DE PRODUCTOS FÍSICOS",
+    `Revenue total: ${money(physical.revenue)}`,
+    `Ads Spend: ${money(physical.adSpend)}`,
+    `COGS: ${money(physical.cogs)}`,
+    `Fees: ${money(physical.fees)}`,
+    `Margen neto: ${physical.revenue > 0 ? pct(physical.profit / physical.revenue * 100) : "No aplicable"}`,
+    `Profit/Loss: ${physical.profit >= 0 ? "+" : ""}${money(physical.profit)}`,
+    `ROAS financiero (Shopify / pauta): ${physical.adSpend > 0 ? ratio(physical.revenue / physical.adSpend) : "Sin pauta"}`,
+    `Productos físicos detallados: ${rows.length}`,
+    "Se excluyen upsells, productos digitales y pauta sin producto identificado. Este subtotal puede diferir del dashboard global.",
   ];
 
   for (const [index, row] of rows.entries()) {
@@ -121,7 +165,7 @@ export async function buildDailyFinancialReport(base: string, date: string) {
     body: lines.join("\n"),
     recipient: process.env.FINANCE_REPORT_TO_EMAIL?.trim() || DEFAULT_RECIPIENT,
     productCount: rows.length,
-    totals: { revenue: t.revenueUsd, adSpend: t.adSpendUsd, cogs: t.cogsUsd, profit: t.netProfit },
+    totals: physical,
   };
 }
 
