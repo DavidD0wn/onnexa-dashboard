@@ -319,7 +319,7 @@ export async function refreshAndSendDailyReport(
   });
   const claim = await prisma.dailyFinancialReport.updateMany({
     where: { date, status: allowFailed ? { in: ["ready", "failed"] } : "ready", sentAt: null },
-    data: { status: "refreshing", errorMsg: null },
+    data: { status: "refreshing", errorMsg: null, sendingAt: null },
   });
   if (claim.count !== 1) {
     const current = await prisma.dailyFinancialReport.findUnique({ where: { date } });
