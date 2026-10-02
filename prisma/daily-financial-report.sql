@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS "DailyFinancialReport" (
   "status" TEXT NOT NULL DEFAULT 'ready',
   "subject" TEXT NOT NULL,
   "body" TEXT NOT NULL,
+  "htmlBody" TEXT,
   "recipient" TEXT NOT NULL,
   "errorMsg" TEXT,
   "preparedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -13,3 +14,5 @@ CREATE TABLE IF NOT EXISTS "DailyFinancialReport" (
   "lastResentAt" TIMESTAMP(3),
   "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+ALTER TABLE "DailyFinancialReport" ADD COLUMN IF NOT EXISTS "htmlBody" TEXT;

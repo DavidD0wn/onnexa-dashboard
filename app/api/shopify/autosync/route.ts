@@ -45,6 +45,8 @@ export async function POST(req: Request) {
     from?: string;
     to?: string;
     incremental?: boolean;
+    skipDailyFinancialReport?: boolean;
+    skipFinanceDrive?: boolean;
   };
   const days = Math.max(1, Number(body.days ?? 3));
   const { secret } = body;
@@ -60,7 +62,7 @@ export async function POST(req: Request) {
   const today = body.to ?? businessDate();
   let driveManifest = null;
   let bootstrapped = false;
-  if (financeDriveConfigured()) {
+  if (financeDriveConfigured() && !body.skipFinanceDrive) {
     try {
       driveManifest = await readFinanceManifest();
       if (!driveManifest) {
@@ -227,17 +229,18 @@ export async function POST(req: Request) {
   // ── Paso 7: snapshot semanal + checkpoint compartido en Drive ───────────
   // Solo se avanza el checkpoint cuando TODAS las tiendas, Meta y el rollup
   // terminaron. Si algo falla, Drive conserva el último estado confirmado.
-  const shopifyOk = stores.every((store) => !results[`shopify_${store.key}`]?.error);
+  const shopifyOk = stores.every((store) =>
+    !results[`shopify_${store.key}`]?.error && results[`shopify_${store.key}`]?.ok !== false);
   const metaOk =
     !results.metaAds?.error &&
     results.metaAds?.ok !== false &&
     (results.metaAds?.skippedAccounts?.length ?? 0) === 0;
-  const rollupOk = !results.rollup?.error;
+  const rollupOk = !results.rollup?.error && results.rollup?.ok !== false;
   const coreSyncOk = shopifyOk && metaOk && rollupOk;
 
   // El cron existente corre a las 12:00 UTC = 7:00 a. m. Colombia.
   // Preparar ayer únicamente después de una sincronización completa.
-  if (coreSyncOk) {
+  if (coreSyncOk && !body.skipDailyFinancialReport) {
     try {
       const report = await prepareDailyFinancialReport(base, previousBusinessDate());
       results.dailyFinancialReport = { status: report.status, date: report.date };
@@ -247,11 +250,13 @@ export async function POST(req: Request) {
       };
       console.error("[Daily Financial Report] preparation failed", error);
     }
-  } else {
+  } else if (!body.skipDailyFinancialReport) {
     results.dailyFinancialReport = { error: "Sincronización incompleta; no se preparó el reporte." };
   }
 
-  if (financeDriveConfigured() && coreSyncOk) {
+  if (body.skipFinanceDrive) {
+    results.drive = { skipped: true, reason: "Actualización previa al correo diario" };
+  } else if (financeDriveConfigured() && coreSyncOk) {
     try {
       const manifest = await exportFinanceRangeToDrive(dateFrom, today, {
         advanceCheckpoint: true,
@@ -283,6 +288,7 @@ export async function POST(req: Request) {
 
   return NextResponse.json({
     ok: coreSyncOk && results.drive?.ok === true,
+    coreSyncOk,
     timestamp: new Date().toISOString(),
     mode: body.incremental === false || body.from ? "range" : "incremental",
     days: Math.floor((new Date(today).getTime() - new Date(dateFrom).getTime()) / 864e5) + 1,
@@ -304,9 +310,19 @@ export async function POST(req: Request) {
 }
 
 export async function GET(req: Request) {
-  return POST(new Request(req.url, {
+  const primary = await POST(new Request(req.url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ incremental: true }),
+  }));
+  if (primary.status !== 503) return primary;
+  const result = await primary.clone().json().catch(() => null);
+  if (result?.error !== "No se pudo leer el punto de sincronización de Google Drive.") return primary;
+  // El respaldo Drive puede fallar temporalmente. No bloquear el cierre del
+  // día: repetir las fuentes financieras sin mover el checkpoint de Drive.
+  return POST(new Request(req.url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ incremental: true, skipFinanceDrive: true }),
   }));
 }

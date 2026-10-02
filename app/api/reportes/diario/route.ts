@@ -5,6 +5,7 @@ import {
   buildDailyFinancialReport,
   prepareDailyFinancialReport,
   previousBusinessDate,
+  refreshAndSendDailyReport,
   sendDailyFinancialReport,
   validReportDate,
 } from "@/lib/daily-financial-report";
@@ -22,10 +23,7 @@ export async function GET(req: Request) {
   if (!authorized(req)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const date = previousBusinessDate();
   try {
-    const result = await sendDailyFinancialReport(date);
-    if (result.status === "missing") {
-      return NextResponse.json({ error: "El reporte no quedó preparado a las 7:00; no se enviará información sin verificar.", date }, { status: 503 });
-    }
+    const result = await refreshAndSendDailyReport(new URL(req.url).origin, date);
     return NextResponse.json({ date, ...result });
   } catch (error) {
     console.error("[Daily Financial Report] send failed", error);
@@ -49,17 +47,23 @@ export async function POST(req: Request) {
     if (input.action === "preview") {
       const report = await prisma.dailyFinancialReport.findUnique({ where: { date } });
       return NextResponse.json(report
-        ? { date, status: report.status, subject: report.subject, body: report.body,
+        ? { date, status: report.status, subject: report.subject, body: report.body, htmlBody: report.htmlBody,
             recipient: report.recipient, sentAt: report.sentAt, error: report.errorMsg }
         : { date, status: "missing" });
     }
     if (input.action === "prepare") {
       const report = await prepareDailyFinancialReport(new URL(req.url).origin, date);
       return NextResponse.json({ date, status: report.status, subject: report.subject,
-        body: report.body, recipient: report.recipient });
+        body: report.body, htmlBody: report.htmlBody, recipient: report.recipient });
+    }
+    if (input.action === "refresh-preview") {
+      return NextResponse.json({ date, ...await refreshAndSendDailyReport(new URL(req.url).origin, date, false, true) });
     }
     if (input.action === "send" || input.action === "resend") {
-      return NextResponse.json({ date, ...await sendDailyFinancialReport(date, input.action === "resend" ? "resend" : "retry") });
+      const result = input.action === "send"
+        ? await refreshAndSendDailyReport(new URL(req.url).origin, date, true, true)
+        : await sendDailyFinancialReport(date, "resend");
+      return NextResponse.json({ date, ...result });
     }
     return NextResponse.json({ error: "Acción inválida." }, { status: 400 });
   } catch (error) {

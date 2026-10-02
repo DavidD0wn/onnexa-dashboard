@@ -27,7 +27,9 @@ url.searchParams.set("connection_limit", "2");
 const prisma = new PrismaClient({ datasources: { db: { url: url.toString() } } });
 try {
   const ddl = await fs.readFile(new URL("../prisma/daily-financial-report.sql", import.meta.url), "utf8");
-  await prisma.$executeRawUnsafe(ddl);
+  for (const statement of ddl.split(/;\s*(?:\r?\n|$)/).map((part) => part.trim()).filter(Boolean)) {
+    await prisma.$executeRawUnsafe(statement);
+  }
   const rows = await prisma.$queryRawUnsafe('SELECT COUNT(*) AS count FROM "DailyFinancialReport"');
   console.log(`DailyFinancialReport lista (${String(rows[0].count)} registros).`);
 } finally {

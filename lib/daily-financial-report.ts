@@ -22,6 +22,9 @@ const money = (value: number) =>
 const pct = (value: number) => `${value.toFixed(1)}%`;
 const ratio = (value: number | null | undefined) => value == null ? "No disponible" : `${value.toFixed(2)}x`;
 const dateLabel = (date: string) => `${date.slice(8, 10)}/${date.slice(5, 7)}/${date.slice(0, 4)}`;
+const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (character) => ({
+  "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+}[character] ?? character));
 
 type ProductRow = {
   name: string; variant?: string; brandName: string; countryName: string;
@@ -71,6 +74,68 @@ function physicalProductsOnly(source: ProductRow[]): ProductRow[] {
     metaCpc: row.campaignClicks > 0 ? row.adSpendUsd / row.campaignClicks : null,
     metaCpm: row.campaignImpressions > 0 ? row.adSpendUsd / row.campaignImpressions * 1000 : null,
   })).sort((a, b) => b.revenueUsd - a.revenueUsd);
+}
+
+function renderHtmlReport(date: string, rows: ProductRow[], summary: {
+  revenue: number; adSpend: number; cogs: number; fees: number; profit: number;
+}) {
+  const tableRow = (label: string, value: string, accent = false) =>
+    `<tr><td style="padding:9px 12px;border-bottom:1px solid #e8edf1;color:#53616e;font-size:13px">${escapeHtml(label)}</td>` +
+    `<td style="padding:9px 12px;border-bottom:1px solid #e8edf1;text-align:right;font-size:13px;font-weight:${accent ? "700" : "600"};color:${accent ? "#0b776d" : "#172b36"}">${escapeHtml(value)}</td></tr>`;
+  const maxProfit = Math.max(1, ...rows.map((row) => Math.abs(row.netProfit)));
+  const bars = rows.map((row) => {
+    const width = Math.max(3, Math.round(Math.abs(row.netProfit) / maxProfit * 100));
+    const color = row.netProfit < 0 ? "#d75b60" : "#168f7b";
+    return `<tr><td style="padding:8px 10px 8px 0;vertical-align:middle;font-size:12px;color:#24343f;width:43%">${escapeHtml(row.name)}</td>` +
+      `<td style="padding:8px 4px;vertical-align:middle;width:35%"><div style="height:10px;background:#edf3f2;border-radius:6px"><div style="height:10px;width:${width}%;background:${color};border-radius:6px"></div></div></td>` +
+      `<td style="padding:8px 0 8px 8px;text-align:right;white-space:nowrap;font-size:12px;font-weight:700;color:${color}">${escapeHtml(money(row.netProfit))}</td></tr>`;
+  }).join("");
+  const cards = rows.map((row, index) => {
+    const profitColor = row.netProfit < 0 ? "#b3454b" : "#0b776d";
+    const quality = row.dataQuality && !/^(OK|Completo)$/i.test(row.dataQuality)
+      ? `<p style="margin:10px 0 0;color:#9a681e;font-size:12px">Calidad de datos: ${escapeHtml(row.dataQuality)}</p>` : "";
+    return `<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse;background:#ffffff;border:1px solid #dce8e6;border-radius:12px;margin:0 0 16px">` +
+      `<tr><td colspan="2" style="padding:15px 16px 12px;background:#eef8f6;border-bottom:1px solid #dce8e6">` +
+      `<div style="font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#0b776d;font-weight:700">Producto ${index + 1} · ${escapeHtml(row.brandName)} · ${escapeHtml(row.countryName)}</div>` +
+      `<div style="margin-top:5px;font-size:17px;line-height:1.3;font-weight:700;color:#142d35">${escapeHtml(row.name)}</div></td></tr>` +
+      tableRow("Revenue neto", money(row.revenueUsd)) +
+      tableRow("Ads Spend", money(row.adSpendUsd)) +
+      tableRow("COGS", money(row.cogsUsd)) +
+      tableRow("Fees y otros costos", money(row.feesUsd + row.shippingUsd + row.taxesUsd + row.chargebacksUsd)) +
+      tableRow("Pedidos / unidades", `${row.orders} / ${row.units}`) +
+      tableRow("Margen neto", row.revenueUsd > 0 ? pct(row.netMargin) : "No aplicable") +
+      `<tr><td style="padding:11px 12px;color:#24343f;font-size:14px;font-weight:700">Profit / Loss</td><td style="padding:11px 12px;text-align:right;color:${profitColor};font-size:16px;font-weight:800">${escapeHtml(`${row.netProfit >= 0 ? "+" : ""}${money(row.netProfit)}`)}</td></tr>` +
+      `<tr><td colspan="2" style="padding:10px 12px;background:#f8fbfa;border-top:1px solid #e8edf1"><strong style="font-size:12px;color:#52636a">ROAS financiero:</strong> <strong style="color:#142d35">${escapeHtml(row.adSpendUsd > 0 ? ratio(row.roas) : "Sin pauta")}</strong></td></tr>` +
+      `<tr><td colspan="2" style="padding:13px 12px 4px;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#637783">Meta Ads</td></tr>` +
+      tableRow("CTR · todos los clics", row.metaCtr == null ? "No disponible" : pct(row.metaCtr)) +
+      tableRow("CPC / CPM", `${row.metaCpc == null ? "N/D" : money(row.metaCpc)} / ${row.metaCpm == null ? "N/D" : money(row.metaCpm)}`) +
+      tableRow("CPA Ads / compras", `${row.cpaAds == null ? "N/D" : money(row.cpaAds)} / ${row.adSpendUsd > 0 ? row.campaignPurchases.toFixed(0) : "N/D"}`) +
+      tableRow("ROAS Meta atribuido", row.adSpendUsd > 0 ? ratio(row.roasAds) : "No disponible") +
+      `<tr><td colspan="2" style="padding:0 12px 12px">${quality}</td></tr></table>`;
+  }).join("");
+
+  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>` +
+    `<body style="margin:0;padding:0;background:#f3f7f6;color:#172b36;font-family:Arial,Helvetica,sans-serif">` +
+    `<div style="max-width:640px;margin:0 auto;padding:20px 12px">` +
+    `<div style="background:#12343b;border-radius:14px;padding:22px 20px;color:#ffffff">` +
+    `<div style="font-size:11px;letter-spacing:2px;color:#9bdfd5;font-weight:700">ONNEXA · FINANZAS</div>` +
+    `<h1 style="font-size:24px;line-height:1.2;margin:8px 0 7px;color:#ffffff">Reporte financiero diario</h1>` +
+    `<div style="font-size:13px;color:#d7eeea">${dateLabel(date)} · Colombia · USD</div></div>` +
+    `<h2 style="font-size:16px;margin:24px 4px 10px;color:#12343b">Resumen · productos físicos</h2>` +
+    `<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse;background:#ffffff;border:1px solid #dce8e6;border-radius:12px">` +
+    tableRow("Revenue neto", money(summary.revenue)) +
+    tableRow("Ads Spend", money(summary.adSpend)) +
+    tableRow("COGS", money(summary.cogs)) +
+    tableRow("Fees", money(summary.fees)) +
+    tableRow("Margen neto", summary.revenue > 0 ? pct(summary.profit / summary.revenue * 100) : "No aplicable") +
+    tableRow("ROAS financiero", summary.adSpend > 0 ? ratio(summary.revenue / summary.adSpend) : "Sin pauta") +
+    tableRow("Profit / Loss", `${summary.profit >= 0 ? "+" : ""}${money(summary.profit)}`, true) +
+    `</table>` +
+    `<h2 style="font-size:16px;margin:25px 4px 10px;color:#12343b">Profit por producto</h2>` +
+    `<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse;background:#ffffff;border:1px solid #dce8e6;border-radius:12px;padding:12px"><tbody>${bars}</tbody></table>` +
+    `<h2 style="font-size:16px;margin:25px 4px 10px;color:#12343b">Detalle (${rows.length} productos)</h2>` + cards +
+    `<p style="font-size:11px;line-height:1.5;color:#667983;margin:14px 4px 0">Solo productos físicos; se excluyen upsells, digitales y pauta sin producto identificado. Por eso este subtotal puede diferir del dashboard global. ROAS financiero usa ventas netas de Shopify; ROAS Meta usa compras atribuidas. El CTR disponible es de todos los clics, no Unique CTR.</p>` +
+    `</div></body></html>`;
 }
 
 async function readJson(base: string, path: string) {
@@ -163,6 +228,7 @@ export async function buildDailyFinancialReport(base: string, date: string) {
   return {
     subject: `Reporte financiero diario | ${dateLabel(date)}`,
     body: lines.join("\n"),
+    htmlBody: renderHtmlReport(date, rows, physical),
     recipient: process.env.FINANCE_REPORT_TO_EMAIL?.trim() || DEFAULT_RECIPIENT,
     productCount: rows.length,
     totals: physical,
@@ -175,20 +241,20 @@ export async function prepareDailyFinancialReport(base: string, date: string) {
   const report = await buildDailyFinancialReport(base, date);
   return prisma.dailyFinancialReport.upsert({
     where: { date },
-    create: { date, status: "ready", subject: report.subject, body: report.body, recipient: report.recipient },
-    update: { status: "ready", subject: report.subject, body: report.body, recipient: report.recipient, errorMsg: null, preparedAt: new Date() },
+    create: { date, status: "ready", subject: report.subject, body: report.body, htmlBody: report.htmlBody, recipient: report.recipient },
+    update: { status: "ready", subject: report.subject, body: report.body, htmlBody: report.htmlBody, recipient: report.recipient, errorMsg: null, preparedAt: new Date() },
   });
 }
 
 export async function sendDailyFinancialReport(
   date: string,
-  mode: "automatic" | "retry" | "resend" = "automatic",
+  mode: "automatic" | "after-refresh" | "retry" | "resend" = "automatic",
 ) {
   const manualResend = mode === "resend";
   const claim = await prisma.dailyFinancialReport.updateMany({
     where: manualResend
       ? { date, status: "sent", sentAt: { not: null } }
-      : { date, status: mode === "retry" ? { in: ["ready", "failed"] } : "ready", sentAt: null },
+      : { date, status: mode === "retry" ? { in: ["ready", "failed"] } : mode === "after-refresh" ? "refreshing" : "ready", sentAt: null },
     data: { status: "sending", sendingAt: new Date(), errorMsg: null },
   });
   if (claim.count !== 1) {
@@ -208,6 +274,7 @@ export async function sendDailyFinancialReport(
       to: report.recipient,
       subject: report.subject,
       text: report.body,
+      html: report.htmlBody || undefined,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -222,4 +289,64 @@ export async function sendDailyFinancialReport(
       ...(manualResend ? { resendCount: { increment: 1 }, lastResentAt: new Date() } : {}) },
   });
   return { sent: true, status: "sent", recipient: report.recipient, manualResend };
+}
+
+/** Vuelve a ejecutar la actualización de Ventas + Ads antes de calcular/enviar. */
+export async function refreshAndSendDailyReport(
+  base: string, date: string, deliver = true, allowFailed = false,
+) {
+  if (!validReportDate(date) || date >= businessDate()) {
+    throw new Error("El reporte debe corresponder a un día cerrado de Colombia.");
+  }
+  await prisma.dailyFinancialReport.upsert({
+    where: { date },
+    create: { date, status: "ready", subject: "", body: "", recipient: process.env.FINANCE_REPORT_TO_EMAIL?.trim() || DEFAULT_RECIPIENT },
+    update: {},
+  });
+  const claim = await prisma.dailyFinancialReport.updateMany({
+    where: { date, status: allowFailed ? { in: ["ready", "failed"] } : "ready", sentAt: null },
+    data: { status: "refreshing", errorMsg: null },
+  });
+  if (claim.count !== 1) {
+    const current = await prisma.dailyFinancialReport.findUnique({ where: { date } });
+    return { sent: false, status: current?.status ?? "missing" };
+  }
+  try {
+    const syncResponse = await fetch(`${base}/api/shopify/autosync`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ from: date, to: businessDate(), incremental: false,
+        skipDailyFinancialReport: true, skipFinanceDrive: true }),
+      cache: "no-store",
+      signal: AbortSignal.timeout(230_000),
+    });
+    const sync = await syncResponse.json().catch(() => null);
+    const syncErrors = [
+      ...Object.values(sync?.shopify ?? {}),
+      ...Object.values(sync?.payments ?? {}),
+      ...Object.values(sync?.disputes ?? {}),
+      sync, sync?.metaAds, sync?.rollup, sync?.cleanup,
+    ].filter((result): result is { error: string } =>
+      Boolean(result && typeof result === "object" && "error" in result && result.error));
+    if (!syncResponse.ok || !sync?.coreSyncOk || syncErrors.length > 0) {
+      throw new Error(`La actualización de Ventas + Ads no terminó completa (${syncErrors.length} errores${sync?.error ? `: ${sync.error}` : ""}). No se enviará el reporte.`);
+    }
+    const report = await buildDailyFinancialReport(base, date);
+    const saved = await prisma.dailyFinancialReport.updateMany({
+      where: { date, status: "refreshing", sentAt: null },
+      data: { subject: report.subject, body: report.body, htmlBody: report.htmlBody,
+        recipient: report.recipient, preparedAt: new Date(),
+        status: deliver ? "refreshing" : "ready" },
+    });
+    if (saved.count !== 1) throw new Error("El reporte cambió de estado durante la actualización.");
+    if (!deliver) return { sent: false, status: "ready", date,
+      productCount: report.productCount, totals: report.totals };
+    return await sendDailyFinancialReport(date, "after-refresh");
+  } catch (error) {
+    await prisma.dailyFinancialReport.updateMany({
+      where: { date, status: "refreshing" },
+      data: { status: "failed", errorMsg: error instanceof Error ? error.message : String(error) },
+    });
+    throw error;
+  }
 }

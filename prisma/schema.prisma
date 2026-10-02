@@ -596,9 +596,10 @@ model EbookSend {
 // bloquea reintentos ambiguos después de que Zoho pueda haber aceptado el mail.
 model DailyFinancialReport {
   date          String   @id
-  status        String   @default("ready") // ready | sending | sent | failed
+  status        String   @default("ready") // ready | refreshing | sending | sent | failed
   subject       String
   body          String   @db.Text
+  htmlBody      String?  @db.Text
   recipient     String
   errorMsg      String?  @db.Text
   preparedAt    DateTime @default(now())
