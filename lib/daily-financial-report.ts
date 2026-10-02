@@ -237,13 +237,27 @@ export async function buildDailyFinancialReport(base: string, date: string) {
 
 export async function prepareDailyFinancialReport(base: string, date: string) {
   const existing = await prisma.dailyFinancialReport.findUnique({ where: { date } });
-  if (existing?.status === "sent" || existing?.status === "sending") return existing;
+  if (existing && ["sent", "sending", "refreshing"].includes(existing.status)) return existing;
   const report = await buildDailyFinancialReport(base, date);
-  return prisma.dailyFinancialReport.upsert({
-    where: { date },
-    create: { date, status: "ready", subject: report.subject, body: report.body, htmlBody: report.htmlBody, recipient: report.recipient },
-    update: { status: "ready", subject: report.subject, body: report.body, htmlBody: report.htmlBody, recipient: report.recipient, errorMsg: null, preparedAt: new Date() },
-  });
+  const content = { subject: report.subject, body: report.body,
+    htmlBody: report.htmlBody, recipient: report.recipient };
+  if (existing) {
+    await prisma.dailyFinancialReport.updateMany({
+      where: { date, status: { in: ["ready", "failed"] }, sentAt: null },
+      data: { ...content, status: "ready", errorMsg: null, preparedAt: new Date() },
+    });
+    return prisma.dailyFinancialReport.findUniqueOrThrow({ where: { date } });
+  }
+  try {
+    return await prisma.dailyFinancialReport.create({
+      data: { date, status: "ready", ...content },
+    });
+  } catch (error) {
+    if (typeof error === "object" && error !== null && "code" in error && error.code === "P2002") {
+      return prisma.dailyFinancialReport.findUniqueOrThrow({ where: { date } });
+    }
+    throw error;
+  }
 }
 
 export async function sendDailyFinancialReport(
