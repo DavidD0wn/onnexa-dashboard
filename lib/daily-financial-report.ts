@@ -326,24 +326,28 @@ export async function refreshAndSendDailyReport(
     return { sent: false, status: current?.status ?? "missing" };
   }
   try {
-    const syncResponse = await fetch(`${base}/api/shopify/autosync`, {
+    // Ejecutar el handler dentro de la misma invocación evita que una llamada
+    // HTTP al propio deployment (protección/routing de Vercel) impida el correo.
+    const { POST: runAutosync } = await import("@/app/api/shopify/autosync/route");
+    const syncResponse = await runAutosync(new Request(`${base}/api/shopify/autosync`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ from: date, to: businessDate(), incremental: false,
         skipDailyFinancialReport: true, skipFinanceDrive: true }),
-      cache: "no-store",
-      signal: AbortSignal.timeout(230_000),
-    });
+    }));
     const sync = await syncResponse.json().catch(() => null);
-    const syncErrors = [
-      ...Object.values(sync?.shopify ?? {}),
-      ...Object.values(sync?.payments ?? {}),
-      ...Object.values(sync?.disputes ?? {}),
-      sync, sync?.metaAds, sync?.rollup, sync?.cleanup,
-    ].filter((result): result is { error: string } =>
-      Boolean(result && typeof result === "object" && "error" in result && result.error));
+    const syncErrors = Object.entries({
+      ...Object.fromEntries(Object.entries(sync?.shopify ?? {}).map(([key, value]) => [`shopify.${key}`, value])),
+      ...Object.fromEntries(Object.entries(sync?.payments ?? {}).map(([key, value]) => [`payments.${key}`, value])),
+      ...Object.fromEntries(Object.entries(sync?.disputes ?? {}).map(([key, value]) => [`disputes.${key}`, value])),
+      general: sync, metaAds: sync?.metaAds, rollup: sync?.rollup, cleanup: sync?.cleanup,
+    }).flatMap(([source, result]) => {
+      if (!result || typeof result !== "object" || !("error" in result) || !result.error) return [];
+      const detail = typeof result.error === "string" ? result.error : JSON.stringify(result.error);
+      return [`${source}: ${detail}`];
+    });
     if (!syncResponse.ok || !sync?.coreSyncOk || syncErrors.length > 0) {
-      throw new Error(`La actualización de Ventas + Ads no terminó completa (${syncErrors.length} errores${sync?.error ? `: ${sync.error}` : ""}). No se enviará el reporte.`);
+      throw new Error(`La actualización de Ventas + Ads no terminó completa (HTTP ${syncResponse.status}; ${syncErrors.join("; ") || "sin detalle"}). No se enviará el reporte.`);
     }
     const report = await buildDailyFinancialReport(base, date);
     const saved = await prisma.dailyFinancialReport.updateMany({
