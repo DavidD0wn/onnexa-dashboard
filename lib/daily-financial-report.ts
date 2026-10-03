@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { NextRequest } from "next/server";
 import { businessDate } from "@/lib/finance-drive";
 import { getPooledTransporter, smtpFor } from "@/lib/zoho-send";
 
@@ -139,7 +140,14 @@ function renderHtmlReport(date: string, rows: ProductRow[], summary: {
 }
 
 async function readJson(base: string, path: string) {
-  const response = await fetch(`${base}${path}`, { cache: "no-store" });
+  // La URL pública puede estar protegida por Vercel aunque esta función ya
+  // esté ejecutándose dentro del deployment. Leer los handlers localmente.
+  const request = new NextRequest(`${base}${path}`);
+  const response = path.startsWith("/api/products/analytics?")
+    ? await (await import("@/app/api/products/analytics/route")).GET(request)
+    : path.startsWith("/api/dashboard?")
+      ? await (await import("@/app/api/dashboard/route")).GET(request)
+      : (() => { throw new Error(`Ruta interna no admitida: ${path}`); })();
   const body = await response.json().catch(() => null);
   if (!response.ok || !body || body.error) {
     throw new Error(`No se pudo consultar ${path} (HTTP ${response.status}).`);

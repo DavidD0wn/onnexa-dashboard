@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
   getShopifyStores,
@@ -21,9 +21,32 @@ async function readJsonResponse(res: Response): Promise<Record<string, any>> {
   const text = await res.text();
   if (!text.trim()) return { error: `Respuesta vacía (HTTP ${res.status})` };
   try {
-    return JSON.parse(text) as Record<string, any>;
+    const data = JSON.parse(text) as Record<string, any>;
+    if (!res.ok || (data.code && String(data.code) !== "200")) {
+      return { error: data.error ?? data.message ?? `HTTP ${res.status}` };
+    }
+    return data;
   } catch {
     return { error: `Respuesta inválida (HTTP ${res.status})` };
+  }
+}
+
+// Las llamadas HTTP al propio dominio pueden recibir 401 cuando Vercel protege
+// el deployment. Ejecutar el handler local mantiene la actualización dentro
+// de la misma invocación y evita depender de esa capa externa.
+async function callLocalPost(base: string, path: string, body: Record<string, unknown>): Promise<Response> {
+  const req = new NextRequest(`${base}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  switch (path) {
+    case "/api/shopify/sync": return (await import("@/app/api/shopify/sync/route")).POST(req);
+    case "/api/shopify/payments": return (await import("@/app/api/shopify/payments/route")).POST(req);
+    case "/api/shopify/disputes": return (await import("@/app/api/shopify/disputes/route")).POST(req);
+    case "/api/meta-ads/sync": return (await import("@/app/api/meta-ads/sync/route")).POST(req);
+    case "/api/meta-ads/rollup": return (await import("@/app/api/meta-ads/rollup/route")).POST(req);
+    default: throw new Error(`Ruta interna no admitida: ${path}`);
   }
 }
 
@@ -95,16 +118,12 @@ export async function POST(req: Request) {
   // ── Paso 1: Shopify sync ──────────────────────────────────
   for (const store of stores) {
     try {
-      const res = await fetch(`${base}/api/shopify/sync`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const res = await callLocalPost(base, "/api/shopify/sync", {
           store: store.key,
           days,
           from: dateFrom,
           to: today,
           skipRollup: true,
-        }),
       });
       results[`shopify_${store.key}`] = await readJsonResponse(res);
     } catch (e: any) {
@@ -116,11 +135,7 @@ export async function POST(req: Request) {
   results.payments = {};
   for (const store of stores) {
     try {
-      const res = await fetch(`${base}/api/shopify/payments`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ store: store.key, days, from: dateFrom, to: today }),
-      });
+      const res = await callLocalPost(base, "/api/shopify/payments", { store: store.key, days, from: dateFrom, to: today });
       results.payments[store.key] = await readJsonResponse(res);
     } catch (e: any) {
       results.payments[store.key] = { error: e.message };
@@ -131,11 +146,7 @@ export async function POST(req: Request) {
   results.disputes = {};
   for (const store of stores) {
     try {
-      const res = await fetch(`${base}/api/shopify/disputes`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ store: store.key }),
-      });
+      const res = await callLocalPost(base, "/api/shopify/disputes", { store: store.key });
       results.disputes[store.key] = await readJsonResponse(res);
     } catch (e: any) {
       results.disputes[store.key] = { error: e.message };
@@ -144,24 +155,16 @@ export async function POST(req: Request) {
 
   // ── Paso 4: Meta Ads sync ──────────────────────────────────
   try {
-    const res = await fetch(`${base}/api/meta-ads/sync`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ dateFrom, dateTo: today }),
-    });
-    results.metaAds = await res.json();
+    const res = await callLocalPost(base, "/api/meta-ads/sync", { dateFrom, dateTo: today, skipRollup: true });
+    results.metaAds = await readJsonResponse(res);
   } catch (e: any) {
     results.metaAds = { error: e.message };
   }
 
   // ── Paso 5: Rollup AdSpend → DailyMetric ──────────────────
   try {
-    const res = await fetch(`${base}/api/meta-ads/rollup`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ from: dateFrom, to: today }),
-    });
-    results.rollup = await res.json();
+    const res = await callLocalPost(base, "/api/meta-ads/rollup", { from: dateFrom, to: today });
+    results.rollup = await readJsonResponse(res);
   } catch (e: any) {
     results.rollup = { error: e.message };
   }
