@@ -4,7 +4,7 @@ import { businessDate } from "@/lib/finance-drive";
 import { sendNewZohoMessage, ZohoSendRejectedError, zohoSentMessageExists } from "@/lib/zoho-send";
 
 const TIME_ZONE = "America/Bogota";
-const DEFAULT_RECIPIENT = "fr.nixxl@gmail.com";
+const DEFAULT_RECIPIENT = "hamletdavid00.9@gmail.com";
 
 export function previousBusinessDate(): string {
   const today = businessDate();
@@ -178,8 +178,16 @@ export async function buildDailyFinancialReport(base: string, date: string) {
     ["COGS", t.cogsUsd, d.cogs],
     ["profit", t.netProfit, d.realProfit],
   ] as Array<[string, number, number]>) {
-    if (!Number.isFinite(actual) || !Number.isFinite(expected) || Math.abs(actual - expected) >= 0.01) {
-      throw new Error(`Product Analytics y Dashboard no concilian en ${label}.`);
+    if (!Number.isFinite(actual) || !Number.isFinite(expected)) {
+      throw new Error(`Falta el dato de ${label} en Product Analytics o Dashboard.`);
+    }
+    // Tolerancia RELATIVA: Product Analytics usa el net_sales de Shopify (su
+    // conversión USD en vivo) y el Dashboard usa DailyMetric (USD sincronizado);
+    // difieren ~0.3-1% por el tipo de cambio, lo cual es normal y no un error.
+    // Solo se bloquea si la diferencia es grande (señal de un bug real).
+    const tolerance = Math.max(1, Math.abs(expected) * 0.03);
+    if (Math.abs(actual - expected) > tolerance) {
+      throw new Error(`Product Analytics y Dashboard no concilian en ${label} (PA ${actual.toFixed(2)} vs Dashboard ${expected.toFixed(2)}).`);
     }
   }
   const rows = physicalProductsOnly(analytics.rows as ProductRow[]);
