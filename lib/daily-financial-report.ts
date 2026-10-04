@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { NextRequest } from "next/server";
 import { businessDate } from "@/lib/finance-drive";
-import { getPooledTransporter, smtpFor } from "@/lib/zoho-send";
+import { sendNewZohoMessage, ZohoSendRejectedError, zohoSentMessageExists } from "@/lib/zoho-send";
 
 const TIME_ZONE = "America/Bogota";
 const DEFAULT_RECIPIENT = "fr.nixxl@gmail.com";
@@ -285,22 +285,19 @@ export async function sendDailyFinancialReport(
   }
   const report = await prisma.dailyFinancialReport.findUniqueOrThrow({ where: { date } });
   const mailbox = process.env.FINANCE_REPORT_FROM_MAILBOX?.trim() || "glowmmi";
-  const smtp = smtpFor(mailbox);
-  if (!smtp.pass) {
-    await prisma.dailyFinancialReport.update({ where: { date }, data: { status: manualResend ? "sent" : "failed", errorMsg: "Falta la credencial SMTP del buzón Zoho." } });
-    throw new Error("Falta la credencial SMTP del buzón Zoho.");
-  }
   try {
-    await getPooledTransporter(smtp.user, smtp.pass).sendMail({
-      from: `"Reporte financiero Onnexa" <${smtp.user}>`,
+    await sendNewZohoMessage(mailbox, {
       to: report.recipient,
       subject: report.subject,
       text: report.body,
-      html: report.htmlBody || undefined,
+      html: report.htmlBody,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    await prisma.dailyFinancialReport.update({ where: { date }, data: { status: manualResend ? "sent" : "failed", errorMsg: message } });
+    // Una caída de red puede ocurrir después de que Zoho acepte el correo.
+    // En ese caso el respaldo comprueba Enviados antes de liberar la reserva.
+    const status = manualResend ? "sent" : error instanceof ZohoSendRejectedError ? "failed" : "sending";
+    await prisma.dailyFinancialReport.update({ where: { date }, data: { status, errorMsg: message } });
     throw error;
   }
   // Si esta escritura falla, queda "sending": no se reintenta automáticamente
@@ -311,6 +308,20 @@ export async function sendDailyFinancialReport(
       ...(manualResend ? { resendCount: { increment: 1 }, lastResentAt: new Date() } : {}) },
   });
   return { sent: true, status: "sent", recipient: report.recipient, manualResend };
+}
+
+export async function reconcileUncertainDailyReport(date: string) {
+  const report = await prisma.dailyFinancialReport.findUnique({ where: { date } });
+  if (report?.status !== "sending" || report.sentAt || !report.sendingAt ||
+      report.sendingAt.getTime() > Date.now() - 15 * 60_000) return;
+  const mailbox = process.env.FINANCE_REPORT_FROM_MAILBOX?.trim() || "glowmmi";
+  const found = await zohoSentMessageExists(mailbox, report.subject, report.recipient);
+  await prisma.dailyFinancialReport.updateMany({
+    where: { date, status: "sending", sentAt: null, sendingAt: report.sendingAt },
+    data: found
+      ? { status: "sent", sentAt: new Date(), errorMsg: null }
+      : { status: "failed", errorMsg: "No aparece en Enviados de Zoho; reintento automático." },
+  });
 }
 
 /** Vuelve a ejecutar la actualización de Ventas + Ads antes de calcular/enviar. */

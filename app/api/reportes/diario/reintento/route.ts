@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { previousBusinessDate, refreshAndSendDailyReport } from "@/lib/daily-financial-report";
+import { previousBusinessDate, reconcileUncertainDailyReport, refreshAndSendDailyReport } from "@/lib/daily-financial-report";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -15,6 +15,7 @@ export async function GET(req: Request) {
 
   const date = previousBusinessDate();
   try {
+    await reconcileUncertainDailyReport(date);
     // Si Vercel interrumpió la función durante la actualización, liberar la
     // reserva solo después de 15 minutos. El límite del handler es 5 minutos.
     await prisma.dailyFinancialReport.updateMany({
