@@ -4,7 +4,8 @@ import { businessDate } from "@/lib/finance-drive";
 import { sendNewZohoMessage, ZohoSendRejectedError, zohoSentMessageExists } from "@/lib/zoho-send";
 
 const TIME_ZONE = "America/Bogota";
-const DEFAULT_RECIPIENT = "hamletdavid00.9@gmail.com";
+// Varios destinatarios separados por coma (Zoho toAddress los acepta así).
+const DEFAULT_RECIPIENT = "hamletdavid00.9@gmail.com,fr.nixxl@gmail.com";
 
 export function previousBusinessDate(): string {
   const today = businessDate();

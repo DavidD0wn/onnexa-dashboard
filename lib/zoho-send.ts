@@ -113,8 +113,10 @@ export async function zohoSentMessageExists(mailbox: string, subject: string, re
     if (!response.ok || !Array.isArray(result?.data)) {
       throw new Error("No se pudo verificar el envío en Zoho.");
     }
+    const wanted = recipient.toLowerCase().split(",").map((address) => address.trim()).filter(Boolean);
     if (result.data.some((item: { subject?: string; toAddress?: string }) =>
-      item.subject === subject && item.toAddress?.toLowerCase().includes(recipient.toLowerCase()))) return true;
+      item.subject === subject &&
+      wanted.some((address) => item.toAddress?.toLowerCase().includes(address)))) return true;
     if (result.data.length < 100) break;
   }
   return false;
