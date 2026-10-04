@@ -1480,7 +1480,13 @@ export async function GET(req: NextRequest) {
     const revenueMatchScale = calibHasData && candidateBucketTotal > 0 && !staleRevenueBuckets.has(bck)
       ? ct!.netRevenue / candidateBucketTotal
       : 1;
-    const netRevenueAfterReturns = revenueCandidate * revenueMatchScale;
+    // Cuando Shopify entrega el net_sales EXACTO del producto, se usa tal cual
+    // (es la fuente de verdad que Fernanda compara en el reporte de Shopify).
+    // El reescalado a DailyMetric queda solo como respaldo para productos sin
+    // net_sales de Shopify, para que ese respaldo cuadre con el Dashboard/P&L.
+    const netRevenueAfterReturns = exactNetSales != null
+      ? Math.max(0, exactNetSales)
+      : revenueCandidate * revenueMatchScale;
     // Factor para que la suma diaria (Testeos) iguale este total exacto.
     const exactRevenueFactor = (exactNetSales != null || revenueMatchScale !== 1) && netRevenueUsd > 0
       ? netRevenueAfterReturns / netRevenueUsd
