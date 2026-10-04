@@ -1472,7 +1472,13 @@ export async function GET(req: NextRequest) {
     // de descuentos y devoluciones) cuando está disponible → cuadra al centavo
     // con el reporte de Shopify. Si Shopify no respondió, usamos el cálculo local
     // neto de devoluciones como respaldo.
-    const exactNetSales = netSalesByStore[p.brandId]?.[`${p.name}||${p.countryCode}`]?.netSalesUsd;
+    const exactSales = netSalesByStore[p.brandId]?.[`${p.name}||${p.countryCode}`];
+    const exactNetSales = exactSales?.netSalesUsd;
+    // Unidades NETAS de Shopify (net_items_sold, ya resta devoluciones) para
+    // cuadrar la columna de Unidades con el reporte de Shopify. El COGS se deja
+    // sobre las unidades enviadas (lo que pagaste al proveedor), así una
+    // devolución penaliza la utilidad correctamente.
+    const displayUnits = exactSales?.netItemsSold != null ? exactSales.netItemsSold : p.units;
     const revenueCandidate = productRevenueCandidate[key] ?? Math.max(0, netRevenueUsd - returnsUsd);
     const candidateBucketTotal = candidateRevenueByCountry[bck] ?? 0;
     // Nunca forzar las ventas nuevas de Shopify al cierre viejo si la
@@ -1609,10 +1615,12 @@ export async function GET(req: NextRequest) {
 
     return {
       ...p,
+      units: displayUnits,
       revenueUsd: netRevenueAfterReturns,
       revenueLocal: netRevenueAfterReturns * cCfg.displayRate,
       priceUsd: p.unitPriceUsd,   // unit selling price for products table display
-      costPerUnit, cogsUsd, adSpendUsd, feesUsd, shippingUsd, taxesUsd, chargebacksUsd,
+      costPerUnit: displayUnits > 0 ? cogsUsd / displayUnits : costPerUnit,
+      cogsUsd, adSpendUsd, feesUsd, shippingUsd, taxesUsd, chargebacksUsd,
       totalCost, returnsUsd,
       aov, cpaBE, isDigital, isUpsell,
       productType: isDigital ? "digital" : isUpsell ? "upsell" : "físico",
