@@ -11,6 +11,10 @@
     {
       "path": "/api/reportes/diario/reintento",
       "schedule": "0 15 * * *"
+    },
+    {
+      "path": "/api/reportes/diario/respaldo",
+      "schedule": "0 16 * * *"
     }
   ]
 }

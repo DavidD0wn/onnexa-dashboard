@@ -340,7 +340,7 @@ export async function refreshAndSendDailyReport(
     const syncResponse = await runAutosync(new Request(`${base}/api/shopify/autosync`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ from: date, to: businessDate(), incremental: false,
+      body: JSON.stringify({ from: date, to: date, incremental: false,
         skipDailyFinancialReport: true, skipFinanceDrive: true }),
     }));
     const sync = await syncResponse.json().catch(() => null);
