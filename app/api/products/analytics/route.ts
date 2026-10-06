@@ -1118,7 +1118,7 @@ export async function GET(req: NextRequest) {
   // ── Ad spend — per country when available ──────────────────────────────────
   const adRows   = await prisma.adSpend.findMany({
     where: { brandId: { in: brandIds }, platform: "facebook", date: { gte: dateFrom, lte: dateTo } },
-    select: { date: true, brandId: true, countryId: true, productId: true, spend: true, impressions: true, clicks: true, purchases: true, conversionValue: true, campaignName: true, adsetName: true, adName: true },
+    select: { date: true, brandId: true, countryId: true, productId: true, spend: true, impressions: true, clicks: true, linkClicks: true, addToCart: true, uniqueCtr: true, purchases: true, conversionValue: true, campaignName: true, adsetName: true, adName: true },
   });
   const adCountryCode = (row: (typeof adRows)[number]): string | null => {
     return row.countryId ? (codeById[row.countryId] ?? null) : null;
@@ -1174,6 +1174,10 @@ export async function GET(req: NextRequest) {
   const productCampaignConversionValue: Record<string, number> = {};
   const productCampaignImpressions: Record<string, number> = {};
   const productCampaignClicks: Record<string, number> = {};
+  const productCampaignLinkClicks: Record<string, number> = {};
+  const productCampaignAddToCart: Record<string, number> = {};
+  // uniqueCtr es una tasa; se pondera por impresiones para agregar varias filas.
+  const productCampaignUniqueCtrWeighted: Record<string, number> = {};
   const unmatchedBrandCountrySpend: Record<string, number> = {};
   const productDailyAdSpend: Record<string, Record<string, number>> = {};
   const unmatchedDailySpend: Record<string, number> = {};
@@ -1345,6 +1349,12 @@ export async function GET(req: NextRequest) {
             (productCampaignImpressions[match.key] ?? 0) + (row.impressions ?? 0) * share;
           productCampaignClicks[match.key] =
             (productCampaignClicks[match.key] ?? 0) + (row.clicks ?? 0) * share;
+          productCampaignLinkClicks[match.key] =
+            (productCampaignLinkClicks[match.key] ?? 0) + (row.linkClicks ?? 0) * share;
+          productCampaignAddToCart[match.key] =
+            (productCampaignAddToCart[match.key] ?? 0) + (row.addToCart ?? 0) * share;
+          productCampaignUniqueCtrWeighted[match.key] =
+            (productCampaignUniqueCtrWeighted[match.key] ?? 0) + (row.uniqueCtr ?? 0) * (row.impressions ?? 0) * share;
         }
       } else {
         addUnmatchedSpend(bck, adDate, row.spend);
@@ -1369,6 +1379,9 @@ export async function GET(req: NextRequest) {
           productCampaignConversionValue[k] = (productCampaignConversionValue[k] ?? 0) + (row.conversionValue ?? 0) * share;
           productCampaignImpressions[k] = (productCampaignImpressions[k] ?? 0) + (row.impressions ?? 0) * share;
           productCampaignClicks[k] = (productCampaignClicks[k] ?? 0) + (row.clicks ?? 0) * share;
+          productCampaignLinkClicks[k] = (productCampaignLinkClicks[k] ?? 0) + (row.linkClicks ?? 0) * share;
+          productCampaignAddToCart[k] = (productCampaignAddToCart[k] ?? 0) + (row.addToCart ?? 0) * share;
+          productCampaignUniqueCtrWeighted[k] = (productCampaignUniqueCtrWeighted[k] ?? 0) + (row.uniqueCtr ?? 0) * (row.impressions ?? 0) * share;
         }
       }
     }
@@ -1537,9 +1550,18 @@ export async function GET(req: NextRequest) {
     const roasAds = adSpendUsd > 0 ? campaignConversionValue / adSpendUsd : null;
     const campaignImpressions = productCampaignImpressions[key] ?? 0;
     const campaignClicks = productCampaignClicks[key] ?? 0;
+    const campaignLinkClicks = productCampaignLinkClicks[key] ?? 0;
+    const campaignAddToCart = productCampaignAddToCart[key] ?? 0;
     const metaCtr = campaignImpressions > 0 ? campaignClicks / campaignImpressions * 100 : null;
     const metaCpc = campaignClicks > 0 ? adSpendUsd / campaignClicks : null;
     const metaCpm = campaignImpressions > 0 ? adSpendUsd / campaignImpressions * 1000 : null;
+    // Unique CTR (clic de enlace único) ponderado por impresiones de Meta.
+    const metaUniqueCtr = campaignImpressions > 0 ? (productCampaignUniqueCtrWeighted[key] ?? 0) / campaignImpressions : null;
+    // CPC por clic de enlace y costo por add-to-cart, como en el panel de Meta.
+    const metaLinkCpc = campaignLinkClicks > 0 ? adSpendUsd / campaignLinkClicks : null;
+    const metaCostPerAtc = campaignAddToCart > 0 ? adSpendUsd / campaignAddToCart : null;
+    // AOV de Meta = valor de compras atribuidas ÷ compras atribuidas.
+    const metaAov = campaignPurchases > 0 ? campaignConversionValue / campaignPurchases : null;
     // revenueUsd ya queda neto de devoluciones; no incluimos returns otra vez
     // en totalCost para evitar descontarlas dos veces.
     const totalCost    = cogsUsd + adSpendUsd + feesUsd + shippingUsd + taxesUsd + chargebacksUsd;
@@ -1627,7 +1649,8 @@ export async function GET(req: NextRequest) {
       grossProfit, grossMargin,
       netProfit, netMargin,
       roas, cpa, cpaAds, roasAds, campaignPurchases, campaignConversionValue,
-      campaignImpressions, campaignClicks, metaCtr, metaCpc, metaCpm,
+      campaignImpressions, campaignClicks, campaignLinkClicks, campaignAddToCart,
+      metaCtr, metaCpc, metaCpm, metaUniqueCtr, metaLinkCpc, metaCostPerAtc, metaAov,
       status, dataQuality,
       sessions, addToCart, reachedCheckout, addToCartRate, conversionRate,
     };

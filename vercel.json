@@ -2,19 +2,19 @@
   "crons": [
     {
       "path": "/api/shopify/autosync",
-      "schedule": "0 12 * * *"
+      "schedule": "30 11 * * *"
     },
     {
       "path": "/api/reportes/diario",
-      "schedule": "0 13 * * *"
+      "schedule": "0 12 * * *"
     },
     {
       "path": "/api/reportes/diario/reintento",
-      "schedule": "0 15 * * *"
+      "schedule": "0 13 * * *"
     },
     {
       "path": "/api/reportes/diario/respaldo",
-      "schedule": "0 16 * * *"
+      "schedule": "0 14 * * *"
     }
   ]
 }

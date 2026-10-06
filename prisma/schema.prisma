@@ -159,9 +159,12 @@ model AdSpend {
   spend           Float
   impressions     Int      @default(0)
   clicks          Int      @default(0)
+  linkClicks      Int      @default(0)
+  addToCart       Int      @default(0)
   purchases       Int      @default(0)
   conversionValue Float    @default(0)
   ctr             Float?
+  uniqueCtr       Float?
   cpc             Float?
   cpm             Float?
   cpa             Float?

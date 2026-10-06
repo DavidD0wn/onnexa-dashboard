@@ -80,6 +80,7 @@ function extractProductId(campaign: string | null, brandId?: string): string | n
 const FIELDS = [
   "campaign_name", "adset_name", "ad_name",
   "spend", "impressions", "clicks", "ctr", "cpc", "cpm",
+  "inline_link_clicks", "unique_ctr",
   "actions", "action_values", "cost_per_action_type",
 ].join(",");
 
@@ -120,6 +121,12 @@ function getPurchases(actions: MetaActionValue[]): number {
 }
 function getConvValue(actionValues: MetaActionValue[]): number {
   return purchaseActionValue(actionValues);
+}
+function getAddToCart(actions: MetaActionValue[] | undefined): number {
+  if (!actions) return 0;
+  const a = actions.find((x) => x.action_type === "omni_add_to_cart")
+    ?? actions.find((x) => x.action_type === "add_to_cart");
+  return a ? parseFloat(String(a.value || "0")) : 0;
 }
 function getCPA(costPerAction: MetaActionValue[]): number | null {
   if (!costPerAction) return null;
@@ -280,9 +287,12 @@ export async function POST(req: NextRequest) {
           spend,
           impressions:     parseInt(row.impressions || "0"),
           clicks:          parseInt(row.clicks      || "0"),
+          linkClicks:      parseInt(row.inline_link_clicks || "0"),
+          addToCart:       Math.round(getAddToCart(row.actions ?? [])),
           purchases:       Math.round(purchases),
           conversionValue: convValue,
           ctr:             parseFloat(row.ctr || "0"),
+          uniqueCtr:       parseFloat(row.unique_ctr || "0"),
           cpc:             parseFloat(row.cpc || "0") * fx,
           cpm:             parseFloat(row.cpm || "0") * fx,
           cpa,
