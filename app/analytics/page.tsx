@@ -98,7 +98,7 @@ const STATUS_CFG: Record<string, { color: string; bg: string }> = {
   "Rentable justo":     { color: "#F59E0B", bg: "rgba(245,158,11,0.15)" },
   "No rentable":        { color: "#EF4444", bg: "rgba(239,68,68,0.15)"  },
   "Sin pauta":          { color: "#6366F1", bg: "rgba(99,102,241,0.12)" },
-  "Datos incompletos":  { color: "rgba(255,255,255,0.4)", bg: "rgba(255,255,255,0.07)" },
+  "Datos incompletos":  { color: "var(--text-3)", bg: "var(--border)" },
   "Revisar campaña":    { color: "#FB7185", bg: "rgba(251,113,133,0.14)" },
 };
 
@@ -151,7 +151,7 @@ const TYPE_CFG: Record<ProductType, { label: string; color: string; bg: string; 
   digital: { label: "Digital",  color: "#6366F1", bg: "rgba(99,102,241,0.15)", emoji: "📱" },
   upsell:  { label: "Upsell",   color: "#F59E0B", bg: "rgba(245,158,11,0.15)", emoji: "⚡" },
   pauta:   { label: "Pauta sin asignar", color: "#FB7185", bg: "rgba(251,113,133,0.14)", emoji: "📣" },
-  otro:    { label: "Sin tipo", color: "rgba(255,255,255,0.4)", bg: "rgba(255,255,255,0.06)", emoji: "•" },
+  otro:    { label: "Sin tipo", color: "var(--text-3)", bg: "var(--border)", emoji: "•" },
 };
 
 /* ─── Column definitions per view ───────────────── */
@@ -246,18 +246,18 @@ function KPI({ label, value, sub, icon: Icon, accent }:
   { label: string; value: string; sub?: string; icon: any; accent: string }) {
   return (
     <div style={{
-      background: "var(--card-bg, #1e293b)",
-      border: "1px solid var(--border, rgba(255,255,255,0.08))",
+      background: "var(--card-bg, var(--card))",
+      border: "1px solid var(--border, var(--border))",
       borderRadius: 14, padding: "16px 20px", minWidth: 160, flex: 1,
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
         <div style={{ width: 32, height: 32, borderRadius: 8, background: `${accent}22`, display: "flex", alignItems: "center", justifyContent: "center" }}>
           <Icon size={16} color={accent} />
         </div>
-        <span style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", fontWeight: 500 }}>{label}</span>
+        <span style={{ fontSize: 12, color: "var(--text-2)", fontWeight: 500 }}>{label}</span>
       </div>
-      <div style={{ fontSize: 22, fontWeight: 700, color: "#fff" }}>{value}</div>
-      {sub && <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginTop: 3 }}>{sub}</div>}
+      <div style={{ fontSize: 22, fontWeight: 700, color: "var(--text)" }}>{value}</div>
+      {sub && <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 3 }}>{sub}</div>}
     </div>
   );
 }
@@ -269,10 +269,10 @@ function CostCell({ name, costPerUnit, onSave }: { name: string; costPerUnit: nu
   useEffect(() => { setVal(String(costPerUnit)); }, [costPerUnit]);
   if (!editing) return (
     <div onClick={() => setEditing(true)} style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", justifyContent: "flex-end" }} title="Click para editar COGS">
-      <span style={{ color: costPerUnit > 0 ? "#f59e0b" : "rgba(255,255,255,0.35)" }}>
+      <span style={{ color: costPerUnit > 0 ? "#f59e0b" : "var(--text-3)" }}>
         {costPerUnit > 0 ? `$${costPerUnit.toFixed(2)}` : "—"}
       </span>
-      <Edit2 size={10} color="rgba(255,255,255,0.3)" />
+      <Edit2 size={10} color="var(--text-3)" />
     </div>
   );
   return (
@@ -282,10 +282,10 @@ function CostCell({ name, costPerUnit, onSave }: { name: string; costPerUnit: nu
           if (e.key === "Enter") { onSave(name, parseFloat(val) || 0); setEditing(false); }
           if (e.key === "Escape") setEditing(false);
         }}
-        style={{ width: 72, padding: "2px 6px", borderRadius: 6, border: "1px solid #0E766E", background: "#0a2540", color: "#fff", fontSize: 12, textAlign: "right" }}
+        style={{ width: 72, padding: "2px 6px", borderRadius: 6, border: "1px solid #0E766E", background: "var(--card)", color: "var(--text)", fontSize: 12, textAlign: "right" }}
       />
-      <button onClick={() => { onSave(name, parseFloat(val) || 0); setEditing(false); }} style={{ background: "#0E766E", border: "none", borderRadius: 5, cursor: "pointer", padding: "3px 5px", display: "flex" }}><Check size={11} color="#fff" /></button>
-      <button onClick={() => setEditing(false)} style={{ background: "rgba(255,255,255,0.08)", border: "none", borderRadius: 5, cursor: "pointer", padding: "3px 5px", display: "flex" }}><XIcon size={11} color="rgba(255,255,255,0.5)" /></button>
+      <button onClick={() => { onSave(name, parseFloat(val) || 0); setEditing(false); }} style={{ background: "#0E766E", border: "none", borderRadius: 5, cursor: "pointer", padding: "3px 5px", display: "flex" }}><Check size={11} color="var(--text)" /></button>
+      <button onClick={() => setEditing(false)} style={{ background: "var(--border)", border: "none", borderRadius: 5, cursor: "pointer", padding: "3px 5px", display: "flex" }}><XIcon size={11} color="var(--text-2)" /></button>
     </div>
   );
 }
@@ -348,24 +348,24 @@ function DateRangePicker({
 
   return (
     <div style={{
-      background: "rgba(15,23,42,0.98)", border: "1px solid rgba(255,255,255,0.15)",
+      background: "rgba(15,23,42,0.98)", border: "1px solid var(--border)",
       borderRadius: 14, padding: 16, minWidth: 280, boxShadow: "0 16px 40px rgba(0,0,0,.6)",
       userSelect: "none",
     }}>
       {/* Month nav */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-        <button onClick={prevMonth} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(255,255,255,0.5)", padding: 4, borderRadius: 6, display: "flex" }}>
+        <button onClick={prevMonth} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-2)", padding: 4, borderRadius: 6, display: "flex" }}>
           <ChevronLeft size={16} />
         </button>
-        <span style={{ fontSize: 13, fontWeight: 600, color: "#fff" }}>{MONTH_NAMES[viewMonth]} {viewYear}</span>
-        <button onClick={nextMonth} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(255,255,255,0.5)", padding: 4, borderRadius: 6, display: "flex" }}>
+        <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>{MONTH_NAMES[viewMonth]} {viewYear}</span>
+        <button onClick={nextMonth} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-2)", padding: 4, borderRadius: 6, display: "flex" }}>
           <ChevronRight size={16} />
         </button>
       </div>
 
       {/* Day headers */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2, marginBottom: 4 }}>
-        {DAY_NAMES.map(d => <div key={d} style={{ textAlign: "center", fontSize: 10, color: "rgba(255,255,255,0.3)", fontWeight: 600, padding: "3px 0" }}>{d}</div>)}
+        {DAY_NAMES.map(d => <div key={d} style={{ textAlign: "center", fontSize: 10, color: "var(--text-3)", fontWeight: 600, padding: "3px 0" }}>{d}</div>)}
       </div>
 
       {/* Days grid */}
@@ -384,7 +384,7 @@ function DateRangePicker({
                 padding: "6px 2px", textAlign: "center", fontSize: 12,
                 border: "none", cursor: future ? "default" : "pointer",
                 background: from_ || to_ ? "#0E766E" : range ? "rgba(14,118,110,0.3)" : "transparent",
-                color: future ? "rgba(255,255,255,0.2)" : from_ || to_ ? "#fff" : range ? "#a7f3d0" : "rgba(255,255,255,0.75)",
+                color: future ? "var(--text-3)" : from_ || to_ ? "var(--text)" : range ? "#a7f3d0" : "var(--text)",
                 fontWeight: from_ || to_ ? 700 : 400,
                 borderRadius: from_ ? "6px 0 0 6px" : to_ ? "0 6px 6px 0" : range ? "0" : "6px",
               }}
@@ -396,30 +396,30 @@ function DateRangePicker({
       </div>
 
       {/* Selected range display */}
-      <div style={{ marginTop: 12, padding: "8px 10px", borderRadius: 8, background: "rgba(255,255,255,0.05)", fontSize: 11 }}>
+      <div style={{ marginTop: 12, padding: "8px 10px", borderRadius: 8, background: "var(--border)", fontSize: 11 }}>
         <div style={{ display: "flex", justifyContent: "space-between" }}>
           <div>
-            <div style={{ color: "rgba(255,255,255,0.4)", marginBottom: 2 }}>Desde</div>
-            <div style={{ color: localFrom ? "#10B981" : "rgba(255,255,255,0.3)", fontWeight: 600 }}>{fmtDate(localFrom)}</div>
+            <div style={{ color: "var(--text-3)", marginBottom: 2 }}>Desde</div>
+            <div style={{ color: localFrom ? "#10B981" : "var(--text-3)", fontWeight: 600 }}>{fmtDate(localFrom)}</div>
           </div>
-          <div style={{ color: "rgba(255,255,255,0.2)", fontSize: 16, alignSelf: "center" }}>→</div>
+          <div style={{ color: "var(--text-3)", fontSize: 16, alignSelf: "center" }}>→</div>
           <div style={{ textAlign: "right" }}>
-            <div style={{ color: "rgba(255,255,255,0.4)", marginBottom: 2 }}>Hasta</div>
-            <div style={{ color: localTo ? "#10B981" : "rgba(255,255,255,0.3)", fontWeight: 600 }}>{fmtDate(localTo)}</div>
+            <div style={{ color: "var(--text-3)", marginBottom: 2 }}>Hasta</div>
+            <div style={{ color: localTo ? "#10B981" : "var(--text-3)", fontWeight: 600 }}>{fmtDate(localTo)}</div>
           </div>
         </div>
-        <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginTop: 6, textAlign: "center" }}>
+        <div style={{ fontSize: 10, color: "var(--text-3)", marginTop: 6, textAlign: "center" }}>
           {selecting === "from" ? "Haz click en el día de inicio" : "Ahora elige el día final"}
         </div>
       </div>
 
       {/* Actions */}
       <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
-        <button onClick={onClear} style={{ flex: 1, padding: "7px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.15)", background: "transparent", color: "rgba(255,255,255,0.5)", cursor: "pointer", fontSize: 12 }}>Limpiar</button>
+        <button onClick={onClear} style={{ flex: 1, padding: "7px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--text-2)", cursor: "pointer", fontSize: 12 }}>Limpiar</button>
         <button
           onClick={() => localFrom && localTo && onApply(localFrom, localTo)}
           disabled={!localFrom || !localTo}
-          style={{ flex: 2, padding: "7px", borderRadius: 8, border: "none", background: localFrom && localTo ? "#0E766E" : "rgba(255,255,255,0.08)", color: localFrom && localTo ? "#fff" : "rgba(255,255,255,0.3)", cursor: localFrom && localTo ? "pointer" : "default", fontSize: 12, fontWeight: 700 }}
+          style={{ flex: 2, padding: "7px", borderRadius: 8, border: "none", background: localFrom && localTo ? "#0E766E" : "var(--border)", color: localFrom && localTo ? "var(--text)" : "var(--text-3)", cursor: localFrom && localTo ? "pointer" : "default", fontSize: 12, fontWeight: 700 }}
         >
           Aplicar rango
         </button>
@@ -500,25 +500,25 @@ function CustomizeColsModal({
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 9000, display: "flex", alignItems: "center", justifyContent: "center" }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div style={{ background: "#0f172a", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 16, width: 700, maxWidth: "96vw", height: 560, maxHeight: "92vh", display: "flex", flexDirection: "column", boxShadow: "0 28px 70px rgba(0,0,0,0.8)" }}>
+      <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 16, width: 700, maxWidth: "96vw", height: 560, maxHeight: "92vh", display: "flex", flexDirection: "column", boxShadow: "0 28px 70px rgba(0,0,0,0.8)" }}>
 
         {/* Header */}
-        <div style={{ padding: "16px 20px 12px", borderBottom: "1px solid rgba(255,255,255,0.08)", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
-          <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "#fff" }}>Personalizar</h2>
-          <button onClick={onClose} style={{ background: "rgba(255,255,255,0.06)", border: "none", borderRadius: 8, cursor: "pointer", padding: "5px 9px", color: "rgba(255,255,255,0.55)", fontSize: 16, lineHeight: 1 }}>✕</button>
+        <div style={{ padding: "16px 20px 12px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
+          <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "var(--text)" }}>Personalizar</h2>
+          <button onClick={onClose} style={{ background: "var(--border)", border: "none", borderRadius: 8, cursor: "pointer", padding: "5px 9px", color: "var(--text-2)", fontSize: 16, lineHeight: 1 }}>✕</button>
         </div>
 
         {/* Two-panel body */}
         <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
 
           {/* LEFT — all columns with checkboxes */}
-          <div style={{ width: 255, borderRight: "1px solid rgba(255,255,255,0.08)", display: "flex", flexDirection: "column", flexShrink: 0 }}>
+          <div style={{ width: 255, borderRight: "1px solid var(--border)", display: "flex", flexDirection: "column", flexShrink: 0 }}>
             {/* Search */}
             <div style={{ padding: "10px 12px 6px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "7px 10px", borderRadius: 8, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)" }}>
-                <span style={{ color: "rgba(255,255,255,0.3)", fontSize: 12 }}>🔍</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "7px 10px", borderRadius: 8, background: "var(--border)", border: "1px solid var(--border)" }}>
+                <span style={{ color: "var(--text-3)", fontSize: 12 }}>🔍</span>
                 <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar una métrica"
-                  style={{ background: "none", border: "none", outline: "none", color: "#fff", fontSize: 12, flex: 1, minWidth: 0 }} />
+                  style={{ background: "none", border: "none", outline: "none", color: "var(--text)", fontSize: 12, flex: 1, minWidth: 0 }} />
               </div>
             </div>
             {/* Column list */}
@@ -527,10 +527,10 @@ function CustomizeColsModal({
               {!search && (
                 <button onClick={() => setLocalHidden(allChecked ? new Set(allNonAlways) : new Set<string>())}
                   style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "7px 8px", borderRadius: 6, background: "transparent", border: "none", cursor: "pointer", textAlign: "left" }}>
-                  <div style={{ width: 15, height: 15, borderRadius: 4, border: "1.5px solid rgba(255,255,255,0.3)", background: "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <div style={{ width: 15, height: 15, borderRadius: 4, border: "1.5px solid var(--text-3)", background: "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                     {allChecked && <span style={{ color: "#0E766E", fontSize: 10, fontWeight: 700 }}>✓</span>}
                   </div>
-                  <span style={{ fontSize: 12, color: "rgba(255,255,255,0.45)", fontWeight: 600 }}>Seleccionar todo</span>
+                  <span style={{ fontSize: 12, color: "var(--text-3)", fontWeight: 600 }}>Seleccionar todo</span>
                 </button>
               )}
               {filteredLeft.map(col => {
@@ -538,10 +538,10 @@ function CustomizeColsModal({
                 return (
                   <button key={col.key} onClick={() => toggle(col.key)}
                     style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "7px 8px", borderRadius: 6, background: checked ? "rgba(14,118,110,0.1)" : "transparent", border: "none", cursor: col.always ? "default" : "pointer", textAlign: "left" }}>
-                    <div style={{ width: 15, height: 15, borderRadius: 4, background: checked ? "#0E766E" : "rgba(255,255,255,0.07)", border: `1.5px solid ${checked ? "#0E766E" : "rgba(255,255,255,0.2)"}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                      {checked && <span style={{ color: "#fff", fontSize: 10, fontWeight: 700 }}>✓</span>}
+                    <div style={{ width: 15, height: 15, borderRadius: 4, background: checked ? "#0E766E" : "var(--border)", border: `1.5px solid ${checked ? "#0E766E" : "var(--text-3)"}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      {checked && <span style={{ color: "var(--text)", fontSize: 10, fontWeight: 700 }}>✓</span>}
                     </div>
-                    <span style={{ fontSize: 12, color: checked ? "#fff" : "rgba(255,255,255,0.4)", fontWeight: checked ? 500 : 400 }}>{col.label}</span>
+                    <span style={{ fontSize: 12, color: checked ? "var(--text)" : "var(--text-3)", fontWeight: checked ? 500 : 400 }}>{col.label}</span>
                   </button>
                 );
               })}
@@ -551,7 +551,7 @@ function CustomizeColsModal({
           {/* RIGHT — selected columns in order, draggable */}
           <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
             <div style={{ padding: "10px 16px 6px", flexShrink: 0 }}>
-              <p style={{ margin: 0, fontSize: 12, color: "rgba(255,255,255,0.4)", fontWeight: 600 }}>
+              <p style={{ margin: 0, fontSize: 12, color: "var(--text-3)", fontWeight: 600 }}>
                 Métricas seleccionadas ({visibleCount}/{allCols.length})
               </p>
             </div>
@@ -570,16 +570,16 @@ function CustomizeColsModal({
                     onDragEnd={handleDragEnd}
                     style={{
                       display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderRadius: 8, marginBottom: 3,
-                      background: isDragOver ? "rgba(14,118,110,0.2)" : "rgba(255,255,255,0.05)",
-                      border: `1.5px solid ${isDragOver ? "#0E766E" : "rgba(255,255,255,0.08)"}`,
+                      background: isDragOver ? "rgba(14,118,110,0.2)" : "var(--border)",
+                      border: `1.5px solid ${isDragOver ? "#0E766E" : "var(--border)"}`,
                       opacity: isDragging ? 0.35 : 1,
                       cursor: col.always ? "default" : "grab",
                       transition: "border-color 0.1s, background 0.1s",
                     }}>
-                    <span style={{ color: col.always ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.3)", fontSize: 15, userSelect: "none", flexShrink: 0, lineHeight: 1 }}>⠿</span>
-                    <span style={{ flex: 1, fontSize: 13, color: "#fff", fontWeight: 500 }}>{col.label}</span>
+                    <span style={{ color: col.always ? "var(--border)" : "var(--text-3)", fontSize: 15, userSelect: "none", flexShrink: 0, lineHeight: 1 }}>⠿</span>
+                    <span style={{ flex: 1, fontSize: 13, color: "var(--text)", fontWeight: 500 }}>{col.label}</span>
                     {!col.always && (
-                      <button onClick={() => removeCol(key)} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(255,255,255,0.25)", padding: "2px 5px", borderRadius: 4, fontSize: 13, lineHeight: 1, flexShrink: 0 }}>✕</button>
+                      <button onClick={() => removeCol(key)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-3)", padding: "2px 5px", borderRadius: 4, fontSize: 13, lineHeight: 1, flexShrink: 0 }}>✕</button>
                     )}
                   </div>
                 );
@@ -589,16 +589,16 @@ function CustomizeColsModal({
         </div>
 
         {/* Footer */}
-        <div style={{ padding: "12px 20px", borderTop: "1px solid rgba(255,255,255,0.08)", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
+        <div style={{ padding: "12px 20px", borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
           <button onClick={() => { setLocalOrder(allCols.map(c => c.key)); setLocalHidden(new Set<string>()); }}
-            style={{ padding: "7px 14px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.1)", background: "transparent", color: "rgba(255,255,255,0.4)", cursor: "pointer", fontSize: 12 }}>
+            style={{ padding: "7px 14px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--text-3)", cursor: "pointer", fontSize: 12 }}>
             Restablecer
           </button>
           <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={onClose} style={{ padding: "8px 18px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.15)", background: "transparent", color: "rgba(255,255,255,0.6)", cursor: "pointer", fontSize: 13 }}>
+            <button onClick={onClose} style={{ padding: "8px 18px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--text-2)", cursor: "pointer", fontSize: 13 }}>
               Cancelar
             </button>
-            <button onClick={() => onApply(localOrder, localHidden)} style={{ padding: "8px 24px", borderRadius: 8, border: "none", background: "#0E766E", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>
+            <button onClick={() => onApply(localOrder, localHidden)} style={{ padding: "8px 24px", borderRadius: 8, border: "none", background: "#0E766E", color: "var(--text)", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>
               Aplicar
             </button>
           </div>
@@ -1016,11 +1016,11 @@ export default function ProductAnalyticsPage() {
       <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
           <div style={{ width: 8, height: 8, borderRadius: "50%", background: r.brandColor, flexShrink: 0 }} />
-          <span style={{ color: "#fff", fontWeight: 500, fontSize: 13 }}>{r.name}</span>
+          <span style={{ color: "var(--text)", fontWeight: 500, fontSize: 13 }}>{r.name}</span>
         </div>
         <div style={{ display: "flex", gap: 5, paddingLeft: 15, alignItems: "center" }}>
-          {r.variant && <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: 20, background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.55)" }}>{r.variant}</span>}
-          <span style={{ fontSize: 10, color: "rgba(255,255,255,0.35)" }}>{r.brandName}</span>
+          {r.variant && <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: 20, background: "var(--border)", color: "var(--text-2)" }}>{r.variant}</span>}
+          <span style={{ fontSize: 10, color: "var(--text-3)" }}>{r.brandName}</span>
           {pType !== "otro" && <span style={{ fontSize: 10, padding: "1px 7px", borderRadius: 20, background: tc.bg, color: tc.color, fontWeight: 600 }}>{tc.emoji} {tc.label}</span>}
         </div>
       </div>
@@ -1028,25 +1028,25 @@ export default function ProductAnalyticsPage() {
   };
 
   const renderCountryCell = (countryCode: string, countryName?: string) => (
-    <span style={{ fontSize: 13, color: "rgba(255,255,255,0.8)", whiteSpace: "nowrap" }}>
+    <span style={{ fontSize: 13, color: "var(--text)", whiteSpace: "nowrap" }}>
       {FLAG[countryCode] ?? "🌍"} {countryName ?? COUNTRY_NAME[countryCode] ?? countryCode}
     </span>
   );
 
   const renderStoreCell = (storeName: string, brandColor: string) => (
-    <span style={{ fontSize: 12, color: "rgba(255,255,255,0.7)", display: "flex", alignItems: "center", gap: 5 }}>
+    <span style={{ fontSize: 12, color: "var(--text-2)", display: "flex", alignItems: "center", gap: 5 }}>
       <div style={{ width: 6, height: 6, borderRadius: "50%", background: brandColor }} />
       {storeName}
     </span>
   );
 
   const renderStatus = (status: string) => {
-    const cfg = STATUS_CFG[status] ?? { color: "rgba(255,255,255,0.4)", bg: "rgba(255,255,255,0.07)" };
+    const cfg = STATUS_CFG[status] ?? { color: "var(--text-3)", bg: "var(--border)" };
     return <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 20, background: cfg.bg, color: cfg.color, fontWeight: 600, whiteSpace: "nowrap" }}>{status}</span>;
   };
 
   const renderDQ = (dq: string) => {
-    const cfg = DQ_CFG[dq] ?? { color: "rgba(255,255,255,0.4)" };
+    const cfg = DQ_CFG[dq] ?? { color: "var(--text-3)" };
     return <span style={{ fontSize: 11, color: cfg.color, whiteSpace: "nowrap" }}>{dq}</span>;
   };
 
@@ -1057,7 +1057,7 @@ export default function ProductAnalyticsPage() {
       case "countryCode": return renderCountryCell(r.countryCode, r.countryName);
       case "storeName":   return renderStoreCell(r.storeName, r.brandColor);
       case "cogsUsd": {
-        if (r.cogsUsd === 0) return <span style={{ color: "rgba(255,255,255,0.25)" }}>—</span>;
+        if (r.cogsUsd === 0) return <span style={{ color: "var(--text-3)" }}>—</span>;
         return <span style={{ color: "#f87171", fontWeight: 500 }}>(${usd(r.cogsUsd)})</span>;
       }
       case "grossProfit": case "netProfit": {
@@ -1071,72 +1071,72 @@ export default function ProductAnalyticsPage() {
       case "roas": {
         if (r.adSpendUsd === 0) return <span style={{ fontSize: 11, color: "#6366F1", fontWeight: 600 }}>Sin pauta</span>;
         const v = r.roas;
-        if (v == null) return <span style={{ color: "rgba(255,255,255,0.25)" }}>N/A</span>;
+        if (v == null) return <span style={{ color: "var(--text-3)" }}>N/A</span>;
         return <span style={{ color: v >= 2 ? "#10B981" : v >= 1 ? "#f59e0b" : "#EF4444", fontWeight: 600 }}>{v.toFixed(2)}x</span>;
       }
       case "cpa": {
         if (r.adSpendUsd === 0) return <span style={{ fontSize: 11, color: "#6366F1", fontWeight: 600 }}>Sin pauta</span>;
         const v = r.cpa;
-        if (v == null) return <span style={{ color: "rgba(255,255,255,0.25)" }}>N/A</span>;
-        return <span style={{ color: "rgba(255,255,255,0.75)" }}>${v.toFixed(2)}</span>;
+        if (v == null) return <span style={{ color: "var(--text-3)" }}>N/A</span>;
+        return <span style={{ color: "var(--text)" }}>${v.toFixed(2)}</span>;
       }
       case "cpaAds": {
         if (r.adSpendUsd === 0) return <span style={{ fontSize: 11, color: "#6366F1", fontWeight: 600 }}>Sin pauta</span>;
         const v = r.cpaAds;
-        if (v == null) return <span style={{ color: "rgba(255,255,255,0.35)" }}>N/A</span>;
-        return <span style={{ color: "rgba(255,255,255,0.75)" }}>${v.toFixed(2)}</span>;
+        if (v == null) return <span style={{ color: "var(--text-3)" }}>N/A</span>;
+        return <span style={{ color: "var(--text)" }}>${v.toFixed(2)}</span>;
       }
       case "roasAds": {
         if (r.adSpendUsd === 0) return <span style={{ fontSize: 11, color: "#6366F1", fontWeight: 600 }}>Sin pauta</span>;
         const v = r.roasAds;
-        if (v == null) return <span style={{ color: "rgba(255,255,255,0.35)" }}>N/A</span>;
+        if (v == null) return <span style={{ color: "var(--text-3)" }}>N/A</span>;
         return <span style={{ color: v >= 2 ? "#10B981" : v >= 1 ? "#f59e0b" : "#EF4444", fontWeight: 600 }}>{v.toFixed(2)}x</span>;
       }
       case "cpaBE": {
         const v = r.cpaBE;
-        if (v == null) return <span style={{ color: "rgba(255,255,255,0.25)" }}>—</span>;
+        if (v == null) return <span style={{ color: "var(--text-3)" }}>—</span>;
         const ok = r.cpa == null || r.cpa <= v;
         return <span style={{ color: ok ? "#10B981" : "#EF4444" }}>${v.toFixed(2)}</span>;
       }
       case "adSpendUsd":
-        return <span style={{ color: r.adSpendUsd > 0 ? "#f87171" : "rgba(255,255,255,0.3)" }}>{r.adSpendUsd > 0 ? `$${usd(r.adSpendUsd)}` : "—"}</span>;
+        return <span style={{ color: r.adSpendUsd > 0 ? "#f87171" : "var(--text-3)" }}>{r.adSpendUsd > 0 ? `$${usd(r.adSpendUsd)}` : "—"}</span>;
       case "feesUsd":
-        return <span style={{ color: r.feesUsd > 0 ? "#f87171" : "rgba(255,255,255,0.3)" }}>{r.feesUsd > 0 ? `($${usd(r.feesUsd)})` : "—"}</span>;
+        return <span style={{ color: r.feesUsd > 0 ? "#f87171" : "var(--text-3)" }}>{r.feesUsd > 0 ? `($${usd(r.feesUsd)})` : "—"}</span>;
       case "totalCost": {
         const v = r.totalCost;
-        if (v === 0) return <span style={{ color: "rgba(255,255,255,0.25)" }}>—</span>;
+        if (v === 0) return <span style={{ color: "var(--text-3)" }}>—</span>;
         const pctOfRev = r.revenueUsd > 0 ? (v / r.revenueUsd) * 100 : 0;
         return (
           <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 1 }}>
             <span style={{ color: "#f87171", fontWeight: 600 }}>${usd(v)}</span>
-            <span style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>{pctOfRev.toFixed(0)}% rev.</span>
+            <span style={{ fontSize: 10, color: "var(--text-3)" }}>{pctOfRev.toFixed(0)}% rev.</span>
           </div>
         );
       }
-      case "revenueUsd":  return <span style={{ color: "#fff", fontWeight: 600 }}>${usd(r.revenueUsd)}</span>;
-      case "aov":         return <span style={{ color: "rgba(255,255,255,0.7)" }}>{r.aov > 0 ? `$${usd(r.aov)}` : "—"}</span>;
-      case "units":       case "orders": return <span style={{ color: "rgba(255,255,255,0.8)" }}>{(r[colKey as keyof ProductRow] as number).toLocaleString()}</span>;
+      case "revenueUsd":  return <span style={{ color: "var(--text)", fontWeight: 600 }}>${usd(r.revenueUsd)}</span>;
+      case "aov":         return <span style={{ color: "var(--text-2)" }}>{r.aov > 0 ? `$${usd(r.aov)}` : "—"}</span>;
+      case "units":       case "orders": return <span style={{ color: "var(--text)" }}>{(r[colKey as keyof ProductRow] as number).toLocaleString()}</span>;
       case "status":      return renderStatus(r.status);
       case "dataQuality": return renderDQ(r.dataQuality);
       case "sessions": {
-        if (r.sessions == null) return <span style={{ color: "rgba(255,255,255,0.2)" }}>—</span>;
-        return <span style={{ color: "rgba(255,255,255,0.75)" }}>{r.sessions.toLocaleString()}</span>;
+        if (r.sessions == null) return <span style={{ color: "var(--text-3)" }}>—</span>;
+        return <span style={{ color: "var(--text)" }}>{r.sessions.toLocaleString()}</span>;
       }
       case "addToCart": {
-        if (r.addToCart == null) return <span style={{ color: "rgba(255,255,255,0.2)" }}>—</span>;
-        return <span style={{ color: "rgba(255,255,255,0.75)" }}>{r.addToCart.toLocaleString()}</span>;
+        if (r.addToCart == null) return <span style={{ color: "var(--text-3)" }}>—</span>;
+        return <span style={{ color: "var(--text)" }}>{r.addToCart.toLocaleString()}</span>;
       }
       case "addToCartRate": {
-        if (r.addToCartRate == null) return <span style={{ color: "rgba(255,255,255,0.2)" }}>—</span>;
+        if (r.addToCartRate == null) return <span style={{ color: "var(--text-3)" }}>—</span>;
         const atcColor = r.addToCartRate >= 10 ? "#10B981" : r.addToCartRate >= 5 ? "#f59e0b" : "#EF4444";
         return <span style={{ color: atcColor, fontWeight: 600 }}>{r.addToCartRate.toFixed(1)}%</span>;
       }
       case "conversionRate": {
-        if (r.conversionRate == null) return <span style={{ color: "rgba(255,255,255,0.2)" }}>—</span>;
+        if (r.conversionRate == null) return <span style={{ color: "var(--text-3)" }}>—</span>;
         const cvrColor = r.conversionRate >= 3 ? "#10B981" : r.conversionRate >= 1.5 ? "#f59e0b" : "#EF4444";
         return <span style={{ color: cvrColor, fontWeight: 600 }}>{r.conversionRate.toFixed(2)}%</span>;
       }
-      default: return <span style={{ color: "rgba(255,255,255,0.6)" }}>{String((r as any)[colKey] ?? "—")}</span>;
+      default: return <span style={{ color: "var(--text-2)" }}>{String((r as any)[colKey] ?? "—")}</span>;
     }
   };
 
@@ -1150,7 +1150,7 @@ export default function ProductAnalyticsPage() {
         </div>
       );
       case "cogsUsd": {
-        if (r.cogsUsd === 0) return <span style={{ color: "rgba(255,255,255,0.25)" }}>—</span>;
+        if (r.cogsUsd === 0) return <span style={{ color: "var(--text-3)" }}>—</span>;
         return <span style={{ color: "#f87171", fontWeight: 500 }}>(${usd(r.cogsUsd)})</span>;
       }
       case "grossProfit": case "netProfit": {
@@ -1163,24 +1163,24 @@ export default function ProductAnalyticsPage() {
       }
       case "roas": case "roasAds": {
         const v = colKey === "roas" ? r.roas : r.roasAds;
-        if (v == null) return <span style={{ color: "rgba(255,255,255,0.25)" }}>—</span>;
+        if (v == null) return <span style={{ color: "var(--text-3)" }}>—</span>;
         return <span style={{ color: v >= 2 ? "#10B981" : v >= 1 ? "#f59e0b" : "#EF4444", fontWeight: 600 }}>{v.toFixed(2)}x</span>;
       }
       case "cpa": case "cpaAds": {
         const v = colKey === "cpa" ? r.cpa : r.cpaAds;
-        if (v == null) return <span style={{ color: "rgba(255,255,255,0.25)" }}>—</span>;
-        return <span style={{ color: "rgba(255,255,255,0.75)" }}>${v.toFixed(2)}</span>;
+        if (v == null) return <span style={{ color: "var(--text-3)" }}>—</span>;
+        return <span style={{ color: "var(--text)" }}>${v.toFixed(2)}</span>;
       }
       case "adSpendUsd":
-        return <span style={{ color: r.adSpendUsd > 0 ? "#f87171" : "rgba(255,255,255,0.3)" }}>{r.adSpendUsd > 0 ? `$${usd(r.adSpendUsd)}` : "—"}</span>;
+        return <span style={{ color: r.adSpendUsd > 0 ? "#f87171" : "var(--text-3)" }}>{r.adSpendUsd > 0 ? `$${usd(r.adSpendUsd)}` : "—"}</span>;
       case "feesUsd": {
         const v = (r as any).feesUsd ?? 0;
-        return <span style={{ color: v > 0 ? "#f87171" : "rgba(255,255,255,0.3)" }}>{v > 0 ? `($${usd(v)})` : "—"}</span>;
+        return <span style={{ color: v > 0 ? "#f87171" : "var(--text-3)" }}>{v > 0 ? `($${usd(v)})` : "—"}</span>;
       }
-      case "revenueUsd": return <span style={{ color: "#fff", fontWeight: 600 }}>${usd(r.revenueUsd)}</span>;
-      case "units": case "orders": return <span style={{ color: "rgba(255,255,255,0.8)" }}>{((r as any)[colKey] as number).toLocaleString()}</span>;
+      case "revenueUsd": return <span style={{ color: "var(--text)", fontWeight: 600 }}>${usd(r.revenueUsd)}</span>;
+      case "units": case "orders": return <span style={{ color: "var(--text)" }}>{((r as any)[colKey] as number).toLocaleString()}</span>;
       case "status":     return renderStatus(r.status);
-      default: return <span style={{ color: "rgba(255,255,255,0.6)" }}>{String((r as any)[colKey] ?? "—")}</span>;
+      default: return <span style={{ color: "var(--text-2)" }}>{String((r as any)[colKey] ?? "—")}</span>;
     }
   };
 
@@ -1188,7 +1188,7 @@ export default function ProductAnalyticsPage() {
   const renderGeneralChildCell = (colKey: string, r: ProductRow) => {
     if (colKey === "name") {
       return (
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 7, paddingLeft: 30, color: "rgba(255,255,255,0.6)", fontSize: 12.5 }}>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 7, paddingLeft: 30, color: "var(--text-2)", fontSize: 12.5 }}>
           <span style={{ fontSize: 14 }}>{FLAG[r.countryCode] ?? "🏳️"}</span>
           {r.countryName}
         </span>
@@ -1206,49 +1206,49 @@ export default function ProductAnalyticsPage() {
     switch (colKey) {
       case "storeName":   return renderStoreCell(r.storeName, r.brandColor);
       case "countryCode": return renderCountryCell(r.countryCode, r.countryName);
-      case "revenueUsd":  return <span style={{ color: "#fff", fontWeight: 600 }}>${usd(r.revenueUsd)}</span>;
+      case "revenueUsd":  return <span style={{ color: "var(--text)", fontWeight: 600 }}>${usd(r.revenueUsd)}</span>;
       case "netProfit":   return <span style={{ color: profColor(r.netProfit), fontWeight: 600 }}>{usd(r.netProfit)}</span>;
       case "grossProfit": return <span style={{ color: profColor(r.grossProfit), fontWeight: 600 }}>{usd(r.grossProfit)}</span>;
       case "netMargin":   return <span style={{ color: profColor(r.netMargin) }}>{pct(r.netMargin)}</span>;
       case "roas": case "roasAds": {
         const v = colKey === "roas" ? r.roas : r.roasAds;
-        if (v == null) return <span style={{ color: "rgba(255,255,255,0.25)" }}>—</span>;
+        if (v == null) return <span style={{ color: "var(--text-3)" }}>—</span>;
         return <span style={{ color: v >= 2 ? "#10B981" : v >= 1 ? "#f59e0b" : "#EF4444", fontWeight: 600 }}>{v.toFixed(2)}x</span>;
       }
       case "cpa": case "cpaAds": {
         const v = colKey === "cpa" ? r.cpa : r.cpaAds;
-        if (v == null) return <span style={{ color: "rgba(255,255,255,0.25)" }}>—</span>;
-        return <span style={{ color: "rgba(255,255,255,0.75)" }}>${v.toFixed(2)}</span>;
+        if (v == null) return <span style={{ color: "var(--text-3)" }}>—</span>;
+        return <span style={{ color: "var(--text)" }}>${v.toFixed(2)}</span>;
       }
-      case "adSpendUsd": return <span style={{ color: r.adSpendUsd > 0 ? "#f87171" : "rgba(255,255,255,0.3)" }}>{r.adSpendUsd > 0 ? `$${usd(r.adSpendUsd)}` : "—"}</span>;
+      case "adSpendUsd": return <span style={{ color: r.adSpendUsd > 0 ? "#f87171" : "var(--text-3)" }}>{r.adSpendUsd > 0 ? `$${usd(r.adSpendUsd)}` : "—"}</span>;
       case "feesUsd": {
         const v = (r as any).feesUsd ?? 0;
-        return <span style={{ color: v > 0 ? "#f87171" : "rgba(255,255,255,0.3)" }}>{v > 0 ? `($${usd(v)})` : "—"}</span>;
+        return <span style={{ color: v > 0 ? "#f87171" : "var(--text-3)" }}>{v > 0 ? `($${usd(v)})` : "—"}</span>;
       }
       case "cogsUsd":     return <span style={{ color: "#f59e0b" }}>${usd(r.cogsUsd)}</span>;
       case "orders": case "units": case "productCount":
-        return <span style={{ color: "rgba(255,255,255,0.8)" }}>{((r as any)[colKey] as number).toLocaleString()}</span>;
-      case "topProduct":  return <span style={{ fontSize: 12, color: "rgba(255,255,255,0.6)" }}>{r.topProduct}</span>;
-      default: return <span style={{ color: "rgba(255,255,255,0.6)" }}>{String((r as any)[colKey] ?? "—")}</span>;
+        return <span style={{ color: "var(--text)" }}>{((r as any)[colKey] as number).toLocaleString()}</span>;
+      case "topProduct":  return <span style={{ fontSize: 12, color: "var(--text-2)" }}>{r.topProduct}</span>;
+      default: return <span style={{ color: "var(--text-2)" }}>{String((r as any)[colKey] ?? "—")}</span>;
     }
   };
 
   /* ── Totals cell renderer ─────────────────────── */
   const renderTotalsCell = (key: string, t: DisplayTotals) => {
-    const dim = { color: "rgba(255,255,255,0.45)", fontSize: 12 };
-    const num = { color: "#fff", fontWeight: 700, fontSize: 13 };
+    const dim = { color: "var(--text-3)", fontSize: 12 };
+    const num = { color: "var(--text)", fontWeight: 700, fontSize: 13 };
     const red = { color: "#f87171", fontWeight: 700, fontSize: 13 };
     const grn = (v: number) => ({ color: v >= 0 ? "#10B981" : "#EF4444", fontWeight: 700, fontSize: 13 });
     const roaColor = (v: number) => v >= 2 ? "#10B981" : v >= 1 ? "#f59e0b" : "#EF4444";
     switch (key) {
-      case "name":        return <span style={{ color: "rgba(255,255,255,0.5)", fontSize: 12, fontWeight: 700 }}>TOTAL · {t.count} productos</span>;
+      case "name":        return <span style={{ color: "var(--text-2)", fontSize: 12, fontWeight: 700 }}>TOTAL · {t.count} productos</span>;
       case "countryCode": case "storeName": case "countries": case "cpaBE": case "status": case "dataQuality": case "topProduct":
         return <span style={dim}>—</span>;
       case "revenueUsd":  return <span style={num}>${usd(t.revenueUsd)}</span>;
       case "units":       return <span style={num}>{t.units.toLocaleString()}</span>;
       case "orders":      return <span style={num}>{t.orders.toLocaleString()}</span>;
       case "productCount":return <span style={num}>{t.count}</span>;
-      case "aov":         return <span style={{ color: "rgba(255,255,255,0.7)", fontWeight: 600, fontSize: 13 }}>{t.aov > 0 ? `$${usd(t.aov)}` : "—"}</span>;
+      case "aov":         return <span style={{ color: "var(--text-2)", fontWeight: 600, fontSize: 13 }}>{t.aov > 0 ? `$${usd(t.aov)}` : "—"}</span>;
       case "cogsUsd":     return t.cogsUsd > 0 ? <span style={red}>(${usd(t.cogsUsd)})</span> : <span style={dim}>—</span>;
       case "adSpendUsd":  return t.adSpendUsd > 0 ? <span style={red}>${usd(t.adSpendUsd)}</span> : <span style={dim}>—</span>;
       case "feesUsd":     return (t.feesUsd ?? 0) > 0 ? <span style={red}>(${usd(t.feesUsd)})</span> : <span style={dim}>—</span>;
@@ -1259,7 +1259,7 @@ export default function ProductAnalyticsPage() {
         return (
           <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 1 }}>
             <span style={red}>${usd(v)}</span>
-            <span style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>{pct_.toFixed(0)}% rev.</span>
+            <span style={{ fontSize: 10, color: "var(--text-3)" }}>{pct_.toFixed(0)}% rev.</span>
           </div>
         );
       }
@@ -1268,11 +1268,11 @@ export default function ProductAnalyticsPage() {
       case "netProfit":   return <span style={grn(t.netProfit)}>{usd(t.netProfit)}</span>;
       case "netMargin":   return <span style={grn(t.netMargin)}>{pct(t.netMargin)}</span>;
       case "roas":        return t.roas == null ? <span style={dim}>—</span> : <span style={{ color: roaColor(t.roas), fontWeight: 700, fontSize: 13 }}>{t.roas.toFixed(2)}x</span>;
-      case "cpa":         return t.cpa  == null ? <span style={dim}>—</span> : <span style={{ color: "rgba(255,255,255,0.8)", fontWeight: 600, fontSize: 13 }}>${t.cpa.toFixed(2)}</span>;
-      case "cpaAds":      return t.cpaAds  == null ? <span style={dim}>—</span> : <span style={{ color: "rgba(255,255,255,0.8)", fontWeight: 600, fontSize: 13 }}>${t.cpaAds.toFixed(2)}</span>;
+      case "cpa":         return t.cpa  == null ? <span style={dim}>—</span> : <span style={{ color: "var(--text)", fontWeight: 600, fontSize: 13 }}>${t.cpa.toFixed(2)}</span>;
+      case "cpaAds":      return t.cpaAds  == null ? <span style={dim}>—</span> : <span style={{ color: "var(--text)", fontWeight: 600, fontSize: 13 }}>${t.cpaAds.toFixed(2)}</span>;
       case "roasAds":     return t.roasAds == null ? <span style={dim}>—</span> : <span style={{ color: roaColor(t.roasAds), fontWeight: 700, fontSize: 13 }}>{t.roasAds.toFixed(2)}x</span>;
-      case "sessions":    return t.sessions > 0 ? <span style={{ color: "rgba(255,255,255,0.75)", fontWeight: 600, fontSize: 13 }}>{t.sessions.toLocaleString()}</span> : <span style={dim}>—</span>;
-      case "addToCart":   return t.addToCart > 0 ? <span style={{ color: "rgba(255,255,255,0.75)", fontWeight: 600, fontSize: 13 }}>{t.addToCart.toLocaleString()}</span> : <span style={dim}>—</span>;
+      case "sessions":    return t.sessions > 0 ? <span style={{ color: "var(--text)", fontWeight: 600, fontSize: 13 }}>{t.sessions.toLocaleString()}</span> : <span style={dim}>—</span>;
+      case "addToCart":   return t.addToCart > 0 ? <span style={{ color: "var(--text)", fontWeight: 600, fontSize: 13 }}>{t.addToCart.toLocaleString()}</span> : <span style={dim}>—</span>;
       case "addToCartRate": return t.addToCartRate == null ? <span style={dim}>—</span> : <span style={{ color: t.addToCartRate >= 10 ? "#10B981" : t.addToCartRate >= 5 ? "#f59e0b" : "#EF4444", fontWeight: 700, fontSize: 13 }}>{t.addToCartRate.toFixed(1)}%</span>;
       case "conversionRate": return <span style={dim}>—</span>;
       default: return <span style={dim}>—</span>;
@@ -1299,13 +1299,13 @@ export default function ProductAnalyticsPage() {
     : `${countryRows.length} filas`;
 
   return (
-    <div style={{ padding: "28px 32px", minHeight: "100vh", background: "var(--page-bg, #0f172a)", color: "#fff" }}>
+    <div style={{ padding: "28px 32px", minHeight: "100vh", background: "var(--bg)", color: "var(--text)" }}>
 
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>Product Analytics</h1>
-          <p style={{ fontSize: 13, color: "rgba(255,255,255,0.45)", margin: "4px 0 0" }}>
+          <p style={{ fontSize: 13, color: "var(--text-3)", margin: "4px 0 0" }}>
             Rentabilidad por producto, país y tienda · COGS y Ads separados por mercado
             {isCustomRange && <span style={{ color: "#10B981", marginLeft: 8 }}>· {customFrom} → {customTo}</span>}
             {!isCustomRange && <span style={{ marginLeft: 8 }}>· últimos {days === 1 ? "hoy" : `${days} días`}</span>}
@@ -1318,12 +1318,12 @@ export default function ProductAnalyticsPage() {
             </button>
           )}
           {viewMode === "bycountry" && (
-            <button onClick={() => setShowCustomize(true)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 16px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.7)", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
+            <button onClick={() => setShowCustomize(true)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 16px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--border)", color: "var(--text-2)", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
               ⚙ Personalizar
-              {hiddenColKeys.size > 0 && <span style={{ background: "#6366f1", color: "#fff", fontSize: 10, fontWeight: 700, borderRadius: 20, padding: "1px 6px" }}>{ALL_COLS_COUNTRY.length - hiddenColKeys.size}</span>}
+              {hiddenColKeys.size > 0 && <span style={{ background: "#6366f1", color: "var(--text)", fontSize: 10, fontWeight: 700, borderRadius: 20, padding: "1px 6px" }}>{ALL_COLS_COUNTRY.length - hiddenColKeys.size}</span>}
             </button>
           )}
-          <button onClick={load} disabled={loading} style={{ display: "flex", alignItems: "center", gap: 7, padding: "9px 16px", borderRadius: 10, border: "none", background: "#0E766E", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600, opacity: loading ? 0.6 : 1 }}>
+          <button onClick={load} disabled={loading} style={{ display: "flex", alignItems: "center", gap: 7, padding: "9px 16px", borderRadius: 10, border: "none", background: "#0E766E", color: "var(--text)", cursor: "pointer", fontSize: 13, fontWeight: 600, opacity: loading ? 0.6 : 1 }}>
             <RefreshCw size={14} style={{ animation: loading ? "spin 1s linear infinite" : "none" }} />
             {loading ? "Cargando…" : "Actualizar"}
           </button>
@@ -1340,9 +1340,9 @@ export default function ProductAnalyticsPage() {
           <button key={v} onClick={() => setViewMode(v)} style={{
             display: "flex", alignItems: "center", gap: 7,
             padding: "8px 18px", borderRadius: 10, border: "1px solid",
-            borderColor: viewMode === v ? "#0E766E" : "rgba(255,255,255,0.1)",
+            borderColor: viewMode === v ? "#0E766E" : "var(--border)",
             background: viewMode === v ? "rgba(14,118,110,0.2)" : "transparent",
-            color: viewMode === v ? "#fff" : "rgba(255,255,255,0.5)",
+            color: viewMode === v ? "var(--text)" : "var(--text-2)",
             cursor: "pointer", fontSize: 13, fontWeight: 600,
           }}>
             <Icon size={14} />
@@ -1354,14 +1354,14 @@ export default function ProductAnalyticsPage() {
       {/* ── Filters ── */}
       <div style={{ display: "flex", gap: 10, marginBottom: 24, flexWrap: "wrap", alignItems: "center" }}>
         {/* Brand / Store */}
-        <div style={{ display: "flex", gap: 4, background: "rgba(255,255,255,0.05)", padding: 4, borderRadius: 10 }}>
+        <div style={{ display: "flex", gap: 4, background: "var(--border)", padding: 4, borderRadius: 10 }}>
           {[{ v: "all", l: "Todas" }, { v: "glowmmi", l: "Glowmmi" }, { v: "balancea", l: "Balancea" }, { v: "pleena", l: "Pleena" }].map(s => (
-            <button key={s.v} onClick={() => setStore(s.v)} style={{ padding: "6px 14px", borderRadius: 7, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600, background: store === s.v ? "#0E766E" : "transparent", color: store === s.v ? "#fff" : "rgba(255,255,255,0.5)" }}>{s.l}</button>
+            <button key={s.v} onClick={() => setStore(s.v)} style={{ padding: "6px 14px", borderRadius: 7, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600, background: store === s.v ? "#0E766E" : "transparent", color: store === s.v ? "var(--text)" : "var(--text-2)" }}>{s.l}</button>
           ))}
         </div>
 
         {/* Country filter */}
-        <div style={{ display: "flex", gap: 4, background: "rgba(255,255,255,0.05)", padding: 4, borderRadius: 10 }}>
+        <div style={{ display: "flex", gap: 4, background: "var(--border)", padding: 4, borderRadius: 10 }}>
           {[
             { v: "all", l: "🌍 Todos" },
             { v: "MX",  l: "🇲🇽 México" },
@@ -1369,16 +1369,16 @@ export default function ProductAnalyticsPage() {
             { v: "CL",  l: "🇨🇱 Chile"  },
             { v: "ES",  l: "🇪🇸 España" },
           ].map(s => (
-            <button key={s.v} onClick={() => setCountryFilter(s.v)} style={{ padding: "6px 12px", borderRadius: 7, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600, background: countryFilter === s.v ? "#0E766E" : "transparent", color: countryFilter === s.v ? "#fff" : "rgba(255,255,255,0.5)" }}>{s.l}</button>
+            <button key={s.v} onClick={() => setCountryFilter(s.v)} style={{ padding: "6px 12px", borderRadius: 7, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600, background: countryFilter === s.v ? "#0E766E" : "transparent", color: countryFilter === s.v ? "var(--text)" : "var(--text-2)" }}>{s.l}</button>
           ))}
         </div>
 
         {/* Date range */}
-        <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 4, background: "rgba(255,255,255,0.05)", padding: 4, borderRadius: 10 }}>
+        <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 4, background: "var(--border)", padding: 4, borderRadius: 10 }}>
           {DAYS_OPTS.map(d => (
             <button key={d.v}
               onClick={() => { setDays(d.v); setCustomFrom(""); setCustomTo(""); setShowCalendar(false); }}
-              style={{ padding: "6px 12px", borderRadius: 7, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600, background: !isCustomRange && days === d.v ? "#0E766E" : "transparent", color: !isCustomRange && days === d.v ? "#fff" : "rgba(255,255,255,0.5)" }}
+              style={{ padding: "6px 12px", borderRadius: 7, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600, background: !isCustomRange && days === d.v ? "#0E766E" : "transparent", color: !isCustomRange && days === d.v ? "var(--text)" : "var(--text-2)" }}
             >
               {d.label}
             </button>
@@ -1390,12 +1390,12 @@ export default function ProductAnalyticsPage() {
               <span style={{ fontSize: 11, color: "#10B981", fontWeight: 600, whiteSpace: "nowrap" }}>
                 {customFrom.slice(5)} → {customTo.slice(5)}
               </span>
-              <button onClick={() => { setCustomFrom(""); setCustomTo(""); setShowCalendar(false); }} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(255,255,255,0.4)", padding: 0, display: "flex", marginLeft: 2 }}>
+              <button onClick={() => { setCustomFrom(""); setCustomTo(""); setShowCalendar(false); }} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-3)", padding: 0, display: "flex", marginLeft: 2 }}>
                 <XIcon size={11} />
               </button>
             </div>
           ) : (
-            <button ref={calendarBtnRef} onClick={openCalendar} style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 12px", borderRadius: 7, border: "none", cursor: "pointer", background: showCalendar ? "rgba(14,118,110,0.3)" : "transparent", color: showCalendar ? "#10B981" : "rgba(255,255,255,0.5)" }}>
+            <button ref={calendarBtnRef} onClick={openCalendar} style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 12px", borderRadius: 7, border: "none", cursor: "pointer", background: showCalendar ? "rgba(14,118,110,0.3)" : "transparent", color: showCalendar ? "#10B981" : "var(--text-2)" }}>
               <Calendar size={13} />
               <span style={{ fontSize: 12, fontWeight: 600 }}>Fechas</span>
             </button>
@@ -1419,14 +1419,14 @@ export default function ProductAnalyticsPage() {
         </div>
 
         {/* Status filter */}
-        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} style={{ padding: "8px 12px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.05)", color: "#fff", fontSize: 12, cursor: "pointer", outline: "none" }}>
+        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} style={{ padding: "8px 12px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--border)", color: "var(--text)", fontSize: 12, cursor: "pointer", outline: "none" }}>
           <option value="all">Estado: Todos</option>
           {allStatuses.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
 
         {/* Search */}
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar producto…"
-          style={{ padding: "8px 14px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.05)", color: "#fff", fontSize: 13, outline: "none", width: 200 }}
+          style={{ padding: "8px 14px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--border)", color: "var(--text)", fontSize: 13, outline: "none", width: 200 }}
         />
       </div>
 
@@ -1513,10 +1513,10 @@ export default function ProductAnalyticsPage() {
       {error && <div style={{ padding: 16, borderRadius: 10, background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.3)", color: "#f87171", marginBottom: 16 }}>{error}</div>}
 
       {/* ── Table ── */}
-      <div style={{ background: "var(--card-bg, #1e293b)", border: "1px solid var(--border, rgba(255,255,255,0.08))", borderRadius: 14, overflow: "hidden" }}>
+      <div style={{ background: "var(--card-bg, var(--card))", border: "1px solid var(--border, var(--border))", borderRadius: 14, overflow: "hidden" }}>
         {/* Top phantom scrollbar */}
         <div ref={topScrollRef} onScroll={syncScrollFromTop}
-          style={{ overflowX: "auto", overflowY: "hidden", height: 10, borderBottom: "1px solid rgba(255,255,255,0.06)" }}
+          style={{ overflowX: "auto", overflowY: "hidden", height: 10, borderBottom: "1px solid var(--border)" }}
           className="custom-scrollbar">
           <div style={{ width: tableMinW, height: 1 }} />
         </div>
@@ -1524,7 +1524,7 @@ export default function ProductAnalyticsPage() {
           <table style={{ width: "100%", borderCollapse: "collapse", minWidth: activeCols.reduce((s, c) => s + c.width, 0) }}>
             <thead>
               {/* Column headers */}
-              <tr style={{ background: "rgba(255,255,255,0.03)", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+              <tr style={{ background: "var(--border)", borderBottom: "1px solid var(--border)" }}>
                 {activeCols.map(col => (
                   <th key={col.key}
                     onClick={() => viewMode !== "bystore" && handleSort(col.key as SortKey)}
@@ -1533,12 +1533,12 @@ export default function ProductAnalyticsPage() {
                       padding: "10px 14px", width: col.width, minWidth: col.width,
                       textAlign: (col as any).right ? "right" : "left",
                       fontSize: 11, fontWeight: 700,
-                      color: sortKey === col.key ? "#0E766E" : "rgba(255,255,255,0.45)",
+                      color: sortKey === col.key ? "#0E766E" : "var(--text-3)",
                       letterSpacing: "0.05em", textTransform: "uppercase",
                       cursor: viewMode !== "bystore" ? "pointer" : "default", userSelect: "none",
                       position: (col as any).sticky ? "sticky" : undefined,
                       left: (col as any).sticky ? 0 : undefined,
-                      background: (col as any).sticky ? "#1e293b" : undefined,
+                      background: (col as any).sticky ? "var(--card)" : undefined,
                       zIndex: (col as any).sticky ? 2 : undefined,
                       whiteSpace: "nowrap",
                     }}
@@ -1556,26 +1556,26 @@ export default function ProductAnalyticsPage() {
 
             <tbody>
               {loading ? (
-                <tr><td colSpan={activeCols.length} style={{ padding: 40, textAlign: "center", color: "rgba(255,255,255,0.4)" }}>Cargando datos de Shopify…</td></tr>
+                <tr><td colSpan={activeCols.length} style={{ padding: 40, textAlign: "center", color: "var(--text-3)" }}>Cargando datos de Shopify…</td></tr>
               ) : viewMode === "bystore" ? (
                 storeRows.length === 0
-                  ? <tr><td colSpan={activeCols.length} style={{ padding: 40, textAlign: "center", color: "rgba(255,255,255,0.4)" }}>Sin datos para el período seleccionado</td></tr>
+                  ? <tr><td colSpan={activeCols.length} style={{ padding: 40, textAlign: "center", color: "var(--text-3)" }}>Sin datos para el período seleccionado</td></tr>
                   : <>
                     {storeRows.map((r, i) => (
-                      <tr key={r.storeKey} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)", background: i % 2 === 0 ? "transparent" : "rgba(255,255,255,0.015)", transition: "background 0.1s" }}
-                        onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.04)")}
-                        onMouseLeave={e => (e.currentTarget.style.background = i % 2 === 0 ? "transparent" : "rgba(255,255,255,0.015)")}>
+                      <tr key={r.storeKey} style={{ borderBottom: "1px solid var(--border)", background: i % 2 === 0 ? "transparent" : "var(--summary-row)", transition: "background 0.1s" }}
+                        onMouseEnter={e => (e.currentTarget.style.background = "var(--border)")}
+                        onMouseLeave={e => (e.currentTarget.style.background = i % 2 === 0 ? "transparent" : "var(--summary-row)")}>
                         {COLS_STORE.map(col => (
-                          <td key={col.key} style={{ padding: "11px 14px", width: col.width, minWidth: col.width, textAlign: (col as any).right ? "right" : "left", fontSize: 13, position: (col as any).sticky ? "sticky" : undefined, left: (col as any).sticky ? 0 : undefined, background: (col as any).sticky ? (i % 2 === 0 ? "#1e293b" : "#1a2840") : undefined, zIndex: (col as any).sticky ? 1 : undefined }}>
+                          <td key={col.key} style={{ padding: "11px 14px", width: col.width, minWidth: col.width, textAlign: (col as any).right ? "right" : "left", fontSize: 13, position: (col as any).sticky ? "sticky" : undefined, left: (col as any).sticky ? 0 : undefined, background: (col as any).sticky ? (i % 2 === 0 ? "var(--card)" : "var(--card)") : undefined, zIndex: (col as any).sticky ? 1 : undefined }}>
                             {renderStoreRowCell(col.key, r)}
                           </td>
                         ))}
                       </tr>
                     ))}
                     {storeTotals && (
-                      <tr style={{ borderTop: "2px solid rgba(14,118,110,0.5)", background: "#0e2420" }}>
+                      <tr style={{ borderTop: "2px solid rgba(14,118,110,0.5)", background: "var(--summary-row)" }}>
                         {(COLS_STORE as unknown as ColDef[]).map(col => (
-                          <td key={col.key} style={{ padding: "10px 14px", width: col.width, minWidth: col.width, textAlign: (col as any).right ? "right" : "left", fontSize: 13, position: (col as any).sticky ? "sticky" : undefined, left: (col as any).sticky ? 0 : undefined, background: (col as any).sticky ? "#0e2420" : undefined, zIndex: (col as any).sticky ? 3 : undefined }}>
+                          <td key={col.key} style={{ padding: "10px 14px", width: col.width, minWidth: col.width, textAlign: (col as any).right ? "right" : "left", fontSize: 13, position: (col as any).sticky ? "sticky" : undefined, left: (col as any).sticky ? 0 : undefined, background: (col as any).sticky ? "var(--summary-row)" : undefined, zIndex: (col as any).sticky ? 3 : undefined }}>
                             {renderTotalsCell(col.key, storeTotals)}
                           </td>
                         ))}
@@ -1584,28 +1584,28 @@ export default function ProductAnalyticsPage() {
                   </>
               ) : viewMode === "general" ? (
                 generalRows.length === 0
-                  ? <tr><td colSpan={activeCols.length} style={{ padding: 40, textAlign: "center", color: "rgba(255,255,255,0.4)" }}>Sin datos para el período seleccionado</td></tr>
+                  ? <tr><td colSpan={activeCols.length} style={{ padding: 40, textAlign: "center", color: "var(--text-3)" }}>Sin datos para el período seleccionado</td></tr>
                   : <>
                     {generalRowsSorted.map((r, i) => {
                       const pKey = `${r.name}||${r.variant}||${r.brandId}`;
                       const kids = childrenByProduct[pKey] ?? [];
                       const canExpand = kids.length > 1;
                       const isOpen = expandedGeneral.has(pKey);
-                      const parentBg = i % 2 === 0 ? "transparent" : "rgba(255,255,255,0.015)";
+                      const parentBg = i % 2 === 0 ? "transparent" : "var(--summary-row)";
                       return (
                       <Fragment key={pKey}>
-                      <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.04)", background: dragRowKey === pKey ? "rgba(14,118,110,0.22)" : isOpen ? "rgba(14,118,110,0.10)" : parentBg, transition: "background 0.1s", cursor: canExpand ? "pointer" : "default" }}
+                      <tr style={{ borderBottom: "1px solid var(--border)", background: dragRowKey === pKey ? "rgba(14,118,110,0.22)" : isOpen ? "rgba(14,118,110,0.10)" : parentBg, transition: "background 0.1s", cursor: canExpand ? "pointer" : "default" }}
                         onClick={() => canExpand && toggleExpand(pKey)}
                         onDragOver={e => { e.preventDefault(); }}
                         onDrop={() => handleRowDrop(pKey, generalRowsSorted.map(generalKeyFn), manualGeneralOrder, setManualGeneralOrder, "analytics_row_order_general")}
-                        onMouseEnter={e => { if (!isOpen) e.currentTarget.style.background = "rgba(255,255,255,0.04)"; }}
+                        onMouseEnter={e => { if (!isOpen) e.currentTarget.style.background = "var(--border)"; }}
                         onMouseLeave={e => { if (!isOpen) e.currentTarget.style.background = parentBg; }}>
                         {COLS_GENERAL.map(col => (
-                          <td key={col.key} style={{ padding: "11px 14px", width: col.width, minWidth: col.width, textAlign: (col as any).right ? "right" : "left", fontSize: 13, position: (col as any).sticky ? "sticky" : undefined, left: (col as any).sticky ? 0 : undefined, background: (col as any).sticky ? (isOpen ? "#173a37" : (i % 2 === 0 ? "#1e293b" : "#1a2840")) : undefined, zIndex: (col as any).sticky ? 1 : undefined }}>
+                          <td key={col.key} style={{ padding: "11px 14px", width: col.width, minWidth: col.width, textAlign: (col as any).right ? "right" : "left", fontSize: 13, position: (col as any).sticky ? "sticky" : undefined, left: (col as any).sticky ? 0 : undefined, background: (col as any).sticky ? (isOpen ? "var(--summary-row)" : (i % 2 === 0 ? "var(--card)" : "var(--card)")) : undefined, zIndex: (col as any).sticky ? 1 : undefined }}>
                             {col.key === "name" ? (
                               <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                                <span draggable onDragStart={e => { e.stopPropagation(); setDragRowKey(pKey); }} onClick={e => e.stopPropagation()} title="Arrastra para reordenar" style={{ cursor: "grab", color: "rgba(255,255,255,0.3)", fontSize: 13, lineHeight: 1, userSelect: "none" }}>⠿</span>
-                                <span style={{ width: 16, display: "inline-flex", justifyContent: "center", color: canExpand ? "rgba(255,255,255,0.55)" : "transparent" }}>
+                                <span draggable onDragStart={e => { e.stopPropagation(); setDragRowKey(pKey); }} onClick={e => e.stopPropagation()} title="Arrastra para reordenar" style={{ cursor: "grab", color: "var(--text-3)", fontSize: 13, lineHeight: 1, userSelect: "none" }}>⠿</span>
+                                <span style={{ width: 16, display: "inline-flex", justifyContent: "center", color: canExpand ? "var(--text-2)" : "transparent" }}>
                                   {canExpand ? (isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />) : null}
                                 </span>
                                 {renderGeneralCell(col.key, r)}
@@ -1615,9 +1615,9 @@ export default function ProductAnalyticsPage() {
                         ))}
                       </tr>
                       {isOpen && kids.map((child, ci) => (
-                        <tr key={`${pKey}||${child.countryCode}`} style={{ borderBottom: "1px solid rgba(255,255,255,0.03)", background: "rgba(0,0,0,0.18)" }}>
+                        <tr key={`${pKey}||${child.countryCode}`} style={{ borderBottom: "1px solid var(--border)", background: "var(--summary-row)" }}>
                           {COLS_GENERAL.map(col => (
-                            <td key={col.key} style={{ padding: "8px 14px", width: col.width, minWidth: col.width, textAlign: (col as any).right ? "right" : "left", fontSize: 12.5, position: (col as any).sticky ? "sticky" : undefined, left: (col as any).sticky ? 0 : undefined, background: (col as any).sticky ? "#141f2e" : undefined, zIndex: (col as any).sticky ? 1 : undefined }}>
+                            <td key={col.key} style={{ padding: "8px 14px", width: col.width, minWidth: col.width, textAlign: (col as any).right ? "right" : "left", fontSize: 12.5, position: (col as any).sticky ? "sticky" : undefined, left: (col as any).sticky ? 0 : undefined, background: (col as any).sticky ? "var(--summary-row)" : undefined, zIndex: (col as any).sticky ? 1 : undefined }}>
                               {renderGeneralChildCell(col.key, child)}
                             </td>
                           ))}
@@ -1627,9 +1627,9 @@ export default function ProductAnalyticsPage() {
                       );
                     })}
                     {generalTotals && (
-                      <tr style={{ borderTop: "2px solid rgba(14,118,110,0.5)", background: "#0e2420" }}>
+                      <tr style={{ borderTop: "2px solid rgba(14,118,110,0.5)", background: "var(--summary-row)" }}>
                         {(COLS_GENERAL as unknown as ColDef[]).map(col => (
-                          <td key={col.key} style={{ padding: "10px 14px", width: col.width, minWidth: col.width, textAlign: (col as any).right ? "right" : "left", fontSize: 13, position: (col as any).sticky ? "sticky" : undefined, left: (col as any).sticky ? 0 : undefined, background: (col as any).sticky ? "#0e2420" : undefined, zIndex: (col as any).sticky ? 3 : undefined }}>
+                          <td key={col.key} style={{ padding: "10px 14px", width: col.width, minWidth: col.width, textAlign: (col as any).right ? "right" : "left", fontSize: 13, position: (col as any).sticky ? "sticky" : undefined, left: (col as any).sticky ? 0 : undefined, background: (col as any).sticky ? "var(--summary-row)" : undefined, zIndex: (col as any).sticky ? 3 : undefined }}>
                             {renderTotalsCell(col.key, generalTotals)}
                           </td>
                         ))}
@@ -1638,22 +1638,22 @@ export default function ProductAnalyticsPage() {
                   </>
               ) : (
                 countryRows.length === 0
-                  ? <tr><td colSpan={activeCols.length} style={{ padding: 40, textAlign: "center", color: "rgba(255,255,255,0.4)" }}>Sin datos para el período seleccionado</td></tr>
+                  ? <tr><td colSpan={activeCols.length} style={{ padding: 40, textAlign: "center", color: "var(--text-3)" }}>Sin datos para el período seleccionado</td></tr>
                   : <>
                     {countryRowsSorted.map((r, i) => {
                       const rKey = `${r.name}||${r.variant}||${r.brandId}||${r.countryCode}`;
-                      const rowBg = dragRowKey === rKey ? "rgba(14,118,110,0.22)" : i % 2 === 0 ? "transparent" : "rgba(255,255,255,0.015)";
+                      const rowBg = dragRowKey === rKey ? "rgba(14,118,110,0.22)" : i % 2 === 0 ? "transparent" : "var(--summary-row)";
                       return (
-                      <tr key={rKey} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)", background: rowBg, transition: "background 0.1s" }}
+                      <tr key={rKey} style={{ borderBottom: "1px solid var(--border)", background: rowBg, transition: "background 0.1s" }}
                         onDragOver={e => { e.preventDefault(); }}
                         onDrop={() => handleRowDrop(rKey, countryRowsSorted.map(countryKeyFn), manualCountryOrder, setManualCountryOrder, "analytics_row_order_country")}
-                        onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.04)")}
+                        onMouseEnter={e => (e.currentTarget.style.background = "var(--border)")}
                         onMouseLeave={e => (e.currentTarget.style.background = rowBg)}>
                         {activeCols.map((col: ColDef) => (
-                          <td key={col.key} style={{ padding: "11px 14px", width: col.width, minWidth: col.width, textAlign: col.right ? "right" : "left", fontSize: 13, position: col.sticky ? "sticky" : undefined, left: col.sticky ? 0 : undefined, background: col.sticky ? (i % 2 === 0 ? "#1e293b" : "#1a2840") : undefined, zIndex: col.sticky ? 1 : undefined }}>
+                          <td key={col.key} style={{ padding: "11px 14px", width: col.width, minWidth: col.width, textAlign: col.right ? "right" : "left", fontSize: 13, position: col.sticky ? "sticky" : undefined, left: col.sticky ? 0 : undefined, background: col.sticky ? (i % 2 === 0 ? "var(--card)" : "var(--card)") : undefined, zIndex: col.sticky ? 1 : undefined }}>
                             {col.key === "name" ? (
                               <span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
-                                <span draggable onDragStart={e => { e.stopPropagation(); setDragRowKey(rKey); }} title="Arrastra para reordenar" style={{ cursor: "grab", color: "rgba(255,255,255,0.3)", fontSize: 13, lineHeight: 1, userSelect: "none" }}>⠿</span>
+                                <span draggable onDragStart={e => { e.stopPropagation(); setDragRowKey(rKey); }} title="Arrastra para reordenar" style={{ cursor: "grab", color: "var(--text-3)", fontSize: 13, lineHeight: 1, userSelect: "none" }}>⠿</span>
                                 {renderColCell(col.key, r)}
                               </span>
                             ) : renderColCell(col.key, r)}
@@ -1663,9 +1663,9 @@ export default function ProductAnalyticsPage() {
                       );
                     })}
                     {bycountryTotals && (
-                      <tr style={{ borderTop: "2px solid rgba(14,118,110,0.5)", background: "#0e2420" }}>
+                      <tr style={{ borderTop: "2px solid rgba(14,118,110,0.5)", background: "var(--summary-row)" }}>
                         {activeCols.map((col: ColDef) => (
-                          <td key={col.key} style={{ padding: "10px 14px", width: col.width, minWidth: col.width, textAlign: col.right ? "right" : "left", fontSize: 13, position: col.sticky ? "sticky" : undefined, left: col.sticky ? 0 : undefined, background: col.sticky ? "#0e2420" : undefined, zIndex: col.sticky ? 3 : undefined }}>
+                          <td key={col.key} style={{ padding: "10px 14px", width: col.width, minWidth: col.width, textAlign: col.right ? "right" : "left", fontSize: 13, position: col.sticky ? "sticky" : undefined, left: col.sticky ? 0 : undefined, background: col.sticky ? "var(--summary-row)" : undefined, zIndex: col.sticky ? 3 : undefined }}>
                             {renderTotalsCell(col.key, bycountryTotals)}
                           </td>
                         ))}
@@ -1678,12 +1678,12 @@ export default function ProductAnalyticsPage() {
         </div>
 
         {/* Footer */}
-        <div style={{ padding: "10px 16px", borderTop: "1px solid rgba(255,255,255,0.06)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <span style={{ fontSize: 12, color: "rgba(255,255,255,0.35)" }}>
+        <div style={{ padding: "10px 16px", borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <span style={{ fontSize: 12, color: "var(--text-3)" }}>
             {rowCountLabel} · Últimos {days} días
-            {countryFilter !== "all" && <span style={{ color: "#fff" }}> · {FLAG[countryFilter]} {COUNTRY_NAME[countryFilter]}</span>}
+            {countryFilter !== "all" && <span style={{ color: "var(--text)" }}> · {FLAG[countryFilter]} {COUNTRY_NAME[countryFilter]}</span>}
           </span>
-          <span style={{ fontSize: 11, color: "rgba(255,255,255,0.25)" }}>
+          <span style={{ fontSize: 11, color: "var(--text-3)" }}>
             COGS y Ads separados por país · CPA BE por orden
           </span>
         </div>
@@ -1707,11 +1707,11 @@ export default function ProductAnalyticsPage() {
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
         input[type=number]::-webkit-inner-spin-button { opacity: 0.4; }
-        select option { background: #1e293b; color: #fff; }
+        select option { background: var(--card); color: var(--text); }
         .custom-scrollbar::-webkit-scrollbar { height: 8px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: rgba(255,255,255,0.04); }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.18); border-radius: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.3); }
+        .custom-scrollbar::-webkit-scrollbar-track { background: var(--border); }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: var(--text-3); }
       `}</style>
     </div>
   );
