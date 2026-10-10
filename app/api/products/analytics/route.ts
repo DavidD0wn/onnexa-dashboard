@@ -1118,8 +1118,21 @@ export async function GET(req: NextRequest) {
   // ── Ad spend — per country when available ──────────────────────────────────
   const adRows   = await prisma.adSpend.findMany({
     where: { brandId: { in: brandIds }, platform: "facebook", date: { gte: dateFrom, lte: dateTo } },
-    select: { date: true, brandId: true, countryId: true, productId: true, spend: true, impressions: true, clicks: true, linkClicks: true, addToCart: true, uniqueCtr: true, purchases: true, conversionValue: true, campaignName: true, adsetName: true, adName: true },
+    select: { date: true, brandId: true, countryId: true, productId: true, accountId: true, spend: true, impressions: true, clicks: true, linkClicks: true, addToCart: true, purchases: true, conversionValue: true, campaignName: true, adsetName: true, adName: true },
   });
+  // Alcance y clics únicos de enlace por campaña×día (Meta deduplica por campaña).
+  const campaignDailyRows = await prisma.metaCampaignDaily.findMany({
+    where: { date: { gte: dateFrom, lte: dateTo } },
+    select: { accountId: true, date: true, campaignName: true, reach: true, uniqueLinkClicks: true },
+  }).catch(() => []);
+  const campaignDailyKey = (accountId: string | null, date: string, campaignName: string | null) =>
+    `${accountId ?? ""}||${date}||${campaignName ?? ""}`;
+  const campaignDaily = new Map(
+    campaignDailyRows.map((row) => [
+      campaignDailyKey(row.accountId, row.date.toISOString().slice(0, 10), row.campaignName),
+      row,
+    ]),
+  );
   const adCountryCode = (row: (typeof adRows)[number]): string | null => {
     return row.countryId ? (codeById[row.countryId] ?? null) : null;
   };
@@ -1176,8 +1189,21 @@ export async function GET(req: NextRequest) {
   const productCampaignClicks: Record<string, number> = {};
   const productCampaignLinkClicks: Record<string, number> = {};
   const productCampaignAddToCart: Record<string, number> = {};
-  // uniqueCtr es una tasa; se pondera por impresiones para agregar varias filas.
-  const productCampaignUniqueCtrWeighted: Record<string, number> = {};
+  // Reach y clics únicos se cuentan UNA vez por campaña×día (no por anuncio).
+  const productCampaignReach: Record<string, number> = {};
+  const productCampaignUniqueLinkClicks: Record<string, number> = {};
+  const countedCampaignDays = new Set<string>();
+  const addCampaignReach = (productKey: string, row: (typeof adRows)[number], date: string, share: number) => {
+    const ck = campaignDailyKey(row.accountId, date, row.campaignName);
+    const dedupe = `${productKey}##${ck}`;
+    if (countedCampaignDays.has(dedupe)) return;
+    countedCampaignDays.add(dedupe);
+    const daily = campaignDaily.get(ck);
+    if (!daily) return;
+    productCampaignReach[productKey] = (productCampaignReach[productKey] ?? 0) + daily.reach * share;
+    productCampaignUniqueLinkClicks[productKey] =
+      (productCampaignUniqueLinkClicks[productKey] ?? 0) + daily.uniqueLinkClicks * share;
+  };
   const unmatchedBrandCountrySpend: Record<string, number> = {};
   const productDailyAdSpend: Record<string, Record<string, number>> = {};
   const unmatchedDailySpend: Record<string, number> = {};
@@ -1353,8 +1379,7 @@ export async function GET(req: NextRequest) {
             (productCampaignLinkClicks[match.key] ?? 0) + (row.linkClicks ?? 0) * share;
           productCampaignAddToCart[match.key] =
             (productCampaignAddToCart[match.key] ?? 0) + (row.addToCart ?? 0) * share;
-          productCampaignUniqueCtrWeighted[match.key] =
-            (productCampaignUniqueCtrWeighted[match.key] ?? 0) + (row.uniqueCtr ?? 0) * (row.impressions ?? 0) * share;
+          addCampaignReach(match.key, row, adDate, share);
         }
       } else {
         addUnmatchedSpend(bck, adDate, row.spend);
@@ -1381,7 +1406,7 @@ export async function GET(req: NextRequest) {
           productCampaignClicks[k] = (productCampaignClicks[k] ?? 0) + (row.clicks ?? 0) * share;
           productCampaignLinkClicks[k] = (productCampaignLinkClicks[k] ?? 0) + (row.linkClicks ?? 0) * share;
           productCampaignAddToCart[k] = (productCampaignAddToCart[k] ?? 0) + (row.addToCart ?? 0) * share;
-          productCampaignUniqueCtrWeighted[k] = (productCampaignUniqueCtrWeighted[k] ?? 0) + (row.uniqueCtr ?? 0) * (row.impressions ?? 0) * share;
+          addCampaignReach(k, row, adDate, share);
         }
       }
     }
@@ -1555,8 +1580,11 @@ export async function GET(req: NextRequest) {
     const metaCtr = campaignImpressions > 0 ? campaignClicks / campaignImpressions * 100 : null;
     const metaCpc = campaignClicks > 0 ? adSpendUsd / campaignClicks : null;
     const metaCpm = campaignImpressions > 0 ? adSpendUsd / campaignImpressions * 1000 : null;
-    // Unique CTR (clic de enlace único) ponderado por impresiones de Meta.
-    const metaUniqueCtr = campaignImpressions > 0 ? (productCampaignUniqueCtrWeighted[key] ?? 0) / campaignImpressions : null;
+    // Unique CTR (link click-through rate) de Meta = clics únicos de enlace ÷ alcance,
+    // ambos a nivel campaña (el reach de los anuncios no se puede sumar).
+    const campaignReach = productCampaignReach[key] ?? 0;
+    const campaignUniqueLinkClicks = productCampaignUniqueLinkClicks[key] ?? 0;
+    const metaUniqueCtr = campaignReach > 0 ? campaignUniqueLinkClicks / campaignReach * 100 : null;
     // CPC por clic de enlace y costo por add-to-cart, como en el panel de Meta.
     const metaLinkCpc = campaignLinkClicks > 0 ? adSpendUsd / campaignLinkClicks : null;
     const metaCostPerAtc = campaignAddToCart > 0 ? adSpendUsd / campaignAddToCart : null;
@@ -1650,6 +1678,7 @@ export async function GET(req: NextRequest) {
       netProfit, netMargin,
       roas, cpa, cpaAds, roasAds, campaignPurchases, campaignConversionValue,
       campaignImpressions, campaignClicks, campaignLinkClicks, campaignAddToCart,
+      campaignReach, campaignUniqueLinkClicks,
       metaCtr, metaCpc, metaCpm, metaUniqueCtr, metaLinkCpc, metaCostPerAtc, metaAov,
       status, dataQuality,
       sessions, addToCart, reachedCheckout, addToCartRate, conversionRate,

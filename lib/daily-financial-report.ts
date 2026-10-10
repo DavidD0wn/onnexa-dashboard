@@ -38,6 +38,7 @@ type ProductRow = {
   campaignPurchases: number; campaignConversionValue: number;
   campaignImpressions: number; campaignClicks: number;
   campaignLinkClicks: number; campaignAddToCart: number;
+  campaignReach: number; campaignUniqueLinkClicks: number;
   metaCtr: number | null; metaCpc: number | null; metaCpm: number | null;
   metaUniqueCtr: number | null; metaLinkCpc: number | null;
   metaCostPerAtc: number | null; metaAov: number | null;
@@ -46,14 +47,11 @@ type ProductRow = {
 
 function physicalProductsOnly(source: ProductRow[]): ProductRow[] {
   const grouped = new Map<string, ProductRow>();
-  // Unique CTR es una tasa: se pondera por impresiones para agregar varios países.
-  const uniqueCtrWeight = new Map<string, number>();
   for (const row of source) {
     if (row.productType !== "físico") continue; // Excluye upsells, incluso los físicos.
     if (!(row.orders > 0 || row.units > 0 ||
       [row.revenueUsd, row.adSpendUsd, row.cogsUsd, row.feesUsd].some((value) => Math.abs(value) > 0.001))) continue;
     const key = `${row.brandName}\u0000${row.name}`;
-    uniqueCtrWeight.set(key, (uniqueCtrWeight.get(key) ?? 0) + (row.metaUniqueCtr ?? 0) * row.campaignImpressions);
     const existing = grouped.get(key);
     if (!existing) {
       grouped.set(key, { ...row, variant: "" });
@@ -63,7 +61,7 @@ function physicalProductsOnly(source: ProductRow[]): ProductRow[] {
       "revenueUsd", "adSpendUsd", "cogsUsd", "feesUsd", "shippingUsd",
       "taxesUsd", "chargebacksUsd", "orders", "units", "netProfit",
       "campaignPurchases", "campaignConversionValue", "campaignImpressions", "campaignClicks",
-      "campaignLinkClicks", "campaignAddToCart",
+      "campaignLinkClicks", "campaignAddToCart", "campaignReach", "campaignUniqueLinkClicks",
     ] as const) {
       existing[field] += row[field];
     }
@@ -73,9 +71,7 @@ function physicalProductsOnly(source: ProductRow[]): ProductRow[] {
       existing.dataQuality = [existing.dataQuality, row.dataQuality].filter(Boolean).join("; ");
     }
   }
-  return [...grouped.values()].map((row) => {
-    const key = `${row.brandName}\u0000${row.name}`;
-    return {
+  return [...grouped.values()].map((row) => ({
     ...row,
     netMargin: row.revenueUsd > 0 ? row.netProfit / row.revenueUsd * 100 : 0,
     roas: row.adSpendUsd > 0 ? row.revenueUsd / row.adSpendUsd : null,
@@ -84,12 +80,12 @@ function physicalProductsOnly(source: ProductRow[]): ProductRow[] {
     metaCtr: row.campaignImpressions > 0 ? row.campaignClicks / row.campaignImpressions * 100 : null,
     metaCpc: row.campaignClicks > 0 ? row.adSpendUsd / row.campaignClicks : null,
     metaCpm: row.campaignImpressions > 0 ? row.adSpendUsd / row.campaignImpressions * 1000 : null,
-    metaUniqueCtr: row.campaignImpressions > 0 ? (uniqueCtrWeight.get(key) ?? 0) / row.campaignImpressions : null,
+    // Unique CTR de Meta = clics únicos de enlace ÷ alcance (nivel campaña).
+    metaUniqueCtr: row.campaignReach > 0 ? row.campaignUniqueLinkClicks / row.campaignReach * 100 : null,
     metaLinkCpc: row.campaignLinkClicks > 0 ? row.adSpendUsd / row.campaignLinkClicks : null,
     metaCostPerAtc: row.campaignAddToCart > 0 ? row.adSpendUsd / row.campaignAddToCart : null,
     metaAov: row.campaignPurchases > 0 ? row.campaignConversionValue / row.campaignPurchases : null,
-    };
-  }).sort((a, b) => b.revenueUsd - a.revenueUsd);
+  })).sort((a, b) => b.revenueUsd - a.revenueUsd);
 }
 
 function renderHtmlReport(date: string, rows: ProductRow[], summary: {

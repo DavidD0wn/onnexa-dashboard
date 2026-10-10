@@ -138,23 +138,34 @@ function getCPA(costPerAction: MetaActionValue[]): number | null {
 // Devuelve { rows, ok }. ok=false significa que la cuenta NO completó su
 // sincronización (error/cursor/rate-limit) — el caller NO debe borrar los datos
 // existentes de esa cuenta, para no perderlos. ok=true = paginación completa.
-async function fetchInsights(accountId: string, dateFrom: string, dateTo: string): Promise<{ rows: any[]; ok: boolean }> {
+async function fetchInsights(accountId: string, dateFrom: string, dateTo: string): Promise<{ rows: any[]; campaignRows: any[]; ok: boolean }> {
   try {
-    const rows = await fetchMetaPages<any>(accountId + "/insights", {
-      fields: FIELDS,
-      level: "ad",
-      time_increment: 1,
-      limit: 500,
-      time_range: JSON.stringify({ since: dateFrom, until: dateTo }),
-    });
-    return { rows, ok: true };
+    const timeRange = JSON.stringify({ since: dateFrom, until: dateTo });
+    const [rows, campaignRows] = await Promise.all([
+      fetchMetaPages<any>(accountId + "/insights", {
+        fields: FIELDS,
+        level: "ad",
+        time_increment: 1,
+        limit: 500,
+        time_range: timeRange,
+      }),
+      // El reach se deduplica por campaña; a nivel anuncio no se puede sumar.
+      fetchMetaPages<any>(accountId + "/insights", {
+        fields: "campaign_name,reach,unique_inline_link_clicks",
+        level: "campaign",
+        time_increment: 1,
+        limit: 500,
+        time_range: timeRange,
+      }),
+    ]);
+    return { rows, campaignRows, ok: true };
   } catch (error) {
     if (error instanceof MetaGraphError && error.code === 190) throw error;
     console.warn(
       `[Meta Ads] No se completó ${accountId}; se conservan sus datos:`,
       error instanceof Error ? error.message : String(error),
     );
-    return { rows: [], ok: false };
+    return { rows: [], campaignRows: [], ok: false };
   }
 }
 
@@ -242,7 +253,7 @@ export async function POST(req: NextRequest) {
     } catch { /* tabla Product ausente/sin migrar — se omite la atribución */ }
 
     /* ── Step 2: Borrar + reinsertar SOLO las cuentas que sincronizaron OK ── */
-    for (const { account, rows, ok } of perAccount) {
+    for (const { account, rows, campaignRows, ok } of perAccount) {
       // Cuenta que falló: conservar sus datos. No borrar, no reinsertar.
       if (!ok) { skippedAccounts.push(account.accountId); continue; }
 
@@ -301,21 +312,31 @@ export async function POST(req: NextRequest) {
         };
       });
 
+      const campaignInsert = campaignRows
+        .filter((row) => row.campaign_name)
+        .map((row) => ({
+          accountId:        account.accountId,
+          date:             new Date(row.date_start),
+          campaignName:     row.campaign_name as string,
+          reach:            parseInt(row.reach || "0"),
+          uniqueLinkClicks: parseInt(row.unique_inline_link_clicks || "0"),
+        }));
+
       // Reemplazo atómico: si un lote falla, también se revierte la eliminación
       // y el histórico anterior de la cuenta queda intacto.
       const BATCH = 500;
+      const range = {
+        gte: new Date(dateFrom + "T00:00:00Z"),
+        lte: new Date(dateTo + "T23:59:59Z"),
+      };
       try {
         const savedForAccount = await prisma.$transaction(
           async (tx) => {
             await tx.adSpend.deleteMany({
-              where: {
-                accountId: account.accountId,
-                platform: "facebook",
-                date: {
-                  gte: new Date(dateFrom + "T00:00:00Z"),
-                  lte: new Date(dateTo + "T23:59:59Z"),
-                },
-              },
+              where: { accountId: account.accountId, platform: "facebook", date: range },
+            });
+            await tx.metaCampaignDaily.deleteMany({
+              where: { accountId: account.accountId, date: range },
             });
 
             let saved = 0;
@@ -324,6 +345,12 @@ export async function POST(req: NextRequest) {
                 data: toInsert.slice(i, i + BATCH),
               });
               saved += result.count;
+            }
+            for (let i = 0; i < campaignInsert.length; i += BATCH) {
+              await tx.metaCampaignDaily.createMany({
+                data: campaignInsert.slice(i, i + BATCH),
+                skipDuplicates: true,
+              });
             }
             return saved;
           },

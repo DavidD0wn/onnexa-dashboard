@@ -406,6 +406,22 @@ model MetaCampaignStatus {
   updatedAt       DateTime @updatedAt
 }
 
+// Alcance y clics únicos de enlace a nivel CAMPAÑA por día. Meta deduplica
+// personas por campaña: sumar el reach de los anuncios lo infla, por eso el
+// "Unique CTR (link click-through rate)" solo cuadra con estos datos.
+model MetaCampaignDaily {
+  id               String   @id @default(cuid())
+  accountId        String
+  date             DateTime
+  campaignName     String
+  reach            Int      @default(0)
+  uniqueLinkClicks Int      @default(0)
+  createdAt        DateTime @default(now())
+
+  @@unique([accountId, date, campaignName])
+  @@index([date])
+}
+
 model MetaAdsAccount {
   id          String   @id @default(cuid())
   accountId   String   @unique  // act_XXXX
