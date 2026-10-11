@@ -507,6 +507,7 @@ export async function POST(req: Request) {
     from: requestedFrom,
     to: requestedTo,
     skipRollup = false,
+    skipPayments = false,
     forceReplace = false,
   } = body as {
     store?: string;
@@ -514,6 +515,7 @@ export async function POST(req: Request) {
     from?: string;
     to?: string;
     skipRollup?: boolean;
+    skipPayments?: boolean;
     forceReplace?: boolean;
   };
   const isExplicitRange = Boolean(requestedFrom && requestedTo);
@@ -728,14 +730,16 @@ export async function POST(req: Request) {
     // Uses processed_at per transaction (= order date), NOT payout date.
     // Fees distributed proportionally between US/MX rows by gross revenue.
     let paymentsResult: any = null;
-    try {
-      const pr = await fetch(`${base}/api/shopify/payments`, {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ store, days, from: dateFrom, to: dateTo }),
-      });
-      paymentsResult = await pr.json().catch(() => null);
-    } catch { /* non-critical — estimated fees remain if this fails */ }
+    if (!skipPayments) {
+      try {
+        const pr = await fetch(`${base}/api/shopify/payments`, {
+          method:  "POST",
+          headers: { "Content-Type": "application/json" },
+          body:    JSON.stringify({ store, days, from: dateFrom, to: dateTo }),
+        });
+        paymentsResult = await pr.json().catch(() => null);
+      } catch { /* non-critical — estimated fees remain if this fails */ }
+    }
 
     // ── Auto: rollup Meta Ads adSpend → DailyMetric ──
     // Los orquestadores que sincronizan varias tiendas usan skipRollup=true y

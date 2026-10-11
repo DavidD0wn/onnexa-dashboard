@@ -397,9 +397,18 @@ export async function refreshAndSendDailyReport(
       ...Object.fromEntries(Object.entries(sync?.disputes ?? {}).map(([key, value]) => [`disputes.${key}`, value])),
       general: sync, metaAds: sync?.metaAds, rollup: sync?.rollup, cleanup: sync?.cleanup,
     }).flatMap(([source, result]) => {
-      if (!result || typeof result !== "object" || !("error" in result) || !result.error) return [];
-      const detail = typeof result.error === "string" ? result.error : JSON.stringify(result.error);
-      return [`${source}: ${detail}`];
+      if (!result || typeof result !== "object") return [];
+      const details: string[] = [];
+      if ("error" in result && result.error) {
+        details.push(typeof result.error === "string" ? result.error : JSON.stringify(result.error));
+      }
+      if ("errors" in result && Array.isArray(result.errors) && result.errors.length) {
+        details.push(`errores parciales: ${result.errors.join("; ")}`);
+      }
+      if ("skippedAccounts" in result && Array.isArray(result.skippedAccounts) && result.skippedAccounts.length) {
+        details.push(`cuentas de Meta sin actualizar: ${result.skippedAccounts.join(", ")}`);
+      }
+      return details.map((detail) => `${source}: ${detail}`);
     });
     if (!syncResponse.ok || !sync?.coreSyncOk || syncErrors.length > 0) {
       throw new Error(`La actualización de Ventas + Ads no terminó completa (HTTP ${syncResponse.status}; ${syncErrors.join("; ") || "sin detalle"}). No se enviará el reporte.`);

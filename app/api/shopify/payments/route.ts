@@ -78,8 +78,7 @@ async function fetchBalanceTxs(
     const res: Response = await fetch(url, { headers: { "X-Shopify-Access-Token": token } });
     if (!res.ok) {
       const txt = await res.text();
-      console.warn(`[payments] Balance tx error (${res.status}): ${txt.slice(0, 200)}`);
-      break;
+      throw new Error(`Shopify Payments no entregó las transacciones (HTTP ${res.status}): ${txt.slice(0, 200)}`);
     }
     const data: any = await res.json();
     const txs: any[] = data.transactions ?? data.balance_transactions ?? [];

@@ -115,53 +115,56 @@ export async function POST(req: Request) {
   const results: Record<string, any> = {};
   const stores = Object.values(getShopifyStores()).filter(isShopifyStoreConfigured);
 
-  // ── Paso 1: Shopify sync ──────────────────────────────────
-  for (const store of stores) {
+  // Igual que el botón "Actualizar (Ventas + Ads)": actualizar las fuentes
+  // independientes en paralelo y consolidar solo cuando todas terminen.
+  const sourceJobs = stores.map(async (store) => {
     try {
       const res = await callLocalPost(base, "/api/shopify/sync", {
-          store: store.key,
-          days,
-          from: dateFrom,
-          to: today,
-          skipRollup: true,
+        store: store.key,
+        days,
+        from: dateFrom,
+        to: today,
+        skipRollup: true,
+        skipPayments: true,
       });
       results[`shopify_${store.key}`] = await readJsonResponse(res);
-    } catch (e: any) {
-      results[`shopify_${store.key}`] = { error: e.message };
+    } catch (error) {
+      results[`shopify_${store.key}`] = {
+        error: error instanceof Error ? error.message : String(error),
+      };
     }
-  }
+  });
+  sourceJobs.push((async () => {
+    try {
+      const res = await callLocalPost(base, "/api/meta-ads/sync", { dateFrom, dateTo: today, skipRollup: true });
+      results.metaAds = await readJsonResponse(res);
+    } catch (error) {
+      results.metaAds = { error: error instanceof Error ? error.message : String(error) };
+    }
+  })());
+  await Promise.all(sourceJobs);
 
-  // ── Paso 2: Shopify Payments → fees reales (Glowmmi only) ───
+  // ── Paso 2: Payments + disputes por tienda ─────────────────
+  // Ambas lecturas son independientes y se esperan antes de calcular el correo.
   results.payments = {};
-  for (const store of stores) {
+  results.disputes = {};
+  await Promise.all(stores.flatMap((store) => [(async () => {
     try {
       const res = await callLocalPost(base, "/api/shopify/payments", { store: store.key, days, from: dateFrom, to: today });
       results.payments[store.key] = await readJsonResponse(res);
-    } catch (e: any) {
-      results.payments[store.key] = { error: e.message };
+    } catch (error) {
+      results.payments[store.key] = { error: error instanceof Error ? error.message : String(error) };
     }
-  }
-
-  // ── Paso 3: Disputes → chargebacks automáticos ────────────
-  results.disputes = {};
-  for (const store of stores) {
+  })(), (async () => {
     try {
       const res = await callLocalPost(base, "/api/shopify/disputes", { store: store.key });
       results.disputes[store.key] = await readJsonResponse(res);
-    } catch (e: any) {
-      results.disputes[store.key] = { error: e.message };
+    } catch (error) {
+      results.disputes[store.key] = { error: error instanceof Error ? error.message : String(error) };
     }
-  }
+  })()]));
 
-  // ── Paso 4: Meta Ads sync ──────────────────────────────────
-  try {
-    const res = await callLocalPost(base, "/api/meta-ads/sync", { dateFrom, dateTo: today, skipRollup: true });
-    results.metaAds = await readJsonResponse(res);
-  } catch (e: any) {
-    results.metaAds = { error: e.message };
-  }
-
-  // ── Paso 5: Rollup AdSpend → DailyMetric ──────────────────
+  // ── Paso 4: Rollup AdSpend → DailyMetric ──────────────────
   try {
     const res = await callLocalPost(base, "/api/meta-ads/rollup", { from: dateFrom, to: today });
     results.rollup = await readJsonResponse(res);
@@ -233,7 +236,9 @@ export async function POST(req: Request) {
   // Solo se avanza el checkpoint cuando TODAS las tiendas, Meta y el rollup
   // terminaron. Si algo falla, Drive conserva el último estado confirmado.
   const shopifyOk = stores.every((store) =>
-    !results[`shopify_${store.key}`]?.error && results[`shopify_${store.key}`]?.ok !== false);
+    !results[`shopify_${store.key}`]?.error &&
+    results[`shopify_${store.key}`]?.ok !== false &&
+    (results[`shopify_${store.key}`]?.errors?.length ?? 0) === 0);
   const metaOk =
     !results.metaAds?.error &&
     results.metaAds?.ok !== false &&
@@ -241,7 +246,7 @@ export async function POST(req: Request) {
   const rollupOk = !results.rollup?.error && results.rollup?.ok !== false;
   const coreSyncOk = shopifyOk && metaOk && rollupOk;
 
-  // El cron existente corre a las 12:00 UTC = 7:00 a. m. Colombia.
+  // El cron de autosync corre a las 11:30 UTC (6:30 a. m. Colombia).
   // Preparar ayer únicamente después de una sincronización completa.
   if (coreSyncOk && !body.skipDailyFinancialReport) {
     try {

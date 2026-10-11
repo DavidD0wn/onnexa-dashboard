@@ -5,8 +5,8 @@ import { previousBusinessDate, reconcileUncertainDailyReport, refreshAndSendDail
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-// Respaldo a las 15:00 UTC (10 a. m. Colombia). Nunca reenvía un reporte
-// marcado como sent, ni uno cuyo envío SMTP quedó en estado incierto.
+// Reintento a las 14:00 UTC (9 a. m. Colombia). Nunca reenvía un reporte
+// marcado como sent, ni uno cuyo envío por Zoho quedó en estado incierto.
 export async function GET(req: Request) {
   const secret = process.env.CRON_SECRET || process.env.SYNC_SECRET;
   if (!secret || req.headers.get("authorization") !== `Bearer ${secret}`) {

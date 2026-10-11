@@ -6,15 +6,15 @@
     },
     {
       "path": "/api/reportes/diario",
-      "schedule": "0 12 * * *"
-    },
-    {
-      "path": "/api/reportes/diario/reintento",
       "schedule": "0 13 * * *"
     },
     {
-      "path": "/api/reportes/diario/respaldo",
+      "path": "/api/reportes/diario/reintento",
       "schedule": "0 14 * * *"
+    },
+    {
+      "path": "/api/reportes/diario/respaldo",
+      "schedule": "0 15 * * *"
     }
   ]
 }
