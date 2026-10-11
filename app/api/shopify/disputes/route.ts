@@ -19,7 +19,7 @@ import {
 // Always store chargeback amounts in USD for consistency.
 // Shopify Payments disputes API returns amount in the order's presentment currency.
 // Fetch the live rate so the conversion matches what the dashboard display uses.
-const FALLBACK_MXN_RATE = 17.5;
+const FALLBACK_MXN_RATE = 18.20; // Actualizado oct-2026
 async function fetchLiveMxnRate(): Promise<number> {
   try {
     const res = await fetch("https://open.er-api.com/v6/latest/USD", { signal: AbortSignal.timeout(4000) });

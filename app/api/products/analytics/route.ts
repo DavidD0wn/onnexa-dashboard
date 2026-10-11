@@ -10,7 +10,7 @@ import {
 import fs from "fs";
 import path from "path";
 
-const FALLBACK_RATE = 17.30;  // Updated May 2026 — keep in sync with sync/route.ts
+const FALLBACK_RATE = 18.20;  // Actualizado oct-2026 — keep in sync with sync/route.ts
 
 async function fetchLiveMxnRate(): Promise<number> {
   try {
@@ -33,7 +33,11 @@ async function fetchLiveMxnRate(): Promise<number> {
  */
 function fillRateGaps(rates: Record<string, number>, from: string, to: string): Record<string, number> {
   const filled: Record<string, number> = {};
-  let last = FALLBACK_RATE;
+  // Rango de fin de semana: el API solo trae el viernes (antes de `from`).
+  // Arrancar con esa tasa, no con el fallback fijo.
+  const known = Object.keys(rates).sort();
+  const seed = [...known].reverse().find((d) => d <= from) ?? known[0];
+  let last = seed !== undefined ? rates[seed] : FALLBACK_RATE;
   let cursor = new Date(from + "T12:00:00Z");
   const end   = new Date(to   + "T12:00:00Z");
   while (cursor <= end) {

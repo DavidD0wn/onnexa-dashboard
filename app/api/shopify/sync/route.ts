@@ -20,20 +20,20 @@ import { calculateProfit } from "@/lib/metrics";
 //   2. fawazahmed0 CDN  — daily, historical, free, no key
 //   3. open.er-api.com  — live rate only (used as today's fallback)
 //   4. Hard-coded guard  — last resort
-const FALLBACK_MXN_RATE = 17.30;   // Updated May 2026 (was 18.7 — stale)
+const FALLBACK_MXN_RATE = 18.20;   // Actualizado oct-2026 (17.30 de mayo ya inflaba el revenue ~5%)
 
-/** Fetch the live MXN/USD rate (for today / very recent orders). */
-async function fetchLiveMxnRate(): Promise<number> {
+/** Fetch the live MXN/USD rate (for today / very recent orders). null = falló. */
+async function fetchLiveMxnRate(): Promise<number | null> {
   try {
     const res = await fetch("https://open.er-api.com/v6/latest/USD", {
-      signal: AbortSignal.timeout(4000),
+      signal: AbortSignal.timeout(8000),
     });
-    if (!res.ok) return FALLBACK_MXN_RATE;
+    if (!res.ok) return null;
     const data = await res.json();
     const mxn = data?.rates?.MXN;
-    return typeof mxn === "number" && mxn > 10 ? Math.round(mxn * 100) / 100 : FALLBACK_MXN_RATE;
+    return typeof mxn === "number" && mxn > 10 ? Math.round(mxn * 100) / 100 : null;
   } catch {
-    return FALLBACK_MXN_RATE;
+    return null;
   }
 }
 
@@ -102,7 +102,12 @@ async function fetchHistoricalRates(from: string, to: string): Promise<Record<st
  */
 function fillGaps(rates: Record<string, number>, from: string, to: string): Record<string, number> {
   const filled: Record<string, number> = {};
-  let last = FALLBACK_MXN_RATE;
+  // Un rango que cae en fin de semana (ej. sáb→dom) solo trae el viernes, que
+  // queda ANTES de `from`. Hay que arrancar con esa tasa, no con el fallback
+  // fijo: si no, "Hoy" se convertía a 17.30 y el revenue salía ~5% inflado.
+  const known = Object.keys(rates).sort();
+  const seed = [...known].reverse().find((d) => d <= from) ?? known[0];
+  let last = seed !== undefined ? rates[seed] : FALLBACK_MXN_RATE;
   let cursor = new Date(from);
   const end   = new Date(to);
   while (cursor <= end) {
@@ -553,10 +558,14 @@ export async function POST(req: Request) {
     );
   }
 
-  const [liveMxnRate, dailyRates] = await Promise.all([
+  const [fetchedLiveRate, dailyRates] = await Promise.all([
     fetchLiveMxnRate(),
     fetchHistoricalRates(dateFrom, dateTo),
   ]);
+  // Si la tasa en vivo falla, usar la tasa real más reciente antes que el
+  // valor fijo: así un timeout no cambia el revenue entre una sincronización y otra.
+  const latestHistorical = Object.keys(dailyRates).sort().map((d) => dailyRates[d]).pop();
+  const liveMxnRate = fetchedLiveRate ?? latestHistorical ?? FALLBACK_MXN_RATE;
 
   // Stamp today's live rate into dailyRates for any orders placed today
   if (!dailyRates[dateTo]) dailyRates[dateTo] = liveMxnRate;

@@ -20,12 +20,16 @@ import {
   type ShopifyStoreConfig,
 } from "@/lib/integrations/shopify";
 
-const FALLBACK_MXN_RATE = 17.30;
+const FALLBACK_MXN_RATE = 18.20; // Actualizado oct-2026
 
 // ─── Exchange rate helpers (MXN → USD) ───────────────────────────────────────
 function fillGaps(rates: Record<string, number>, from: string, to: string): Record<string, number> {
   const filled: Record<string, number> = {};
-  let last = FALLBACK_MXN_RATE;
+  // Rango de fin de semana: el API solo trae el viernes (antes de `from`).
+  // Arrancar con esa tasa, no con el fallback fijo.
+  const known = Object.keys(rates).sort();
+  const seed = [...known].reverse().find((d) => d <= from) ?? known[0];
+  let last = seed !== undefined ? rates[seed] : FALLBACK_MXN_RATE;
   let cursor = new Date(from + "T12:00:00Z");
   const end   = new Date(to   + "T12:00:00Z");
   while (cursor <= end) {
