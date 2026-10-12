@@ -387,17 +387,28 @@ async function fetchProductNetSalesUsd(
   const sinceDate = since.slice(0, 10);
   const untilDate = until.slice(0, 10);
   const ql = `FROM sales SHOW net_sales, net_items_sold GROUP BY product_title, shipping_country WITH TOTALS, CURRENCY 'USD' SINCE ${sinceDate} UNTIL ${untilDate} ORDER BY net_sales DESC LIMIT 1000`;
+  // Si esta consulta falla, la tabla cae en silencio al respaldo de DailyMetric
+  // y el revenue cambia entre recargas. Se reintenta antes de rendirse.
+  let json: any = null;
+  for (let attempt = 0; attempt < 3 && !json; attempt++) {
+    try {
+      const res = await fetch(`https://${shop}/admin/api/${process.env.SHOPIFY_API_VERSION || "2026-07"}/graphql.json`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
+        body: JSON.stringify({
+          query: `{ shopifyqlQuery(query: ${JSON.stringify(ql)}) { parseErrors tableData { columns { name } rows } } }`,
+        }),
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (res.ok) json = await res.json();
+      else console.warn(`[net_sales] ${shop} HTTP ${res.status} (intento ${attempt + 1})`);
+    } catch (e: any) {
+      console.warn(`[net_sales] ${shop} error (intento ${attempt + 1}):`, e?.message);
+    }
+    if (!json && attempt < 2) await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+  }
+  if (!json) return {};
   try {
-    const res = await fetch(`https://${shop}/admin/api/${process.env.SHOPIFY_API_VERSION || "2026-07"}/graphql.json`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
-      body: JSON.stringify({
-        query: `{ shopifyqlQuery(query: ${JSON.stringify(ql)}) { parseErrors tableData { columns { name } rows } } }`,
-      }),
-      signal: AbortSignal.timeout(20_000),
-    });
-    if (!res.ok) { console.warn(`[net_sales] ${shop} HTTP ${res.status}`); return {}; }
-    const json = await res.json();
     const result = json?.data?.shopifyqlQuery;
     const pe = result?.parseErrors;
     const hasParseErrors = Array.isArray(pe) ? pe.length > 0
@@ -1532,8 +1543,10 @@ export async function GET(req: NextRequest) {
     // (es la fuente de verdad que Fernanda compara en el reporte de Shopify).
     // El reescalado a DailyMetric queda solo como respaldo para productos sin
     // net_sales de Shopify, para que ese respaldo cuadre con el Dashboard/P&L.
+    // Sin recorte a 0: un producto vendido antes y devuelto en el periodo tiene
+    // venta neta NEGATIVA en Shopify; recortarla inflaba el total del periodo.
     const netRevenueAfterReturns = exactNetSales != null
-      ? Math.max(0, exactNetSales)
+      ? exactNetSales
       : revenueCandidate * revenueMatchScale;
     // Factor para que la suma diaria (Testeos) iguale este total exacto.
     const exactRevenueFactor = (exactNetSales != null || revenueMatchScale !== 1) && netRevenueUsd > 0

@@ -235,11 +235,13 @@ async function fetchRefunds(
   return fetchShopifyPaginated(
     store,
     shopifyRestUrl(store, "orders.json") +
+    // Sin updated_at_max: un pedido reembolsado dentro del rango y modificado
+    // después (cumplimiento, notas) quedaba fuera y su devolución se perdía.
+    // groupByDate filtra después por la FECHA DEL REEMBOLSO.
     `?status=any` +
     `&updated_at_min=${encodeURIComponent(since)}` +
-    (until ? `&updated_at_max=${encodeURIComponent(until)}` : "") +
     `&limit=250` +
-    `&fields=id,created_at,updated_at,shipping_address,refunds`,
+    `&fields=id,created_at,updated_at,shipping_address,refunds,currency,total_price,total_price_set`,
     "orders",
   );
 }
@@ -388,7 +390,8 @@ function groupByDate(
   refundOrders: any[],
   cfg: StoreConfig,
   costsByCountry: CostsByCountry = { mx: {}, us: {}, cl: {}, es: {} },
-  dailyRates: Record<string, number> = {}   // { "YYYY-MM-DD": MXN_per_USD } — empty = use cfg.shopCurrencyRate
+  dailyRates: Record<string, number> = {},  // { "YYYY-MM-DD": MXN_per_USD } — empty = use cfg.shopCurrencyRate
+  range?: { from: string; to: string },     // solo se cuentan reembolsos con fecha dentro del rango
 ) {
   // key = "YYYY-MM-DD" or "YYYY-MM-DD||MX" when splitByCountry=true
   const byKey: Record<string, DayBucket> = {};
@@ -488,15 +491,33 @@ function groupByDate(
   for (const order of refundOrders) {
     const rawCountryCode = (order.shipping_address?.country_code ?? "MX").toUpperCase();
     const countryCode = COUNTRY_ID_MAP[rawCountryCode] ? rawCountryCode : "MX";
+    // Las transacciones vienen en la moneda en que pagó el cliente (USD en
+    // pedidos de EE. UU.); antes se dividían por la tasa MXN como si fueran
+    // pesos y un reembolso de $42.99 USD quedaba en $2.36. Se pasan a moneda
+    // de la tienda con la tasa del propio pedido.
+    const shopTotal = parseFloat(order.total_price_set?.shop_money?.amount ?? order.total_price ?? "0") || 0;
+    const presTotal = parseFloat(order.total_price_set?.presentment_money?.amount ?? "0") || 0;
+    const presCurrency = order.total_price_set?.presentment_money?.currency_code;
+    const presToShop = shopTotal > 0 && presTotal > 0 ? shopTotal / presTotal : 1;
     for (const refund of (order.refunds ?? [])) {
       const rawRefundTs = refund.created_at ?? order.updated_at ?? order.created_at;
       const refundDate  = localDateKey(rawRefundTs, STORE_OFFSET_MS);
+      // Fuera del rango crearía un día parcial (0 pedidos, solo devolución).
+      if (range && (refundDate < range.from || refundDate > range.to)) continue;
       const d = ensure(refundDate, new Date(refundDate), countryCode);
       const RATE = rateFor(refundDate);
-      const refundAmount = (refund.transactions ?? []).reduce(
-        (s: number, t: any) => t.kind === "refund" ? s + (parseFloat(t.amount) || 0) : s, 0
-      ) / RATE;
-      d.returns += refundAmount;
+      const moneyShop = (refund.transactions ?? []).reduce((s: number, t: any) => {
+        if (t.kind !== "refund" || (t.status && t.status !== "success")) return s;
+        const amount = parseFloat(t.amount) || 0;
+        const inPresentment = presCurrency && t.currency && t.currency === presCurrency && t.currency !== order.currency;
+        return s + (inPresentment ? amount * presToShop : amount);
+      }, 0);
+      // Shopify también cuenta como devolución los artículos devueltos sin
+      // reembolso de dinero; se usa el mayor para cuadrar con su reporte.
+      const itemsShop = (refund.refund_line_items ?? []).reduce(
+        (s: number, li: any) => s + (parseFloat(li.subtotal_set?.shop_money?.amount ?? li.subtotal ?? "0") || 0), 0,
+      );
+      d.returns += Math.max(moneyShop, itemsShop) / RATE;
     }
   }
 
@@ -588,7 +609,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ store: cfg.shop, synced: 0, days, message: "Sin órdenes en este período" });
     }
 
-    const byKey = groupByDate(orders, refundOrders, cfg, costsByCountry, dailyRates);
+    const byKey = groupByDate(orders, refundOrders, cfg, costsByCountry, dailyRates, { from: dateFrom, to: dateTo });
     let synced = 0;
     const errors: string[] = [];
 

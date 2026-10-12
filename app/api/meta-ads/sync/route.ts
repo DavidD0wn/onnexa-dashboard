@@ -332,6 +332,10 @@ export async function POST(req: NextRequest) {
       try {
         const savedForAccount = await prisma.$transaction(
           async (tx) => {
+            // Dos syncs a la vez (botón + auto-sync de la pestaña + cron) borraban
+            // e insertaban en paralelo y duplicaban días enteros. El candado por
+            // cuenta hace que el segundo espere a que el primero termine.
+            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"meta-sync:" + account.accountId}))`;
             await tx.adSpend.deleteMany({
               where: { accountId: account.accountId, platform: "facebook", date: range },
             });
