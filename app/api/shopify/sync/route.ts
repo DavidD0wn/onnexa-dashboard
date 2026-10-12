@@ -754,7 +754,9 @@ export async function POST(req: Request) {
       },
     });
 
-    const base = process.env.NEXT_PUBLIC_BASE_URL ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
+    // El origen sale de la propia petición: NEXT_PUBLIC_BASE_URL en Vercel no
+    // trae "https://" y rompía la llamada a payments ("URL is malformed").
+    const base = new URL(req.url).origin;
 
     // ── Override estimated fees with REAL Shopify Balance Transaction fees ──
     // Uses processed_at per transaction (= order date), NOT payout date.
