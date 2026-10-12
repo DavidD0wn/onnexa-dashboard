@@ -9,7 +9,7 @@ import {
   LayoutDashboard, TrendingUp, BarChart2, Calendar, DollarSign,
   Megaphone, Package, BarChart3, Globe, Calculator, FlaskConical,
   Tag, Layers, CheckSquare, Upload, Truck, Bell, FileText,
-  Settings, ChevronDown, Moon, Sun, X, Telescope, Bot, Mail, ShoppingBag, Table2, Users, AppWindow, Boxes, BookOpen, Flame,
+  Settings, ChevronDown, Moon, Sun, X, Menu, Telescope, Bot, Mail, ShoppingBag, Table2, Users, AppWindow, Boxes, BookOpen, Flame,
 } from "lucide-react";
 
 /* ── Mark ──────────────────────────────────────────────────── */
@@ -255,6 +255,9 @@ export function Sidebar() {
   const { currency, setCurrency } = useCurrency();
   const { days, setDays, isCustom, customFrom, customTo, setCustomRange, clearCustomRange } = useFilters();
   const [alertCount,      setAlertCount]      = useState(0);
+  // En celular el menú es un panel que se abre con ☰ y se cierra al navegar.
+  const [mobileOpen, setMobileOpen] = useState(false);
+  useEffect(() => { setMobileOpen(false); }, [pathname]);
   const [zohoAlertCount,  setZohoAlertCount]  = useState(0);
 
   // Avisos de los bots: se consultan 1 vez al abrir y luego cada 24 h.
@@ -344,8 +347,19 @@ export function Sidebar() {
   };
 
   return (
+    <>
+    <button
+      type="button"
+      className="mobile-menu-btn"
+      aria-label={mobileOpen ? "Cerrar menú" : "Abrir menú"}
+      onClick={() => setMobileOpen((open) => !open)}
+    >
+      {mobileOpen ? <X size={20} /> : <Menu size={20} />}
+    </button>
+    {mobileOpen && <div className="mobile-menu-backdrop" onClick={() => setMobileOpen(false)} />}
     <aside
-      className="sidebar-scroll fixed left-0 top-0 h-screen flex flex-col z-40"
+      className="sidebar-scroll app-sidebar fixed left-0 top-0 h-screen flex flex-col z-40"
+      data-open={mobileOpen ? "true" : "false"}
       style={{
         width: "var(--sidebar-w)",
         background: S.bg,
@@ -665,5 +679,6 @@ export function Sidebar() {
         </div>
       </div>
     </aside>
+    </>
   );
 }

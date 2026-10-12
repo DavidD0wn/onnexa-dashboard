@@ -21,7 +21,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <AppLoader>
                 <div className="flex h-full">
                   <Sidebar />
-                  <main className="flex-1 min-h-screen overflow-x-hidden" style={{ marginLeft: "var(--sidebar-w)", background: "var(--bg)" }}>
+                  <main className="app-main flex-1 min-h-screen overflow-x-hidden" style={{ marginLeft: "var(--sidebar-w)", background: "var(--bg)" }}>
                     {children}
                   </main>
                 </div>

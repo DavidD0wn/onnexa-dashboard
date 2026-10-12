@@ -428,7 +428,11 @@ async function fetchProductNetSalesUsd(
       const ni = parseInt(row.net_items_sold ?? "0") || 0;
       if (!out[key]) out[key] = { netSalesUsd: 0, netItemsSold: 0 };
       out[key].netSalesUsd  += ns;
-      out[key].netItemsSold += ni;
+      // Un accesorio que se agrupa con el producto principal (la Brocha de
+      // InstantLift) suma sus ventas, pero no sus piezas: Shopify las cuenta
+      // como otro producto y las unidades deben cuadrar con su reporte.
+      const isAccessoryOfOther = canonical !== String(title) && isUpsellProduct(String(title), brandId);
+      if (!isAccessoryOfOther) out[key].netItemsSold += ni;
     }
     console.log(`[net_sales] ${shop} → ${Object.keys(out).length} producto×país`);
     return out;

@@ -275,3 +275,110 @@ button, a { transition: all 0.15s ease; }
   .zoho-split { grid-template-columns: 1fr !important; }
   .zoho-split > div:first-child { border-right: none !important; border-bottom: 1px solid var(--border); }
 }
+
+/* Los botones no son texto: con la navegación por cursor de Chrome (F7)
+   aparecía un cursor de texto dentro de los filtros ("P|leena"). */
+button,
+[role="button"],
+.filter-pill {
+  -webkit-user-select: none;
+  user-select: none;
+  caret-color: transparent;
+}
+
+/* ── Celular: menú lateral como panel + contenido a todo el ancho ──────────
+   Antes el menú ocupaba 2/3 de la pantalla y el dashboard quedaba aplastado.
+   Las páginas usan estilos inline, por eso aquí se sobrescriben con
+   selectores sobre el atributo style. */
+.mobile-menu-btn,
+.mobile-menu-backdrop { display: none; }
+
+@media (max-width: 768px) {
+  .mobile-menu-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    position: fixed;
+    top: 10px;
+    left: 10px;
+    z-index: 60;
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--card);
+    color: var(--text);
+    box-shadow: 0 2px 8px var(--shadow-md, rgba(0,0,0,.15));
+  }
+  .mobile-menu-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 39;
+    background: rgba(0, 0, 0, 0.45);
+  }
+  .app-sidebar {
+    width: min(84vw, 300px) !important;
+    transform: translateX(-100%);
+    transition: transform 0.2s ease !important;
+  }
+  .app-sidebar[data-open="true"] {
+    transform: translateX(0);
+    box-shadow: 0 0 40px rgba(0, 0, 0, 0.35);
+  }
+  /* Franja superior para el botón ☰ en TODAS las páginas (algunas no usan .page-header) */
+  .app-main { margin-left: 0 !important; padding-top: 58px; }
+
+  /* Encabezados: menos margen lateral */
+  .app-main .page-header { padding: 4px 14px 12px !important; }
+  .app-main [style*="padding: 24px 32px"], .app-main [style*="padding:24px 32px"],
+  .app-main [style*="padding: 28px 32px"], .app-main [style*="padding:28px 32px"],
+  .app-main [style*="padding: 20px 32px"], .app-main [style*="padding:20px 32px"],
+  .app-main [style*="padding: 24px 28px"], .app-main [style*="padding:24px 28px"],
+  .app-main [style*="padding: 22px 28px"], .app-main [style*="padding:22px 28px"] {
+    padding-left: 14px !important;
+    padding-right: 14px !important;
+  }
+  /* Separadores verticales del encabezado sobran al envolver en varias líneas */
+  .app-main .page-header [style*="width: 1px"][style*="height: 28px"],
+  .app-main .page-header [style*="width:1px"][style*="height:28px"] { display: none !important; }
+  .app-main .page-header [style*="flex: 1"], .app-main .page-header [style*="flex:1"] { display: none !important; }
+  /* Filas de filtros/botones: que bajen de línea en vez de salirse de la pantalla
+     (sin !important: si una fila pide nowrap explícito, se respeta). */
+  .app-main div[style*="display: flex"]:not([style*="column"]),
+  .app-main div[style*="display:flex"]:not([style*="column"]) { flex-wrap: wrap; }
+
+  /* Tarjetas KPI de 4-5 columnas → 2 columnas; el resto de rejillas → 1 */
+  .app-main [style*="grid-template-columns"] { grid-template-columns: minmax(0, 1fr) !important; }
+  .app-main [style*="grid-template-columns"][style*="repeat(5"],
+  .app-main [style*="grid-template-columns"][style*="repeat(4"],
+  .app-main [style*="grid-template-columns"][style*="repeat(3"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+  .app-main .kpi-card { min-width: 0; padding: 14px !important; }
+  /* Montos grandes ($37,732.05) no caben a 26px en media pantalla */
+  .app-main .kpi-card p[style*="font-size: 26px"], .app-main .kpi-card p[style*="font-size:26px"],
+  .app-main .kpi-card div[style*="font-size: 26px"], .app-main .kpi-card div[style*="font-size:26px"] {
+    font-size: 19px !important;
+    letter-spacing: -0.02em;
+    overflow-wrap: anywhere;
+  }
+
+  /* Columna fija de producto (Product Analytics): 250px se comía la pantalla */
+  .app-main td[style*="position: sticky"][style*="width: 250px"],
+  .app-main td[style*="position:sticky"][style*="width:250px"],
+  .app-main th[style*="width: 250px"], .app-main th[style*="width:250px"] {
+    width: 150px !important;
+    min-width: 150px !important;
+    max-width: 150px !important;
+    white-space: normal !important;
+    padding-left: 8px !important;
+    padding-right: 8px !important;
+  }
+  .app-main td[style*="position: sticky"][style*="width: 250px"] *,
+  .app-main td[style*="position:sticky"][style*="width:250px"] * { white-space: normal !important; overflow-wrap: anywhere; }
+
+  /* Tablas anchas: desplazamiento horizontal dentro de su tarjeta */
+  .app-main table { font-size: 12px; }
+  .app-main .data-table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+}
