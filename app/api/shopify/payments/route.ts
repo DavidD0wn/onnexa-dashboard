@@ -72,17 +72,31 @@ async function fetchHistoricalRates(from: string, to: string): Promise<Record<st
 async function fetchBalanceTxs(
   shop: string, token: string,
   dateFrom: string, dateTo: string,
-): Promise<Array<{ date: string; fee: number; amount: number; type: string }>> {
-  const all: Array<{ date: string; fee: number; amount: number; type: string }> = [];
+): Promise<Array<{ date: string; fee: number; amount: number; type: string; currency: string }>> {
+  const all: Array<{ date: string; fee: number; amount: number; type: string; currency: string }> = [];
 
   let url: string | null =
     `https://${shop}/admin/api/${process.env.SHOPIFY_API_VERSION || "2026-07"}/shopify_payments/balance/transactions.json?limit=250`;
 
   while (url) {
-    const res: Response = await fetch(url, { headers: { "X-Shopify-Access-Token": token } });
-    if (!res.ok) {
-      const txt = await res.text();
-      throw new Error(`Shopify Payments no entregó las transacciones (HTTP ${res.status}): ${txt.slice(0, 200)}`);
+    // Reintentos: si esta llamada falla, el día se queda con la comisión
+    // ESTIMADA (3.6%) en vez de la real (~5-6%) y el profit sale inflado.
+    let res: Response | null = null;
+    let lastErr = "";
+    for (let attempt = 0; attempt < 4; attempt++) {
+      try {
+        res = await fetch(url, { headers: { "X-Shopify-Access-Token": token }, signal: AbortSignal.timeout(30_000) });
+        if (res.ok) break;
+        lastErr = `HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`;
+        if (res.status !== 429 && res.status < 500) break;
+      } catch (e: any) {
+        lastErr = e?.message ?? String(e);
+        res = null;
+      }
+      await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+    }
+    if (!res?.ok) {
+      throw new Error(`Shopify Payments no entregó las transacciones (${lastErr})`);
     }
     const data: any = await res.json();
     const txs: any[] = data.transactions ?? data.balance_transactions ?? [];
@@ -98,6 +112,7 @@ async function fetchBalanceTxs(
         fee:    parseFloat(tx.fee    ?? "0"),
         amount: parseFloat(tx.amount ?? "0"),
         type:   tx.type,
+        currency: String(tx.currency ?? "").toUpperCase(),
       });
     }
 
@@ -155,30 +170,32 @@ export async function POST(req: Request) {
     // ── Fetch all charge + refund transactions ──
     const txs = await fetchBalanceTxs(cfg.shop, token, dateFrom, dateTo);
 
-    // ── Group fees by date (sum charges, subtract refunds) ──
-    // fee on a "refund" tx is the refund processing fee (usually negative or zero)
-    const feesByDate: Record<string, number> = {};
-    for (const tx of txs) {
-      feesByDate[tx.date] = (feesByDate[tx.date] ?? 0) + tx.fee;
-    }
-
     // ── Load daily exchange rates for MXN→USD conversion if needed ──
+    // La moneda sale de CADA transacción: Pleena estaba configurada como MXN
+    // pero su saldo de Shopify Payments es USD, y sus comisiones se dividían
+    // entre ~18 (el reporte marcaba $0.55 en vez de ~$9).
+    const txCurrency = (tx: { currency: string }) => tx.currency || cfg.payoutCurrency;
     let ratesByDate: Record<string, number> = {};
-    if (cfg.payoutCurrency === "MXN") {
+    if (txs.some((tx) => txCurrency(tx) === "MXN")) {
       ratesByDate = await fetchHistoricalRates(dateFrom, dateTo);
     }
     const getRate = (d: string) => ratesByDate[d] ?? FALLBACK_MXN_RATE;
+
+    // ── Group fees by date in USD (sum charges, subtract refunds) ──
+    // fee on a "refund" tx is the refund processing fee (usually negative or zero)
+    const feesByDate: Record<string, number> = {};
+    for (const tx of txs) {
+      const feeUsd = txCurrency(tx) === "MXN" ? tx.fee / getRate(tx.date) : tx.fee;
+      feesByDate[tx.date] = (feesByDate[tx.date] ?? 0) + feeUsd;
+    }
 
     // ── Update DailyMetric rows ──────────────────────────────────────────────
     let updated = 0;
     let skipped = 0;
     const preview: Array<{ date: string; totalFeeUsd: number; rowsUpdated: number }> = [];
 
-    for (const [dateKey, rawFee] of Object.entries(feesByDate)) {
-      if (rawFee <= 0) continue; // skip days with 0 or negative fees (net refunds)
-
-      const rate      = cfg.payoutCurrency === "MXN" ? getRate(dateKey) : 1;
-      const totalFeeUsd = rawFee / rate;
+    for (const [dateKey, totalFeeUsd] of Object.entries(feesByDate)) {
+      if (totalFeeUsd <= 0) continue; // skip days with 0 or negative fees (net refunds)
 
       const dayStart = new Date(dateKey + "T00:00:00Z");
       const dayEnd   = new Date(dateKey + "T23:59:59.999Z");

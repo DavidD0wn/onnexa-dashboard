@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
   fetchShopifyPaginated,
@@ -759,16 +759,25 @@ export async function POST(req: Request) {
     // ── Override estimated fees with REAL Shopify Balance Transaction fees ──
     // Uses processed_at per transaction (= order date), NOT payout date.
     // Fees distributed proportionally between US/MX rows by gross revenue.
+    // Se llama al handler EN EL MISMO PROCESO (como autosync): en Vercel la
+    // llamada HTTP al propio deployment la bloquea la protección, y cada vez
+    // que alguien abría el dashboard o pulsaba "Actualizar" las comisiones
+    // reales (~5-6%) quedaban pisadas por la estimada (3.6%).
+    const internalRequest = (path: string, payload: Record<string, unknown>) =>
+      new NextRequest(`${base}${path}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
     let paymentsResult: any = null;
     if (!skipPayments) {
       try {
-        const pr = await fetch(`${base}/api/shopify/payments`, {
-          method:  "POST",
-          headers: { "Content-Type": "application/json" },
-          body:    JSON.stringify({ store, days, from: dateFrom, to: dateTo }),
-        });
+        const { POST: runPayments } = await import("@/app/api/shopify/payments/route");
+        const pr = await runPayments(internalRequest("/api/shopify/payments", { store, days, from: dateFrom, to: dateTo }));
         paymentsResult = await pr.json().catch(() => null);
-      } catch { /* non-critical — estimated fees remain if this fails */ }
+      } catch (error) {
+        paymentsResult = { error: error instanceof Error ? error.message : String(error) };
+      }
     }
 
     // ── Auto: rollup Meta Ads adSpend → DailyMetric ──
@@ -777,11 +786,8 @@ export async function POST(req: Request) {
     // tienda, haciendo que el botón manual pareciera bloqueado varios minutos.
     if (!skipRollup) {
       try {
-        await fetch(`${base}/api/meta-ads/rollup`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ from: dateFrom, to: dateTo }),
-        });
+        const { POST: runRollup } = await import("@/app/api/meta-ads/rollup/route");
+        await runRollup(internalRequest("/api/meta-ads/rollup", { from: dateFrom, to: dateTo }));
       } catch { /* non-critical */ }
     }
 
@@ -796,7 +802,9 @@ export async function POST(req: Request) {
       to: dateTo,
       mxnRateUsed: liveMxnRate,
       historicalRateDays: rateCount,
-      paymentsSync: paymentsResult ? { daysUpdated: paymentsResult.daysUpdated } : null,
+      paymentsSync: paymentsResult
+        ? { rowsUpdated: paymentsResult.rowsUpdated ?? 0, error: paymentsResult.error ?? null }
+        : null,
       errors: errors.slice(0, 5),
       staleDeleted: staleToDelete.length,
       preview: Object.entries(byKey)

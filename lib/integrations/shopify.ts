@@ -72,7 +72,7 @@ export function getShopifyStores(): Record<ShopifyStoreKey, ShopifyStoreConfig> 
   return {
     glowmmi: {
       key: "glowmmi",
-      shop: normalizeShop(env("SHOPIFY_GLOWMMI_SHOP"), "glm-1694.myshopify.com"),
+      shop: normalizeShop(env("SHOPIFY_GLOWMMI_SHOP"), "yvba7c-g1.myshopify.com"),
       clientId: env("SHOPIFY_GLOWMMI_CLIENT_ID"),
       clientSecret: env("SHOPIFY_GLOWMMI_CLIENT_SECRET"),
       staticToken: env("SHOPIFY_GLOWMMI_TOKEN"),
@@ -120,7 +120,7 @@ export function getShopifyStores(): Record<ShopifyStoreKey, ShopifyStoreConfig> 
       countryId: "country_mx",
       storeId: "store_pleena_mx",
       currency: "MXN",
-      payoutCurrency: "MXN",
+      payoutCurrency: "USD", // saldo de Shopify Payments en USD (verificado oct-2026)
       gatewayPct: 0.036,
       gatewayFixed: 0,
       splitByCountry: true,

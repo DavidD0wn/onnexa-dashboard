@@ -69,7 +69,7 @@ async function fetchHistoricalRates(from: string, to: string): Promise<Record<st
 const STORES = {
   glowmmi: {
     key:          "glowmmi" as const,
-    shop:         "glm-1694.myshopify.com",
+    shop:         "yvba7c-g1.myshopify.com",
     clientId:     process.env.SHOPIFY_GLOWMMI_CLIENT_ID ?? "",
     clientSecret: process.env.SHOPIFY_GLOWMMI_CLIENT_SECRET ?? "",
     brandId:      "brand_glowmmi",
@@ -1097,7 +1097,10 @@ export async function GET(req: NextRequest) {
       dailyBrandRevenue[brandDayKey] =
         (dailyBrandRevenue[brandDayKey] ?? 0) + (dm.netRevenue ?? 0);
     }
-  } catch { /* non-critical — falls back to estimates */ }
+  } catch (error) {
+    // Sin estos datos las comisiones caen a la tasa fija (3.6%) en vez de la real.
+    console.warn("[analytics] calibración DailyMetric falló:", error instanceof Error ? error.message.slice(-300) : error);
+  }
 
   // Los contracargos no tienen productId ni countryId. Se reparten por la
   // participación de revenue de cada producto dentro de su marca, la misma
