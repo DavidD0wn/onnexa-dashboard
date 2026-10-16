@@ -17,7 +17,7 @@ type Mensaje = {
 type BaseMapa = { id: string; titulo: string; url?: string; rol: string | null; campos: { nombre: string; tipo: string; rol: string | null }[] };
 type EstadoNotion =
   | { conectado: false; motivo: string; sinLlave?: boolean }
-  | { conectado: true; workspace: string; bases: BaseMapa[]; personas: string[]; faltan: string[] };
+  | { conectado: true; workspace: string; bases: BaseMapa[]; personas: string[]; faltan: string[]; sinAcceso?: string[]; otras?: string[] };
 
 const EJEMPLOS = [
   "Apunta una idea: bundle de Navidad de Pleena con el sérum y la mascarilla",
@@ -287,6 +287,11 @@ function Asistente() {
               <span style={{ color: "var(--text-2)" }}>
                 Notion: <b>{notion.workspace}</b> · {notion.bases.filter((b) => b.rol).length} bases en uso
                 {notion.faltan.length > 0 && <span style={{ color: "var(--yellow-text)" }}> · sin base para {notion.faltan.join(", ")}</span>}
+                {!!notion.sinAcceso?.length && (
+                  <span style={{ color: "var(--yellow-text)" }}>
+                    {" "}· solo veo el nombre de {notion.sinAcceso.join(", ")}: conéctala en Notion (··· → Conexiones)
+                  </span>
+                )}
               </span>
             )}
             <div className="flex items-center gap-1" style={{ marginLeft: "auto" }}>
@@ -315,6 +320,7 @@ function Asistente() {
                 </li>
               ))}
               <li style={{ color: "var(--text-3)" }}>Personas: {notion.personas.join(", ") || "ninguna visible"}</li>
+              {!!notion.otras?.length && <li style={{ color: "var(--text-4)" }}>Otras tablas en E-COMMERCE: {notion.otras.join(", ")}</li>}
             </ul>
           )}
         </div>

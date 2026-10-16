@@ -13,5 +13,6 @@ export const REGLAS_ASISTENTE = `
    La transcripción a veces escribe mal los nombres: "plena", "plina" = Pleena; "gloumi", "glowmi", "glomi" = Glowmmi; "balanceá", "balance a" = Balancea. Corrígelos en los títulos.
 8. Archivar, borrar o cambiar el responsable SIEMPRE requiere confirmación.
 9. Si pide un resumen ("qué tengo pendiente", "qué hay para hoy"), usa "consultar" con el filtro adecuado y responde en una frase.
+   "Pendiente" = que no esté terminado: en el campo de estado usa {"distinto": "<la opción de terminado, p. ej. Completed>"}.
 10. Nunca preguntes más de una cosa a la vez.
 `.trim();

@@ -45,7 +45,7 @@ Responde SIEMPRE con un único objeto JSON con esta forma exacta:
     {"tipo": "actualizar", "base": "<rol de base>", "buscar": "<palabras del título a localizar>", "propiedades": {"<campo>": <valor>}},
     {"tipo": "comentar", "base": "<rol de base>", "buscar": "<título>", "texto": "<nota a agregar>"},
     {"tipo": "archivar", "base": "<rol de base>", "buscar": "<título>"},
-    {"tipo": "consultar", "base": "<rol de base>", "filtro": {"<campo>": <valor>} | null, "limite": 10}
+    {"tipo": "consultar", "base": "<rol de base>", "filtro": {"<campo>": <valor> | {"distinto": "<opción>"}} | null, "limite": 10}
   ]
 }
 Reglas de los valores:
@@ -86,6 +86,8 @@ function describirEsquema(m: Mapa): string {
   const alias = Object.entries(m.alias_personas);
   if (alias.length) personas += ". Alias: " + alias.map(([a, n]) => `'${a}' = ${n}`).join(", ");
   lineas.push(`Personas del workspace: ${personas}`);
+  lineas.push(`Valores válidos para "base" en las acciones: ${Object.keys(m.roles).join(", ")} (en español, tal cual).`);
+  if (!m.roles.delegaciones) lineas.push('No hay base "delegaciones": un encargo a otra persona se guarda como tarea con responsable.');
   return lineas.join("\n");
 }
 
@@ -145,6 +147,13 @@ export async function pensar(m: Mapa, texto: string, historial: Turno[]): Promis
 }
 
 // ======================= traducción de valores a Notion =======================
+const SINONIMOS_ROL: Record<string, string> = {
+  tasks: "tareas", task: "tareas", tarea: "tareas",
+  projects: "proyectos", project: "proyectos", proyecto: "proyectos",
+  idea: "ideas", notas: "ideas", nota: "ideas", notes: "ideas",
+  delegacion: "delegaciones", "delegación": "delegaciones", delegations: "delegaciones",
+};
+
 export type Resultado = { texto: string; url?: string; ok: boolean };
 
 export class Ejecutor {
@@ -159,7 +168,12 @@ export class Ejecutor {
   }
 
   private base(rol: string): [string, Base] {
-    const id = this.m.roles[rol];
+    const r = (rol ?? "").toLowerCase().trim();
+    // El modelo a veces responde con el nombre en inglés o el título real de la tabla.
+    const id =
+      this.m.roles[r] ??
+      this.m.roles[SINONIMOS_ROL[r] ?? ""] ??
+      Object.values(this.m.roles).find((bid) => this.m.bases[bid]?.titulo.toLowerCase() === r);
     if (!id) throw new NotionError(`No hay una base configurada para '${rol}'`);
     return [id, this.m.bases[id]];
   }
@@ -269,7 +283,15 @@ export class Ejecutor {
       if (!real) continue;
       const c = esq.campos[real];
       const t = c.tipo;
-      if (t === "select" || t === "status") partes.push({ property: real, [t]: { equals: Ejecutor.opcion(String(valor), c.opciones) } });
+      if (t === "select" || t === "status") {
+        // {"distinto": "Completed"} o {"distinto": ["Completed","Archivada"]} → excluye esas opciones
+        const excluir = valor && typeof valor === "object" && !Array.isArray(valor) ? ((valor as Json).distinto ?? (valor as Json).no) : null;
+        if (excluir != null) {
+          for (const x of Array.isArray(excluir) ? excluir : [excluir]) {
+            partes.push({ property: real, [t]: { does_not_equal: Ejecutor.opcion(String(x), c.opciones) } });
+          }
+        } else partes.push({ property: real, [t]: { equals: Ejecutor.opcion(String(valor), c.opciones) } });
+      }
       else if (t === "multi_select") partes.push({ property: real, multi_select: { contains: String(valor) } });
       else if (t === "people") {
         const pid = this.persona(String(valor));

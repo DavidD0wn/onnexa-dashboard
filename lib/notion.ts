@@ -2,13 +2,15 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Capa fina sobre la API REST de Notion con el token de integración interna
 // (el que se pega en el asistente; NOTION_TOKEN de respaldo). Port de notion_api.py.
-// Versión 2022-06-28: las bases se consultan directo por su id, sin data sources.
+// Versión 2025-09-03 (data sources): las tablas se leen, consultan y llenan por el
+// id de su "data source". Es la única versión que entiende las vistas enlazadas
+// que usa E-COMMERCE (con 2022-06-28 Notion responde "linked database" y no deja leerlas).
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { leerTokenNotion } from "@/lib/asistente/config";
 
 const API = "https://api.notion.com/v1";
-const VERSION = "2022-06-28";
+const VERSION = "2025-09-03";
 
 export class NotionError extends Error {}
 
@@ -76,25 +78,35 @@ export async function usuarios(): Promise<Json[]> {
   return (await paginar("GET", "/users")).filter((u) => u.type === "person");
 }
 
-export function basesCompartidas(): Promise<Json[]> {
-  return paginar("POST", "/search", { filter: { value: "database", property: "object" }, page_size: 100 });
+/** Tablas (data sources) que el buscador de Notion ya tiene indexadas para la integración. */
+export function fuentesCompartidas(): Promise<Json[]> {
+  return paginar("POST", "/search", { filter: { value: "data_source", property: "object" }, page_size: 100 });
 }
 
-export async function consultar(databaseId: string, filtro?: Json | null, orden?: Json[], limite = 50): Promise<Json[]> {
+/** Páginas compartidas con la integración (el buscador puede tardar en indexarlas). */
+export function paginasCompartidas(): Promise<Json[]> {
+  return paginar("POST", "/search", { filter: { value: "page", property: "object" }, page_size: 100 });
+}
+
+export const hijos = (blockId: string) => paginar("GET", `/blocks/${blockId}/children`);
+export const baseDeDatos = (databaseId: string) => req("GET", `/databases/${databaseId}`);
+export const fuente = (dataSourceId: string) => req("GET", `/data_sources/${dataSourceId}`);
+
+export async function consultar(fuenteId: string, filtro?: Json | null, orden?: Json[], limite = 50): Promise<Json[]> {
   const body: Json = { page_size: Math.min(limite, 100) };
   if (filtro) body.filter = filtro;
   if (orden) body.sorts = orden;
-  const data = await req("POST", `/databases/${databaseId}/query`, body);
+  const data = await req("POST", `/data_sources/${fuenteId}/query`, body);
   return data.results ?? [];
 }
 
-export function buscarPorTitulo(databaseId: string, propTitulo: string, texto: string): Promise<Json[]> {
-  return consultar(databaseId, { property: propTitulo, title: { contains: texto } }, undefined, 10);
+export function buscarPorTitulo(fuenteId: string, propTitulo: string, texto: string): Promise<Json[]> {
+  return consultar(fuenteId, { property: propTitulo, title: { contains: texto } }, undefined, 10);
 }
 
 // ---------- escritura ----------
-export function crearPagina(databaseId: string, propiedades: Json, contenido?: string | null): Promise<Json> {
-  const body: Json = { parent: { database_id: databaseId }, properties: propiedades };
+export function crearPagina(fuenteId: string, propiedades: Json, contenido?: string | null): Promise<Json> {
+  const body: Json = { parent: { type: "data_source_id", data_source_id: fuenteId }, properties: propiedades };
   if (contenido) {
     body.children = [
       { object: "block", type: "paragraph", paragraph: { rich_text: [{ type: "text", text: { content: contenido.slice(0, 1900) } }] } },

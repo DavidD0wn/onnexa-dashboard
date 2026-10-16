@@ -6,6 +6,7 @@ import { obtenerMapa, resumenMapa } from "@/lib/asistente/mapa";
 import { leerTokenNotion } from "@/lib/asistente/config";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60; // ?refrescar=1 recorre E-COMMERCE completo
 
 export async function GET(req: Request) {
   try {

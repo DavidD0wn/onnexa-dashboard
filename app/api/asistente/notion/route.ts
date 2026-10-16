@@ -6,7 +6,7 @@ import { guardarTokenNotion } from "@/lib/asistente/config";
 import { obtenerMapa, resumenMapa } from "@/lib/asistente/mapa";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 30;
+export const maxDuration = 60; // al conectar se recorre E-COMMERCE completo
 
 export async function POST(req: Request) {
   const { token } = (await req.json().catch(() => ({}))) as { token?: string };
