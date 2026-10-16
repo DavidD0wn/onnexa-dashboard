@@ -7,10 +7,9 @@ comenta, archiva o consulta filas en las bases de su Notion (workspace de la pá
 
 | Archivo | Qué hace |
 |---|---|
-| `proxy.ts` | Pide PIN **solo** en `/automatizaciones/asistente` y `/api/asistente/*`. Crons, webhooks y el resto de la app no pasan por aquí. |
-| `lib/asistente/sesion.ts` | Cookie firmada (HMAC) de 30 días. Cambiar el PIN cierra todas las sesiones. |
-| `app/entrar`, `app/api/entrar` | Pantalla y validación del PIN. |
-| `lib/notion.ts` | Cliente REST de Notion (token de integración interna, API 2022-06-28). |
+| `lib/asistente/config.ts` | Llave de Notion guardada en Neon (tabla `AsistenteConfig`); respaldo: `NOTION_TOKEN` de Vercel. |
+| `app/api/asistente/notion` | Recibe la llave pegada en la pantalla, la prueba contra Notion, la guarda y conecta al instante. |
+| `lib/notion.ts` | Cliente REST de Notion (llave de integración interna, API 2022-06-28). |
 | `lib/asistente/mapa.ts` | Descubre en vivo las bases que ve la integración y adivina su rol (ideas, tareas, proyectos, delegaciones). Caché de 10 min. |
 | `lib/asistente/cerebro.ts` | Prompt + llamada a Groq (JSON) + Ejecutor que traduce a propiedades de Notion. |
 | `lib/asistente/reglas.ts` | Reglas del asistente en texto plano. |
@@ -19,13 +18,13 @@ comenta, archiva o consulta filas en las bases de su Notion (workspace de la pá
 
 Archivar o cambiar un responsable **siempre** pide Confirmar en pantalla; lo decide el código, no el modelo.
 
+Sin PIN, por decisión de Hamlet (16-oct-2026): cualquiera con la URL del dashboard puede usar el asistente y cambiar la llave.
+
 ## Variables de entorno (Vercel)
 
 | Variable | Obligatoria | Nota |
 |---|---|---|
-| `NOTION_TOKEN` | sí | Llave de la integración "Asistente de voz" de Fernanda. La página E-COMMERCE debe estar conectada a esa integración. |
-| `ASISTENTE_PIN` | sí | 6-8 dígitos. Sin PIN no se puede entrar. |
-| `ASISTENTE_SECRET` | recomendable | Texto aleatorio largo para firmar la cookie. |
+| `NOTION_TOKEN` | no | Solo respaldo: lo normal es pegar la llave en la pantalla del asistente. La página E-COMMERCE debe estar conectada a la integración. |
 | `GROQ_API_KEY` | ya existe | Plan gratis: 8.000 tokens/min compartidos con el bot de correos (unos 4 turnos/min). |
 | `NOTION_ROLES` | no | `{"tareas":"<id base>"}` si la adivinanza por nombre falla. |
 | `NOTION_ALIAS_PERSONAS` | no | `{"Fer":"María Fernanda Rey"}` |

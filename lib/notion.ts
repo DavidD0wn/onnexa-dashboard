@@ -1,9 +1,11 @@
 // lib/notion.ts
 // ─────────────────────────────────────────────────────────────────────────────
 // Capa fina sobre la API REST de Notion con el token de integración interna
-// (NOTION_TOKEN). Port de asistente-voz-notion/notion_api.py.
+// (el que se pega en el asistente; NOTION_TOKEN de respaldo). Port de notion_api.py.
 // Versión 2022-06-28: las bases se consultan directo por su id, sin data sources.
 // ─────────────────────────────────────────────────────────────────────────────
+
+import { leerTokenNotion } from "@/lib/asistente/config";
 
 const API = "https://api.notion.com/v1";
 const VERSION = "2022-06-28";
@@ -13,18 +15,19 @@ export class NotionError extends Error {}
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export type Json = Record<string, any>;
 
-function token(): string {
-  const t = process.env.NOTION_TOKEN;
-  if (!t) throw new NotionError("Falta NOTION_TOKEN: Fernanda tiene que crear la integración y pasar la llave.");
+async function token(): Promise<string> {
+  const t = await leerTokenNotion();
+  if (!t) throw new NotionError("Notion no está conectado: pega la llave de la integración en Automatizaciones → Asistente de voz.");
   return t;
 }
 
-async function req(method: string, path: string, body?: Json): Promise<Json> {
+async function req(method: string, path: string, body?: Json, llave?: string): Promise<Json> {
+  const t = llave ?? (await token());
   for (let intento = 0; intento < 4; intento++) {
     const r = await fetch(`${API}${path}`, {
       method,
       headers: {
-        Authorization: `Bearer ${token()}`,
+        Authorization: `Bearer ${t}`,
         "Notion-Version": VERSION,
         "Content-Type": "application/json",
       },
@@ -62,6 +65,12 @@ async function paginar(method: "GET" | "POST", path: string, body: Json = {}): P
 
 // ---------- lectura ----------
 export const yo = () => req("GET", "/users/me");
+
+/** Comprueba una llave antes de guardarla. Devuelve el nombre del workspace. */
+export async function probarLlave(llave: string): Promise<string> {
+  const me = await req("GET", "/users/me", undefined, llave);
+  return me.bot?.workspace_name ?? "(desconocido)";
+}
 
 export async function usuarios(): Promise<Json[]> {
   return (await paginar("GET", "/users")).filter((u) => u.type === "person");

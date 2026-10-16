@@ -10,6 +10,7 @@
 //   NOTION_ALIAS_PERSONAS {"Fer":"María Fernanda Rey"}               apodos
 // ─────────────────────────────────────────────────────────────────────────────
 import { basesCompartidas, textoPlano, usuarios, yo, type Json } from "@/lib/notion";
+import { leerTokenNotion } from "./config";
 
 export type Campo = { tipo: string; opciones?: string[]; base_relacionada?: string };
 export type Base = {
@@ -128,12 +129,13 @@ async function construir(): Promise<Mapa> {
   };
 }
 
-let cache: { mapa: Mapa; hasta: number } | null = null;
+let cache: { mapa: Mapa; hasta: number; llave: string | null } | null = null;
 
 export async function obtenerMapa(refrescar = false): Promise<Mapa> {
-  if (!refrescar && cache && cache.hasta > Date.now()) return cache.mapa;
+  const llave = await leerTokenNotion();
+  if (!refrescar && cache && cache.llave === llave && cache.hasta > Date.now()) return cache.mapa;
   const mapa = await construir();
-  cache = { mapa, hasta: Date.now() + 10 * 60 * 1000 };
+  cache = { mapa, hasta: Date.now() + 10 * 60 * 1000, llave };
   return mapa;
 }
 

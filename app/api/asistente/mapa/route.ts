@@ -3,14 +3,13 @@
 // ?refrescar=1 vuelve a leer Notion (por ejemplo, después de crear una base nueva).
 import { NextResponse } from "next/server";
 import { obtenerMapa, resumenMapa } from "@/lib/asistente/mapa";
+import { leerTokenNotion } from "@/lib/asistente/config";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
-  if (!process.env.NOTION_TOKEN) {
-    return NextResponse.json({ conectado: false, motivo: "Falta NOTION_TOKEN" });
-  }
   try {
+    if (!(await leerTokenNotion())) return NextResponse.json({ conectado: false, sinLlave: true, motivo: "Falta la llave de Notion" });
     const refrescar = new URL(req.url).searchParams.get("refrescar") === "1";
     return NextResponse.json({ conectado: true, ...resumenMapa(await obtenerMapa(refrescar)) });
   } catch (e) {

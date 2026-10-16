@@ -1,10 +1,11 @@
 // app/api/asistente/route.ts
-// Un turno del asistente de voz. Protegido por el PIN (proxy.ts).
+// Un turno del asistente de voz.
 //   { texto, historial }        → el cerebro decide; si no requiere confirmación, ejecuta en Notion.
 //   { ejecutar: acciones, ... } → Fernanda pulsó "Confirmar": se ejecutan las acciones propuestas.
 // El historial vive en el cliente (últimos 10 turnos); aquí se devuelve lo que hay que añadirle.
 import { NextResponse } from "next/server";
 import { obtenerMapa } from "@/lib/asistente/mapa";
+import { leerTokenNotion } from "@/lib/asistente/config";
 import { Ejecutor, mensajeFinal, pendientesDeConfirmar, pensar, type Accion, type Turno } from "@/lib/asistente/cerebro";
 
 export const dynamic = "force-dynamic";
@@ -29,11 +30,8 @@ function limpiarHistorial(h: unknown): Turno[] {
 }
 
 export async function POST(req: Request) {
-  if (!process.env.NOTION_TOKEN) {
-    return NextResponse.json(
-      { error: "Todavía no está conectado Notion: falta la llave (NOTION_TOKEN) de la integración de Fernanda.", sinNotion: true },
-      { status: 503 },
-    );
+  if (!(await leerTokenNotion())) {
+    return NextResponse.json({ error: "Todavía no está conectado Notion: pega la llave arriba.", sinNotion: true }, { status: 503 });
   }
   const body = await req.json().catch(() => ({}));
   const historial = limpiarHistorial(body.historial);

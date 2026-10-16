@@ -628,3 +628,11 @@ model DailyFinancialReport {
   lastResentAt  DateTime?
   updatedAt     DateTime @updatedAt
 }
+
+// Ajustes del asistente de voz (clave/valor). Hoy solo guarda la llave de Notion
+// que se pega desde Automatizaciones → Asistente de voz.
+model AsistenteConfig {
+  clave     String   @id
+  valor     String
+  updatedAt DateTime @updatedAt
+}

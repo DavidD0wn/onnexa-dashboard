@@ -1,7 +1,6 @@
 "use client";
 import { Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { useRouter } from "next/navigation";
-import { Mic, Square, Send, Volume2, VolumeX, RefreshCw, ExternalLink, Check, X, Database } from "lucide-react";
+import { Mic, Square, Send, Volume2, VolumeX, RefreshCw, ExternalLink, Check, X, Database, KeyRound } from "lucide-react";
 import { Header } from "@/components/layout/Header";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -17,7 +16,7 @@ type Mensaje = {
 };
 type BaseMapa = { id: string; titulo: string; url?: string; rol: string | null; campos: { nombre: string; tipo: string; rol: string | null }[] };
 type EstadoNotion =
-  | { conectado: false; motivo: string }
+  | { conectado: false; motivo: string; sinLlave?: boolean }
   | { conectado: true; workspace: string; bases: BaseMapa[]; personas: string[]; faltan: string[] };
 
 const EJEMPLOS = [
@@ -37,7 +36,10 @@ const leerVozGuardada = () => {
 };
 
 function Asistente() {
-  const router = useRouter();
+  const [llave, setLlave] = useState("");
+  const [conectando, setConectando] = useState(false);
+  const [errorLlave, setErrorLlave] = useState("");
+  const [cambiandoLlave, setCambiandoLlave] = useState(false);
   const [mensajes, setMensajes] = useState<Mensaje[]>([]);
   const [historial, setHistorial] = useState<Turno[]>([]);
   const [texto, setTexto] = useState("");
@@ -74,6 +76,32 @@ function Asistente() {
     setNotion(await r.json());
   }, []);
 
+  const conectar = async () => {
+    if (!llave.trim() || conectando) return;
+    setConectando(true);
+    setErrorLlave("");
+    try {
+      const r = await fetch("/api/asistente/notion", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: llave }),
+      });
+      const d = await r.json();
+      if (!r.ok) {
+        setErrorLlave(d.error ?? "No se pudo conectar.");
+        return;
+      }
+      setNotion(d);
+      setLlave("");
+      setCambiandoLlave(false);
+      hablar(`Listo, conectado a ${d.workspace}.`);
+    } catch {
+      setErrorLlave("No hay conexión con el servidor.");
+    } finally {
+      setConectando(false);
+    }
+  };
+
   useEffect(() => {
     fetch("/api/asistente/mapa")
       .then((r) => r.json())
@@ -94,10 +122,6 @@ function Asistente() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(cuerpo),
       });
-      if (r.status === 401) {
-        router.replace("/entrar?volver=/automatizaciones/asistente");
-        return null;
-      }
       const d = await r.json();
       if (!r.ok) {
         agregar({ quien: "asistente", texto: d.error ?? "Algo falló.", error: true });
@@ -199,16 +223,66 @@ function Asistente() {
       <Header title="Asistente de voz" subtitle="Habla o escribe y queda en tu Notion" />
 
       <div className="flex-1 w-full flex flex-col gap-3" style={{ maxWidth: 672, margin: "0 auto", padding: "16px 16px 0" }}>
+        {/* Conectar Notion: pegar la llave y queda funcionando al instante */}
+        {notion && (!notion.conectado || cambiandoLlave) && (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              conectar();
+            }}
+            className="rounded-xl text-sm flex flex-col gap-2.5"
+            style={{ background: "var(--card)", border: "1px solid var(--border)", padding: 14 }}
+          >
+            <div className="flex items-center gap-2" style={{ color: "var(--text)" }}>
+              <KeyRound size={15} style={{ color: "#0E766E" }} />
+              <b>{notion.conectado ? "Cambiar la llave de Notion" : "Conecta tu Notion"}</b>
+            </div>
+            <p className="text-xs" style={{ color: "var(--text-3)" }}>
+              Pega la llave de la integración «Asistente de voz» (empieza por <code>ntn_</code>). Se conecta en el momento.
+            </p>
+            {!notion.conectado && !(notion as any).sinLlave && (
+              <p className="text-xs" style={{ color: "var(--red-text)" }}>
+                La llave guardada no funciona: {(notion as any).motivo}
+              </p>
+            )}
+            <div className="flex gap-2">
+              <input
+                type="password"
+                autoComplete="off"
+                value={llave}
+                onChange={(e) => setLlave(e.target.value)}
+                placeholder="ntn_…"
+                className="flex-1 min-w-0 rounded-lg outline-none text-base"
+                style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "var(--text)", padding: "8px 10px" }}
+              />
+              <button
+                type="submit"
+                disabled={!llave.trim() || conectando}
+                className="rounded-lg text-sm font-semibold text-white disabled:opacity-50 shrink-0"
+                style={{ background: "#0E766E", padding: "8px 14px" }}
+              >
+                {conectando ? "Conectando…" : "Conectar"}
+              </button>
+            </div>
+            {errorLlave && (
+              <p className="text-xs" style={{ color: "var(--red-text)" }}>
+                {errorLlave}
+              </p>
+            )}
+            {notion.conectado && (
+              <button type="button" onClick={() => setCambiandoLlave(false)} className="text-xs self-start" style={{ color: "var(--text-3)" }}>
+                Cancelar
+              </button>
+            )}
+          </form>
+        )}
+
         {/* Estado de Notion */}
+        {(!notion || notion.conectado) && (
         <div className="rounded-xl text-xs" style={{ background: "var(--card)", border: "1px solid var(--border)", padding: "10px 12px" }}>
           <div className="flex items-center gap-2">
             <Database size={14} style={{ color: "var(--text-3)" }} />
             {!notion && <span style={{ color: "var(--text-3)" }}>Revisando Notion…</span>}
-            {desconectado && (
-              <span style={{ color: "var(--red-text)" }}>
-                Notion sin conectar: {(notion as any).motivo}
-              </span>
-            )}
             {notion?.conectado && (
               <span style={{ color: "var(--text-2)" }}>
                 Notion: <b>{notion.workspace}</b> · {notion.bases.filter((b) => b.rol).length} bases en uso
@@ -217,9 +291,14 @@ function Asistente() {
             )}
             <div className="flex items-center gap-1" style={{ marginLeft: "auto" }}>
               {notion?.conectado && (
-                <button onClick={() => setVerMapa((v) => !v)} className="rounded-md" style={{ color: "var(--text-3)", padding: "4px 8px" }}>
-                  {verMapa ? "Ocultar" : "Ver bases"}
-                </button>
+                <>
+                  <button onClick={() => setVerMapa((v) => !v)} className="rounded-md" style={{ color: "var(--text-3)", padding: "4px 8px" }}>
+                    {verMapa ? "Ocultar" : "Ver bases"}
+                  </button>
+                  <button onClick={() => setCambiandoLlave(true)} className="rounded-md" style={{ color: "var(--text-3)", padding: "4px 8px" }}>
+                    Cambiar llave
+                  </button>
+                </>
               )}
               <button onClick={() => cargarNotion(true)} title="Volver a leer Notion" className="rounded-md" style={{ color: "var(--text-3)", padding: 4 }}>
                 <RefreshCw size={13} />
@@ -239,6 +318,7 @@ function Asistente() {
             </ul>
           )}
         </div>
+        )}
 
         {/* Conversación */}
         <div className="flex-1 flex flex-col gap-2.5">
