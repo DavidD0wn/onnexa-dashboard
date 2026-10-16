@@ -9,7 +9,7 @@ import {
   LayoutDashboard, TrendingUp, BarChart2, Calendar, DollarSign,
   Megaphone, Package, BarChart3, Globe, Calculator, FlaskConical,
   Tag, Layers, CheckSquare, Upload, Truck, Bell, FileText,
-  Settings, ChevronDown, Moon, Sun, X, Menu, Telescope, Bot, Mail, ShoppingBag, Table2, Users, AppWindow, Boxes, BookOpen, Flame,
+  Settings, ChevronDown, Moon, Sun, X, Menu, Telescope, Bot, Mail, ShoppingBag, Table2, Users, AppWindow, Boxes, BookOpen, Flame, Mic,
 } from "lucide-react";
 
 /* ── Mark ──────────────────────────────────────────────────── */
@@ -74,6 +74,7 @@ const GROUPS = [
     label: "Operación",
     defaultOpen: false,
     items: [
+      { label: "Asistente",           href: "/asistente", icon: Mic         },
       { label: "Tareas",              href: "/tareas",    icon: CheckSquare },
       { label: "Pedidos Pendientes",  href: "/inventario", icon: Truck      },
       { label: "Facturas Proveedor",  href: "/facturas",  icon: Upload      },
