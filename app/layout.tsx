@@ -5,7 +5,6 @@ import { ThemeProvider } from "@/lib/theme";
 import { FiltersProvider } from "@/lib/filters";
 import { CurrencyProvider } from "@/lib/currency";
 import { AppLoader } from "@/components/AppLoader";
-import { BotonAsistente } from "@/components/asistente/BotonAsistente";
 
 export const metadata: Metadata = {
   title: "Onnexa Command Center",
@@ -26,7 +25,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                     {children}
                   </main>
                 </div>
-                <BotonAsistente />
               </AppLoader>
             </CurrencyProvider>
           </FiltersProvider>

@@ -1,13 +1,13 @@
 # Asistente de voz → Notion
 
-Fernanda habla en `/asistente` (o con el botón 🎤 flotante) y el asistente crea, actualiza,
+Fernanda habla o escribe en Automatizaciones → Asistente de voz (`/automatizaciones/asistente`) y el asistente crea, actualiza,
 comenta, archiva o consulta filas en las bases de su Notion (workspace de la página E-COMMERCE).
 
 ## Piezas
 
 | Archivo | Qué hace |
 |---|---|
-| `proxy.ts` | Pide PIN **solo** en `/asistente` y `/api/asistente/*`. Crons, webhooks y el resto de la app no pasan por aquí. |
+| `proxy.ts` | Pide PIN **solo** en `/automatizaciones/asistente` y `/api/asistente/*`. Crons, webhooks y el resto de la app no pasan por aquí. |
 | `lib/asistente/sesion.ts` | Cookie firmada (HMAC) de 30 días. Cambiar el PIN cierra todas las sesiones. |
 | `app/entrar`, `app/api/entrar` | Pantalla y validación del PIN. |
 | `lib/notion.ts` | Cliente REST de Notion (token de integración interna, API 2022-06-28). |
@@ -15,7 +15,7 @@ comenta, archiva o consulta filas en las bases de su Notion (workspace de la pá
 | `lib/asistente/cerebro.ts` | Prompt + llamada a Groq (JSON) + Ejecutor que traduce a propiedades de Notion. |
 | `lib/asistente/reglas.ts` | Reglas del asistente en texto plano. |
 | `app/api/asistente` | Un turno de conversación; `ejecutar` para lo que Fernanda confirmó con el botón. |
-| `app/asistente` | Chat, micrófono (Web Speech API, es-MX, Chrome/Edge) y voz del navegador. |
+| `app/automatizaciones/asistente` | Chat, micrófono (Web Speech API, es-MX, Chrome/Edge) y voz del navegador. |
 
 Archivar o cambiar un responsable **siempre** pide Confirmar en pantalla; lo decide el código, no el modelo.
 

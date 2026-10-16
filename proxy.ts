@@ -1,4 +1,4 @@
-// proxy.ts — PIN solo para el asistente de voz (/asistente y /api/asistente).
+// proxy.ts — PIN solo para el asistente de voz (/automatizaciones/asistente y /api/asistente).
 // El resto de la app, los crons de Vercel y los webhooks NO pasan por aquí:
 // el matcher se limita a esas rutas a propósito.
 import { NextResponse, type NextRequest } from "next/server";
@@ -17,5 +17,5 @@ export async function proxy(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/asistente", "/asistente/:path*", "/api/asistente", "/api/asistente/:path*"],
+  matcher: ["/automatizaciones/asistente", "/automatizaciones/asistente/:path*", "/api/asistente", "/api/asistente/:path*"],
 };

@@ -11,8 +11,8 @@ function Formulario() {
   const [enviando, setEnviando] = useState(false);
 
   const volver = (() => {
-    const v = params.get("volver") ?? "/asistente";
-    return v.startsWith("/") && !v.startsWith("//") ? v : "/asistente";
+    const v = params.get("volver") ?? "/automatizaciones/asistente";
+    return v.startsWith("/") && !v.startsWith("//") ? v : "/automatizaciones/asistente";
   })();
 
   const entrar = async (e: React.FormEvent) => {

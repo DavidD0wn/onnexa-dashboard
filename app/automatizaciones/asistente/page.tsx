@@ -1,6 +1,6 @@
 "use client";
 import { Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { Mic, Square, Send, Volume2, VolumeX, RefreshCw, ExternalLink, Check, X, Database } from "lucide-react";
 import { Header } from "@/components/layout/Header";
 
@@ -37,7 +37,6 @@ const leerVozGuardada = () => {
 };
 
 function Asistente() {
-  const params = useSearchParams();
   const router = useRouter();
   const [mensajes, setMensajes] = useState<Mensaje[]>([]);
   const [historial, setHistorial] = useState<Turno[]>([]);
@@ -96,7 +95,7 @@ function Asistente() {
         body: JSON.stringify(cuerpo),
       });
       if (r.status === 401) {
-        router.replace("/entrar?volver=/asistente");
+        router.replace("/entrar?volver=/automatizaciones/asistente");
         return null;
       }
       const d = await r.json();
@@ -184,15 +183,6 @@ function Asistente() {
     }
   };
 
-  // /asistente?escuchar=1 (desde el botón flotante) abre el micrófono directo
-  useEffect(() => {
-    if (params.get("escuchar") === "1" && !sinMicrofono) {
-      const t = setTimeout(escuchar, 300);
-      return () => clearTimeout(t);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   const alternarVoz = () => {
     const v = !voz;
     setVozElegida(v);
@@ -206,7 +196,7 @@ function Asistente() {
 
   return (
     <div className="flex flex-col" style={{ minHeight: "100vh" }}>
-      <Header title="Asistente" subtitle="Habla y queda en tu Notion" />
+      <Header title="Asistente de voz" subtitle="Habla o escribe y queda en tu Notion" />
 
       <div className="flex-1 w-full flex flex-col gap-3" style={{ maxWidth: 672, margin: "0 auto", padding: "16px 16px 0" }}>
         {/* Estado de Notion */}

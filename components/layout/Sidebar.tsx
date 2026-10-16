@@ -74,7 +74,6 @@ const GROUPS = [
     label: "Operación",
     defaultOpen: false,
     items: [
-      { label: "Asistente",           href: "/asistente", icon: Mic         },
       { label: "Tareas",              href: "/tareas",    icon: CheckSquare },
       { label: "Pedidos Pendientes",  href: "/inventario", icon: Truck      },
       { label: "Facturas Proveedor",  href: "/facturas",  icon: Upload      },
@@ -88,6 +87,7 @@ const GROUPS = [
     items: [
       { label: "Bot Meta",  href: "/automatizaciones/meta", icon: Bot,  disabled: true },
       { label: "Bot Zoho",  href: "/automatizaciones/zoho", icon: Mail },
+      { label: "Asistente de voz", href: "/automatizaciones/asistente", icon: Mic },
     ],
   },
   {
