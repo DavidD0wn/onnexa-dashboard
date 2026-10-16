@@ -77,7 +77,8 @@ function physicalProductsOnly(source: ProductRow[]): ProductRow[] {
     }
     const countries = new Set([...existing.countryName.split(" + "), row.countryName]);
     existing.countryName = [...countries].join(" + ");
-    if (row.dataQuality && row.dataQuality !== existing.dataQuality) {
+    const vendio = row.units > 0 || Math.abs(row.revenueUsd) > 0.005;
+    if (vendio && row.dataQuality && row.dataQuality !== existing.dataQuality) {
       existing.dataQuality = [existing.dataQuality, row.dataQuality].filter(Boolean).join("; ");
     }
   }
@@ -85,7 +86,7 @@ function physicalProductsOnly(source: ProductRow[]): ProductRow[] {
     ...row,
     // "Sin pauta registrada" de un país sin anuncios confunde si el producto sí tuvo pauta
     dataQuality: (row.dataQuality || "").split("; ")
-      .filter((q) => q && !/^OK$/i.test(q) && !(row.adSpendUsd > 0 && /sin pauta/i.test(q))).join("; ") || "OK",
+      .filter((q) => q && !/^OK$/i.test(q) && !(row.adSpendUsd > 0 && /sin pauta/i.test(q)) && !(row.cogsUsd > 0 && /falta cogs/i.test(q))).join("; ") || "OK",
     netMargin: row.revenueUsd > 0 ? row.netProfit / row.revenueUsd * 100 : 0,
     roas: row.adSpendUsd > 0 ? row.revenueUsd / row.adSpendUsd : null,
     roasAds: row.adSpendUsd > 0 ? row.campaignConversionValue / row.adSpendUsd : null,

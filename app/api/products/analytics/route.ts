@@ -931,6 +931,9 @@ export async function GET(req: NextRequest) {
           }
         }
 
+        // Un pedido cuenta 1 vez por producto aunque traiga varias líneas que se
+        // agrupan en el mismo (InstantLift + su Brocha contaba 2 pedidos).
+        const pedidoContado = new Set<string>();
         for (const item of (order.line_items ?? [])) {
           if (isSkippableItem(item)) continue;
 
@@ -981,7 +984,9 @@ export async function GET(req: NextRequest) {
           products[key].revenueUsd   += priceUsd;
           products[key].revenueLocal += priceLocal;
           products[key].units        += physicalUnits;
-          products[key].orders       += 1;          // 1 por pedido, no por cantidad
+          const primeraLinea = !pedidoContado.has(key);
+          pedidoContado.add(key);
+          if (primeraLinea) products[key].orders += 1;   // 1 por pedido, no por línea ni cantidad
           products[key].cogsUsd      += itemCogsUsd;
           products[key].returnsUsdReal += refundedUsd;
           // Keep the latest unit price seen (most recent order wins)
@@ -999,7 +1004,7 @@ export async function GET(req: NextRequest) {
             };
             daily.revenueUsd += priceUsd;
             daily.units += physicalUnits;
-            daily.orders += 1;
+            if (primeraLinea) daily.orders += 1;
             daily.cogsUsd += itemCogsUsd;
             daily.returnsUsdReal += refundedUsd;
             productDailyRaw[key][date] = daily;
