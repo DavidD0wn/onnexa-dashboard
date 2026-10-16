@@ -22,6 +22,7 @@ export function validReportDate(date: string): boolean {
 const money = (value: number) =>
   new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(value);
 const pct = (value: number) => `${value.toFixed(1)}%`;
+const pct2 = (value: number) => `${value.toFixed(2)}%`;
 const ratio = (value: number | null | undefined) => value == null ? "No disponible" : `${value.toFixed(2)}x`;
 const dateLabel = (date: string) => `${date.slice(8, 10)}/${date.slice(5, 7)}/${date.slice(0, 4)}`;
 const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (character) => ({
@@ -43,6 +44,8 @@ type ProductRow = {
   metaUniqueCtr: number | null; metaLinkCpc: number | null;
   metaCostPerAtc: number | null; metaAov: number | null;
   dataQuality?: string;
+  // Desglose por país (se llena al agrupar el producto)
+  paises?: Array<{ pais: string; revenue: number; orders: number; units: number; ads: number; profit: number }>;
 };
 
 function physicalProductsOnly(source: ProductRow[]): ProductRow[] {
@@ -52,14 +55,21 @@ function physicalProductsOnly(source: ProductRow[]): ProductRow[] {
     if (!(row.orders > 0 || row.units > 0 ||
       [row.revenueUsd, row.adSpendUsd, row.cogsUsd, row.feesUsd].some((value) => Math.abs(value) > 0.001))) continue;
     const key = `${row.brandName}\u0000${row.name}`;
+    // El contracargo del día es de pedidos anteriores y puede ganarse: no se carga
+    // al producto (va aparte en el resumen). Así el profit del producto es
+    // revenue − COGS − pauta − fees/impuestos, como lo calcula Fernanda.
+    const profit = row.netProfit + (row.chargebacksUsd || 0);
+    const pais = { pais: row.countryName, revenue: row.revenueUsd, orders: row.orders, units: row.units, ads: row.adSpendUsd, profit };
     const existing = grouped.get(key);
     if (!existing) {
-      grouped.set(key, { ...row, variant: "" });
+      grouped.set(key, { ...row, netProfit: profit, chargebacksUsd: 0, variant: "", paises: [pais] });
       continue;
     }
+    existing.paises!.push(pais);
+    existing.netProfit += profit;
     for (const field of [
       "revenueUsd", "adSpendUsd", "cogsUsd", "feesUsd", "shippingUsd",
-      "taxesUsd", "chargebacksUsd", "orders", "units", "netProfit",
+      "taxesUsd", "orders", "units",
       "campaignPurchases", "campaignConversionValue", "campaignImpressions", "campaignClicks",
       "campaignLinkClicks", "campaignAddToCart", "campaignReach", "campaignUniqueLinkClicks",
     ] as const) {
@@ -73,6 +83,9 @@ function physicalProductsOnly(source: ProductRow[]): ProductRow[] {
   }
   return [...grouped.values()].map((row) => ({
     ...row,
+    // "Sin pauta registrada" de un país sin anuncios confunde si el producto sí tuvo pauta
+    dataQuality: (row.dataQuality || "").split("; ")
+      .filter((q) => q && !/^OK$/i.test(q) && !(row.adSpendUsd > 0 && /sin pauta/i.test(q))).join("; ") || "OK",
     netMargin: row.revenueUsd > 0 ? row.netProfit / row.revenueUsd * 100 : 0,
     roas: row.adSpendUsd > 0 ? row.revenueUsd / row.adSpendUsd : null,
     roasAds: row.adSpendUsd > 0 ? row.campaignConversionValue / row.adSpendUsd : null,
@@ -88,8 +101,23 @@ function physicalProductsOnly(source: ProductRow[]): ProductRow[] {
   })).sort((a, b) => b.revenueUsd - a.revenueUsd);
 }
 
+function paisesTexto(row: ProductRow): string[] {
+  if (!row.paises || row.paises.length < 2) return [];
+  return ["Por país:", ...[...row.paises].sort((a, b) => b.revenue - a.revenue).map((p) =>
+    `  • ${p.pais}: revenue ${money(p.revenue)} · ${p.orders} pedido${p.orders === 1 ? "" : "s"} / ${p.units} uds · ads ${money(p.ads)} · ` +
+    `profit ${p.profit >= 0 ? "+" : ""}${money(p.profit)}` +
+    (p.ads > 0 ? ` · ROAS ${(p.revenue / p.ads).toFixed(2)}x` : " · sin pauta (venta orgánica)"))];
+}
+
+function paisesHtml(row: ProductRow): string {
+  const t = paisesTexto(row);
+  if (!t.length) return "";
+  return `<tr><td colspan="2" style="padding:10px 12px;background:#fbfcfc;border-top:1px solid #e8edf1;font-size:12px;line-height:1.6;color:#33454f"><strong>Por país</strong><br>` +
+    t.slice(1).map((l) => escapeHtml(l.trim())).join("<br>") + `</td></tr>`;
+}
+
 function renderHtmlReport(date: string, rows: ProductRow[], summary: {
-  revenue: number; adSpend: number; cogs: number; fees: number; profit: number;
+  revenue: number; adSpend: number; cogs: number; fees: number; profit: number; chargebacks: number;
 }) {
   const tableRow = (label: string, value: string, accent = false) =>
     `<tr><td style="padding:9px 12px;border-bottom:1px solid #e8edf1;color:#53616e;font-size:13px">${escapeHtml(label)}</td>` +
@@ -113,18 +141,20 @@ function renderHtmlReport(date: string, rows: ProductRow[], summary: {
       tableRow("Revenue neto", money(row.revenueUsd)) +
       tableRow("Ads Spend", money(row.adSpendUsd)) +
       tableRow("COGS", money(row.cogsUsd)) +
-      tableRow("Fees y otros costos", money(row.feesUsd + row.shippingUsd + row.taxesUsd + row.chargebacksUsd)) +
+      tableRow("Fees (Shopify Payments) e impuestos", money(row.feesUsd + row.shippingUsd + row.taxesUsd)) +
       tableRow("Pedidos / unidades", `${row.orders} / ${row.units}`) +
       tableRow("Margen neto", row.revenueUsd > 0 ? pct(row.netMargin) : "No aplicable") +
       `<tr><td style="padding:11px 12px;color:#24343f;font-size:14px;font-weight:700">Profit / Loss</td><td style="padding:11px 12px;text-align:right;color:${profitColor};font-size:16px;font-weight:800">${escapeHtml(`${row.netProfit >= 0 ? "+" : ""}${money(row.netProfit)}`)}</td></tr>` +
       `<tr><td colspan="2" style="padding:10px 12px;background:#f8fbfa;border-top:1px solid #e8edf1"><strong style="font-size:12px;color:#52636a">ROAS financiero:</strong> <strong style="color:#142d35">${escapeHtml(row.adSpendUsd > 0 ? ratio(row.roas) : "Sin pauta")}</strong></td></tr>` +
+      paisesHtml(row) +
       `<tr><td colspan="2" style="padding:13px 12px 4px;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#637783">Meta Ads</td></tr>` +
       tableRow("Amount spent", money(row.adSpendUsd)) +
       tableRow("CPM", row.metaCpm == null ? "No disponible" : money(row.metaCpm)) +
-      tableRow("Unique CTR (clic de enlace)", row.metaUniqueCtr == null ? "No disponible" : pct(row.metaUniqueCtr)) +
+      tableRow("Unique CTR (clic de enlace)", row.metaUniqueCtr == null ? "No disponible" : pct2(row.metaUniqueCtr)) +
       tableRow("CPC (clic de enlace)", row.metaLinkCpc == null ? "No disponible" : money(row.metaLinkCpc)) +
       tableRow("Adds to cart", row.adSpendUsd > 0 ? row.campaignAddToCart.toFixed(0) : "No disponible") +
       tableRow("Cost per add to cart", row.metaCostPerAtc == null ? "No disponible" : money(row.metaCostPerAtc)) +
+      tableRow("Adds to cart por compra", row.campaignPurchases > 0 ? (row.campaignAddToCart / row.campaignPurchases).toFixed(2) : "No disponible") +
       tableRow("Purchases", row.adSpendUsd > 0 ? row.campaignPurchases.toFixed(0) : "No disponible") +
       tableRow("Cost per result (CPA)", row.cpaAds == null ? "No disponible" : money(row.cpaAds)) +
       tableRow("Purchase ROAS", row.adSpendUsd > 0 ? ratio(row.roasAds) : "No disponible") +
@@ -145,10 +175,14 @@ function renderHtmlReport(date: string, rows: ProductRow[], summary: {
     tableRow("Revenue neto", money(summary.revenue)) +
     tableRow("Ads Spend", money(summary.adSpend)) +
     tableRow("COGS", money(summary.cogs)) +
-    tableRow("Fees", money(summary.fees)) +
+    tableRow("Fees (Shopify Payments) e impuestos", money(summary.fees)) +
     tableRow("Margen neto", summary.revenue > 0 ? pct(summary.profit / summary.revenue * 100) : "No aplicable") +
     tableRow("ROAS financiero", summary.adSpend > 0 ? ratio(summary.revenue / summary.adSpend) : "Sin pauta") +
-    tableRow("Profit / Loss", `${summary.profit >= 0 ? "+" : ""}${money(summary.profit)}`, true) +
+    tableRow("Profit / Loss de productos", `${summary.profit >= 0 ? "+" : ""}${money(summary.profit)}`, true) +
+    (summary.chargebacks > 0.005
+      ? tableRow("Contracargos del día (no se asignan a productos)", `−${money(summary.chargebacks)}`) +
+        tableRow("Profit / Loss después de contracargos", `${summary.profit - summary.chargebacks >= 0 ? "+" : ""}${money(summary.profit - summary.chargebacks)}`, true)
+      : "") +
     `</table>` +
     `<h2 style="font-size:16px;margin:25px 4px 10px;color:#12343b">Profit por producto</h2>` +
     `<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse;background:#ffffff;border:1px solid #dce8e6;border-radius:12px;padding:12px"><tbody>${bars}</tbody></table>` +
@@ -214,25 +248,32 @@ export async function buildDailyFinancialReport(base: string, date: string) {
     }
   }
   const rows = physicalProductsOnly(analytics.rows as ProductRow[]);
-  const physical = rows.reduce((sum, row) => ({
+  const physicalSums = rows.reduce((sum, row) => ({
     revenue: sum.revenue + row.revenueUsd,
     adSpend: sum.adSpend + row.adSpendUsd,
     cogs: sum.cogs + row.cogsUsd,
-    fees: sum.fees + row.feesUsd,
+    fees: sum.fees + row.feesUsd + row.shippingUsd + row.taxesUsd,
     profit: sum.profit + row.netProfit,
   }), { revenue: 0, adSpend: 0, cogs: 0, fees: 0, profit: 0 });
+  // Contracargos registrados ese día (todas las filas de Product Analytics): van aparte.
+  const chargebacks = (analytics.rows as ProductRow[]).reduce((sum, row) => sum + (row.chargebacksUsd || 0), 0);
+  const physical = { ...physicalSums, chargebacks };
   const lines = [
     "REPORTE FINANCIERO DIARIO",
     `Fecha: ${dateLabel(date)} · Zona horaria: ${TIME_ZONE}`,
-    "Importes en USD. Revenue = ingreso neto de Shopify; profit incluye COGS, pauta, fees y demás costos registrados.",
+    "Importes en USD. Revenue = ingreso neto de Shopify; profit = revenue − COGS − pauta − fees de Shopify Payments e impuestos. Los contracargos van aparte.",
     "",
     "RESUMEN DE PRODUCTOS FÍSICOS",
     `Revenue total: ${money(physical.revenue)}`,
     `Ads Spend: ${money(physical.adSpend)}`,
     `COGS: ${money(physical.cogs)}`,
-    `Fees: ${money(physical.fees)}`,
+    `Fees (Shopify Payments) e impuestos: ${money(physical.fees)}`,
     `Margen neto: ${physical.revenue > 0 ? pct(physical.profit / physical.revenue * 100) : "No aplicable"}`,
-    `Profit/Loss: ${physical.profit >= 0 ? "+" : ""}${money(physical.profit)}`,
+    `Profit/Loss de productos: ${physical.profit >= 0 ? "+" : ""}${money(physical.profit)}`,
+    ...(chargebacks > 0.005 ? [
+      `Contracargos del día (no se asignan a productos): −${money(chargebacks)}`,
+      `Profit/Loss después de contracargos: ${physical.profit - chargebacks >= 0 ? "+" : ""}${money(physical.profit - chargebacks)}`,
+    ] : []),
     `ROAS financiero (Shopify / pauta): ${physical.adSpend > 0 ? ratio(physical.revenue / physical.adSpend) : "Sin pauta"}`,
     `Productos físicos detallados: ${rows.length}`,
     "Se excluyen upsells, productos digitales y pauta sin producto identificado. Este subtotal puede diferir del dashboard global.",
@@ -246,18 +287,20 @@ export async function buildDailyFinancialReport(base: string, date: string) {
       `Revenue total: ${money(row.revenueUsd)}`,
       `Ads Spend: ${money(row.adSpendUsd)}`,
       `COGS: ${money(row.cogsUsd)}`,
-      `Fees y otros costos registrados: ${money(row.feesUsd + row.shippingUsd + row.taxesUsd + row.chargebacksUsd)}`,
+      `Fees (Shopify Payments) e impuestos: ${money(row.feesUsd + row.shippingUsd + row.taxesUsd)}`,
       `Pedidos / unidades: ${row.orders} / ${row.units}`,
       `Margen neto: ${row.revenueUsd > 0 ? pct(row.netMargin) : "No aplicable"}`,
       `Profit/Loss: ${row.netProfit >= 0 ? "+" : ""}${money(row.netProfit)}`,
       `ROAS financiero: ${row.adSpendUsd > 0 ? ratio(row.roas) : "Sin pauta"}`,
+      ...paisesTexto(row),
       "MÉTRICAS DE META ADS",
       `Amount spent: ${money(row.adSpendUsd)}`,
       `CPM: ${row.metaCpm == null ? "No disponible" : money(row.metaCpm)}`,
-      `Unique CTR (clic de enlace): ${row.metaUniqueCtr == null ? "No disponible" : pct(row.metaUniqueCtr)}`,
+      `Unique CTR (clic de enlace): ${row.metaUniqueCtr == null ? "No disponible" : pct2(row.metaUniqueCtr)}`,
       `CPC (clic de enlace): ${row.metaLinkCpc == null ? "No disponible" : money(row.metaLinkCpc)}`,
       `Adds to cart: ${row.adSpendUsd > 0 ? row.campaignAddToCart.toFixed(0) : "No disponible"}`,
       `Cost per add to cart: ${row.metaCostPerAtc == null ? "No disponible" : money(row.metaCostPerAtc)}`,
+      `Adds to cart por compra: ${row.campaignPurchases > 0 ? (row.campaignAddToCart / row.campaignPurchases).toFixed(2) : "No disponible"}`,
       `Purchases: ${row.adSpendUsd > 0 ? row.campaignPurchases.toFixed(0) : "No disponible"}`,
       `Cost per result (CPA): ${row.cpaAds == null ? "No disponible" : money(row.cpaAds)}`,
       `Purchase ROAS: ${row.adSpendUsd > 0 ? ratio(row.roasAds) : "No disponible"}`,
