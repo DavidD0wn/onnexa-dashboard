@@ -4,6 +4,7 @@
 // Fernanda en acciones, y el Ejecutor las traduce a propiedades reales de Notion.
 // Port de asistente-voz-notion/cerebro.py. Sin SDK: endpoint OpenAI-compatible.
 // ─────────────────────────────────────────────────────────────────────────────
+import { mensajeSeguro } from "./errores";
 import * as notion from "@/lib/notion";
 import { NotionError, tituloDe, valorLegible, type Json } from "@/lib/notion";
 import type { Base, Campo, Mapa } from "./mapa";
@@ -104,7 +105,8 @@ function sistema(m: Mapa): string {
 }
 
 export async function pensar(m: Mapa, texto: string, historial: Turno[]): Promise<{ plan: Plan; crudo: string }> {
-  const key = process.env.GROQ_API_KEY;
+  // En Vercel la variable llegó con la llave repetida en varias líneas: se usa la primera.
+  const key = process.env.GROQ_API_KEY?.split(/\s+/).find(Boolean);
   if (!key) throw new Error("Falta GROQ_API_KEY");
   const cuerpo = JSON.stringify({
     model: MODELO,
@@ -365,7 +367,7 @@ export class Ejecutor {
       try {
         out.push(await this.ejecutar(a));
       } catch (e) {
-        out.push({ ok: false, texto: `ERROR ${e instanceof Error ? e.message : String(e)}` });
+        out.push({ ok: false, texto: `ERROR ${mensajeSeguro(e)}` });
       }
     }
     return out;

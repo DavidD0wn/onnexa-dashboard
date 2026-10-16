@@ -3,6 +3,7 @@
 //   { texto, historial }        → el cerebro decide; si no requiere confirmación, ejecuta en Notion.
 //   { ejecutar: acciones, ... } → Fernanda pulsó "Confirmar": se ejecutan las acciones propuestas.
 // El historial vive en el cliente (últimos 10 turnos); aquí se devuelve lo que hay que añadirle.
+import { mensajeSeguro } from "@/lib/asistente/errores";
 import { NextResponse } from "next/server";
 import { obtenerMapa } from "@/lib/asistente/mapa";
 import { leerTokenNotion } from "@/lib/asistente/config";
@@ -87,7 +88,7 @@ export async function POST(req: Request) {
       historial: [...turno, ...nota(resultados.map((r) => r.texto).join(" | "))],
     });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
+    const msg = mensajeSeguro(e);
     console.error("[asistente]", msg);
     return NextResponse.json({ error: msg }, { status: 500 });
   }

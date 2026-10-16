@@ -1,5 +1,6 @@
 // app/api/asistente/notion/route.ts
 // POST { token } → prueba la llave contra Notion, la guarda y devuelve lo que ve (conecta al instante).
+import { mensajeSeguro } from "@/lib/asistente/errores";
 import { NextResponse } from "next/server";
 import { NotionError, probarLlave } from "@/lib/notion";
 import { guardarTokenNotion } from "@/lib/asistente/config";
@@ -20,14 +21,14 @@ export async function POST(req: Request) {
     const rechazada = e instanceof NotionError && /Notion 40[13]/.test(e.message);
     const error = rechazada
       ? "Notion rechazó la llave. Revisa que la copiaste completa."
-      : `No se pudo hablar con Notion: ${e instanceof Error ? e.message : String(e)}`;
+      : `No se pudo hablar con Notion: ${mensajeSeguro(e)}`;
     return NextResponse.json({ error }, { status: 400 });
   }
   try {
     await guardarTokenNotion(llave);
     return NextResponse.json({ conectado: true, ...resumenMapa(await obtenerMapa(true)) });
   } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });
+    return NextResponse.json({ error: mensajeSeguro(e) }, { status: 500 });
   }
 }
 
