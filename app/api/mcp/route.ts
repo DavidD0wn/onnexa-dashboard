@@ -1,52 +1,46 @@
 // app/api/mcp/route.ts
-// Servidor MCP (Streamable HTTP, sin estado) del asistente de Notion, para usarlo desde
-// Claude Code o cualquier cliente MCP:  claude mcp add --transport http notion-asistente <url>/api/mcp
-// Es JSON-RPC a mano, sin SDK: solo initialize, tools/list y tools/call.
-// - asistente_notion / asistente_confirmar: el asistente completo (lenguaje natural + confirmación).
-// - notion_*: operaciones directas y deterministas, para clientes que ya tienen su propio modelo.
-import { POST as turno } from "../asistente/route";
+// Servidor MCP (Streamable HTTP, sin estado) de Onnexa para Claude, ChatGPT o cualquier cliente MCP:
+//   claude mcp add --transport http onnexa <url>/api/mcp
+// JSON-RPC a mano, sin SDK: initialize, tools/list y tools/call.
+// No usa Groq: el que piensa es el modelo del cliente (Claude/ChatGPT, con sus tokens); aquí solo se
+// ejecuta. Las reglas y la memoria del asistente se le entregan en `instructions` y en asistente_reglas.
 import { obtenerMapa } from "@/lib/asistente/mapa";
 import { Ejecutor, completarTarea, pendientesDeConfirmar, type Accion } from "@/lib/asistente/cerebro";
 import { NextResponse } from "next/server";
 import { DATOS, consultarDatos } from "@/lib/asistente/datos";
-
-async function datos(nombre: string, args: Record<string, unknown> = {}) {
-  const res = await consultarDatos(nombre, args);
-  return { content: [{ type: "text", text: res.texto }], isError: !res.ok };
-}
+import { REGLAS_ASISTENTE } from "@/lib/asistente/reglas";
+import { guardarAprendizaje, leerAprendizajes } from "@/lib/asistente/config";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const ROL = { type: "string", description: "Rol de la tabla: ideas, tareas o proyectos (ver notion_bases)." };
-const HERRAMIENTAS = [
+const BUSCAR = { type: "string", description: "Parte del título de la fila a localizar." };
+const CONFIRMAR = { type: "boolean", description: "Solo true después de que el usuario confirmó la vista previa." };
+
+const INSTRUCCIONES =
+  "Servidor de Onnexa (tiendas Glowmmi, Balancea y Pleena de María Fernanda Rey). " +
+  "Antes de escribir en Notion llama a asistente_reglas: trae las reglas y lo que Fernanda le ha enseñado al asistente, con prioridad. " +
+  "Toda tarea nueva va con Status Delegada, Create Date (hoy si no dicen otra) y Assigned To; si no dicen para quién, pregunta. " +
+  "Toda escritura (notion_crear, notion_actualizar, notion_comentar, notion_archivar) primero devuelve una vista previa: muéstrasela al usuario y repite la llamada con confirmar: true solo si dice que sí. " +
+  "Si el usuario te corrige o dice 'recuerda que…', guárdalo con asistente_recordar. " +
+  "Para números (ventas, gasto, ROAS, P&L, productos, LTV) usa las herramientas app_*; montos en USD; no inventes cifras.";
+
+const HERRAMIENTAS: any[] = [
   {
-    name: "asistente_notion",
-    description:
-      "Habla con el asistente de Notion de Fernanda (E-COMMERCE): crea, actualiza, comenta, archiva o consulta ideas, tareas y proyectos en lenguaje natural. " +
-      "Si la respuesta trae `pendientes`, la acción requiere confirmación: pregúntale al usuario y luego llama a asistente_confirmar con esas acciones.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        texto: { type: "string", description: "Lo que se le dice al asistente, en español." },
-        historial: { type: "array", description: "Turnos anteriores devueltos por esta misma herramienta (opcional).", items: { type: "object" } },
-      },
-      required: ["texto"],
-    },
+    name: "asistente_reglas",
+    description: "Reglas del asistente y lo que Fernanda le ha enseñado (memoria). Llámala al empezar y antes de escribir en Notion.",
+    inputSchema: { type: "object", properties: {} },
   },
   {
-    name: "asistente_confirmar",
-    description: "Ejecuta las acciones `pendientes` que devolvió asistente_notion, una vez que el usuario confirmó.",
-    inputSchema: {
-      type: "object",
-      properties: { acciones: { type: "array", items: { type: "object" } } },
-      required: ["acciones"],
-    },
+    name: "asistente_recordar",
+    description: "Guarda en la memoria del asistente algo que Fernanda enseñó o corrigió, como una regla corta y general. Lo usan Claude, ChatGPT y el asistente de voz.",
+    inputSchema: { type: "object", properties: { texto: { type: "string" } }, required: ["texto"] },
   },
   {
     name: "notion_bases",
-    description: "Lista las tablas que ve el asistente: rol (ideas, tareas, proyectos), título y campos con sus opciones. Úsalo antes de crear o consultar.",
+    description: "Lista las tablas de Notion: rol (ideas, tareas, proyectos), título y campos con sus opciones. Úsalo antes de crear, cambiar o consultar.",
     inputSchema: { type: "object", properties: {} },
   },
   {
@@ -54,88 +48,80 @@ const HERRAMIENTAS = [
     description:
       'Consulta filas de una tabla. filtro es un objeto con nombres de campo exactos: {"Status": "Completed"} para igual, ' +
       '{"Status": {"distinto": "Completed"}} para excluir. limite: máximo 100 (por defecto 10).',
-    inputSchema: {
-      type: "object",
-      properties: { base: ROL, filtro: { type: "object" }, limite: { type: "number" } },
-      required: ["base"],
-    },
+    inputSchema: { type: "object", properties: { base: ROL, filtro: { type: "object" }, limite: { type: "number" } }, required: ["base"] },
   },
   {
     name: "notion_crear",
-    description: "Crea una fila en una tabla. propiedades usa los nombres de campo exactos de notion_bases (el título va en el campo de título).",
+    description: "Crea una fila. propiedades usa los nombres de campo exactos de notion_bases (el título va en el campo de título). Primero devuelve vista previa.",
     inputSchema: {
       type: "object",
-      properties: {
-        base: ROL,
-        propiedades: { type: "object" },
-        contenido: { type: "string", description: "Texto opcional del cuerpo de la página." },
-        confirmar: { type: "boolean", description: "Solo true después de que el usuario confirmó la vista previa." },
-      },
+      properties: { base: ROL, propiedades: { type: "object" }, contenido: { type: "string", description: "Texto opcional del cuerpo." }, confirmar: CONFIRMAR },
       required: ["base", "propiedades"],
     },
   },
   {
-    name: "notion_comentar",
-    description: "Agrega un comentario a una fila, buscándola por parte de su título.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        base: ROL,
-        buscar: { type: "string" },
-        texto: { type: "string" },
-        confirmar: { type: "boolean", description: "Solo true después de que el usuario confirmó la vista previa." },
-      },
-      required: ["base", "buscar", "texto"],
-    },
+    name: "notion_actualizar",
+    description: "Cambia campos de una fila buscada por su título (estado, fecha, responsable, prioridad…). Primero devuelve vista previa.",
+    inputSchema: { type: "object", properties: { base: ROL, buscar: BUSCAR, propiedades: { type: "object" }, confirmar: CONFIRMAR }, required: ["base", "buscar", "propiedades"] },
   },
-];
-
-HERRAMIENTAS.push(
+  {
+    name: "notion_comentar",
+    description: "Agrega un comentario a una fila buscada por su título. Primero devuelve vista previa.",
+    inputSchema: { type: "object", properties: { base: ROL, buscar: BUSCAR, texto: { type: "string" }, confirmar: CONFIRMAR }, required: ["base", "buscar", "texto"] },
+  },
+  {
+    name: "notion_archivar",
+    description: "Archiva una fila (va a la papelera de Notion, se puede recuperar). Primero devuelve vista previa.",
+    inputSchema: { type: "object", properties: { base: ROL, buscar: BUSCAR, confirmar: CONFIRMAR }, required: ["base", "buscar"] },
+  },
   ...Object.entries(DATOS).map(([name, d]) => ({
     name,
     description: d.descripcion,
-    inputSchema: { type: "object", properties: Object.fromEntries(Object.entries(d.params).map(([k, desc]) => [k, { type: "string", description: desc }])) } as any,
+    inputSchema: { type: "object", properties: Object.fromEntries(Object.entries(d.params).map(([k, desc]) => [k, { type: "string", description: desc }])) },
   })),
-);
+];
 
-const DIRECTAS = new Set(["notion_bases", "notion_consultar", "notion_crear", "notion_comentar"]);
+const TIPO: Record<string, Accion["tipo"]> = {
+  notion_consultar: "consultar",
+  notion_crear: "crear",
+  notion_actualizar: "actualizar",
+  notion_comentar: "comentar",
+  notion_archivar: "archivar",
+};
 
-async function directa(nombre: string, a: any) {
+async function directa(nombre: string, a: any): Promise<{ ok: boolean; texto: string }> {
+  if (nombre === "asistente_reglas") {
+    const aprendidas = await leerAprendizajes();
+    return { ok: true, texto: `REGLAS:\n${REGLAS_ASISTENTE}\n\nLO QUE FERNANDA LE ENSEÑÓ (prioridad):\n${aprendidas.map((x) => `- ${x}`).join("\n") || "(nada todavía)"}` };
+  }
+  if (nombre === "asistente_recordar") {
+    if (!a?.texto?.trim()) return { ok: false, texto: "Falta texto." };
+    await guardarAprendizaje(a.texto);
+    return { ok: true, texto: `Aprendido: ${a.texto}` };
+  }
   const mapa = await obtenerMapa();
   if (nombre === "notion_bases") {
     const bases = Object.values(mapa.bases)
       .map((b) => ({ rol: Object.entries(mapa.roles).find(([, id]) => id === b.id)?.[0] ?? null, titulo: b.titulo, campos: Object.entries(b.campos).map(([n, c]) => ({ nombre: n, tipo: c.tipo, opciones: c.opciones })) }))
       .filter((b) => b.rol);
-    return { ok: true, texto: JSON.stringify(bases) };
+    return { ok: true, texto: JSON.stringify({ bases, personas: mapa.personas.map((p) => p.nombre) }) };
   }
   if (typeof a?.base !== "string") return { ok: false, texto: "Falta base (ideas, tareas o proyectos)." };
-  const accion: Accion =
-    nombre === "notion_consultar"
-      ? { tipo: "consultar", base: a.base, filtro: a.filtro ?? null, limite: a.limite }
-      : nombre === "notion_crear"
-        ? { tipo: "crear", base: a.base, propiedades: a.propiedades ?? {}, contenido: a.contenido }
-        : { tipo: "comentar", base: a.base, buscar: a.buscar, texto: a.texto };
+  const accion: Accion = { tipo: TIPO[nombre], base: a.base, propiedades: a.propiedades, contenido: a.contenido, buscar: a.buscar, texto: a.texto, filtro: a.filtro ?? null, limite: a.limite };
   const falta = completarTarea(mapa, accion); // tareas: Delegada + fecha de hoy; responsable obligatorio
   if (falta) return { ok: false, texto: `${falta} Falta el campo de responsable (Assigned To).` };
   // Cualquier escritura primero muestra la vista previa; no escribe hasta confirmar: true.
-  if (nombre !== "notion_consultar" && a.confirmar !== true) {
+  if (accion.tipo !== "consultar" && a.confirmar !== true) {
     const cambios = pendientesDeConfirmar(mapa, [accion]);
-    return { ok: true, texto: `NO SE HIZO NADA. Voy a ${cambios.join(" y ")}. Pide confirmación al usuario y vuelve a llamar con confirmar: true.` };
+    return { ok: true, texto: `NO SE HIZO NADA. Voy a ${cambios.join(" y ")} con ${JSON.stringify(accion.propiedades ?? {})}. Pide confirmación al usuario y vuelve a llamar con confirmar: true.` };
   }
   const [res] = await new Ejecutor(mapa).ejecutarTodo([accion]);
   return res;
 }
 
 async function llamar(nombre: string, args: any) {
-  if (nombre in DATOS) return datos(nombre, args);
-  if (DIRECTAS.has(nombre)) {
-    const res = await directa(nombre, args);
-    return { content: [{ type: "text", text: res.texto }], isError: !res.ok };
-  }
-  const body = nombre === "asistente_confirmar" ? { ejecutar: args?.acciones ?? [] } : { texto: args?.texto, historial: args?.historial };
-  const r = await turno(new Request("http://mcp/api/asistente", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }));
-  const data = await r.json();
-  return { content: [{ type: "text", text: JSON.stringify(data) }], isError: !r.ok };
+  const res = nombre in DATOS ? await consultarDatos(nombre, args) : await directa(nombre, args);
+  return { content: [{ type: "text", text: res.texto }], isError: !res.ok };
 }
 
 // Sin llave: la usan solo Fernanda y Hamlet. Las escrituras siguen pidiendo confirmación.
@@ -148,7 +134,12 @@ export async function POST(req: Request) {
   try {
     switch (msg.method) {
       case "initialize":
-        return ok({ protocolVersion: msg.params?.protocolVersion ?? "2025-03-26", capabilities: { tools: {} }, serverInfo: { name: "notion-asistente", version: "1.1.0" } });
+        return ok({
+          protocolVersion: msg.params?.protocolVersion ?? "2025-03-26",
+          capabilities: { tools: {} },
+          serverInfo: { name: "onnexa", version: "2.0.0" },
+          instructions: INSTRUCCIONES,
+        });
       case "ping":
         return ok({});
       case "tools/list":
