@@ -375,17 +375,17 @@ export class Ejecutor {
 }
 
 /** Archivar o cambiar el responsable siempre pasa por el botón de Confirmar (lo decide el código, no el modelo). */
+/** Cualquier cambio en Notion (crear, actualizar, comentar, archivar) pide confirmación; consultar no. */
 export function pendientesDeConfirmar(m: Mapa, acciones: Accion[]): string[] {
   const avisos: string[] = [];
   for (const a of acciones) {
     const esq = m.bases[m.roles[a.base]];
+    const en = esq ? ` en ${esq.titulo}` : "";
     const nombre = a.buscar ? `«${a.buscar}»` : "eso";
-    if (a.tipo === "archivar") avisos.push(`archivar ${nombre}${esq ? ` en ${esq.titulo}` : ""}`);
-    if (a.tipo === "actualizar" && esq) {
-      const campoResp = esq.roles_campos.responsable?.toLowerCase();
-      const toca = Object.keys(a.propiedades ?? {}).some((k) => k.toLowerCase() === "responsable" || k.toLowerCase() === campoResp);
-      if (toca) avisos.push(`cambiar el responsable de ${nombre}`);
-    }
+    if (a.tipo === "crear") avisos.push(`crear «${String(a.propiedades?.[esq?.campo_titulo ?? ""] ?? "una fila")}»${en}`);
+    if (a.tipo === "actualizar") avisos.push(`cambiar ${nombre}${en}`);
+    if (a.tipo === "comentar") avisos.push(`agregar un comentario a ${nombre}${en}`);
+    if (a.tipo === "archivar") avisos.push(`archivar ${nombre}${en}`);
   }
   return avisos;
 }

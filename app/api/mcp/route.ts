@@ -7,7 +7,7 @@
 import { NextResponse } from "next/server";
 import { POST as turno } from "../asistente/route";
 import { obtenerMapa } from "@/lib/asistente/mapa";
-import { Ejecutor, type Accion } from "@/lib/asistente/cerebro";
+import { Ejecutor, pendientesDeConfirmar, type Accion } from "@/lib/asistente/cerebro";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -59,7 +59,12 @@ const HERRAMIENTAS = [
     description: "Crea una fila en una tabla. propiedades usa los nombres de campo exactos de notion_bases (el título va en el campo de título).",
     inputSchema: {
       type: "object",
-      properties: { base: ROL, propiedades: { type: "object" }, contenido: { type: "string", description: "Texto opcional del cuerpo de la página." } },
+      properties: {
+        base: ROL,
+        propiedades: { type: "object" },
+        contenido: { type: "string", description: "Texto opcional del cuerpo de la página." },
+        confirmar: { type: "boolean", description: "Solo true después de que el usuario confirmó la vista previa." },
+      },
       required: ["base", "propiedades"],
     },
   },
@@ -68,7 +73,12 @@ const HERRAMIENTAS = [
     description: "Agrega un comentario a una fila, buscándola por parte de su título.",
     inputSchema: {
       type: "object",
-      properties: { base: ROL, buscar: { type: "string" }, texto: { type: "string" } },
+      properties: {
+        base: ROL,
+        buscar: { type: "string" },
+        texto: { type: "string" },
+        confirmar: { type: "boolean", description: "Solo true después de que el usuario confirmó la vista previa." },
+      },
       required: ["base", "buscar", "texto"],
     },
   },
@@ -91,6 +101,11 @@ async function directa(nombre: string, a: any) {
       : nombre === "notion_crear"
         ? { tipo: "crear", base: a.base, propiedades: a.propiedades ?? {}, contenido: a.contenido }
         : { tipo: "comentar", base: a.base, buscar: a.buscar, texto: a.texto };
+  // Cualquier escritura primero muestra la vista previa; no escribe hasta confirmar: true.
+  if (nombre !== "notion_consultar" && a.confirmar !== true) {
+    const cambios = pendientesDeConfirmar(mapa, [accion]);
+    return { ok: true, texto: `NO SE HIZO NADA. Voy a ${cambios.join(" y ")}. Pide confirmación al usuario y vuelve a llamar con confirmar: true.` };
+  }
   const [res] = await new Ejecutor(mapa).ejecutarTodo([accion]);
   return res;
 }
@@ -106,7 +121,17 @@ async function llamar(nombre: string, args: any) {
   return { content: [{ type: "text", text: JSON.stringify(data) }], isError: !r.ok };
 }
 
+// Llave del MCP (variable MCP_CLAVE en Vercel). Sin llave configurada, no responde nada.
+// Va en la URL (?clave=…) para que funcione también desde claude.ai, o en el header Authorization: Bearer.
+function autorizado(req: Request): boolean {
+  const clave = process.env.MCP_CLAVE;
+  if (!clave) return false;
+  const bearer = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
+  return bearer === clave || new URL(req.url).searchParams.get("clave") === clave;
+}
+
 export async function POST(req: Request) {
+  if (!autorizado(req)) return NextResponse.json({ jsonrpc: "2.0", id: null, error: { code: -32001, message: "Llave del MCP incorrecta o no configurada" } }, { status: 401 });
   const msg = await req.json().catch(() => null);
   if (!msg || msg.jsonrpc !== "2.0") return NextResponse.json({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "JSON-RPC inválido" } }, { status: 400 });
   if (msg.id === undefined) return new Response(null, { status: 202 }); // notificaciones (p. ej. notifications/initialized)
