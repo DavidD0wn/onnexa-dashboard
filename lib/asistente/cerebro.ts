@@ -9,6 +9,8 @@ import * as notion from "@/lib/notion";
 import { NotionError, tituloDe, valorLegible, type Json } from "@/lib/notion";
 import type { Base, Campo, Mapa } from "./mapa";
 import { REGLAS_ASISTENTE } from "./reglas";
+import { catalogoDatos, consultarDatos } from "./datos";
+import { guardarAprendizaje, leerAprendizajes } from "./config";
 
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 // llama-3.3-70b-versatile ya no está disponible para esta llave de Groq (404 model_not_found).
@@ -16,7 +18,7 @@ const MODELO = process.env.ASISTENTE_MODELO ?? process.env.GROQ_MODEL ?? "openai
 const ZONA = process.env.ASISTENTE_TZ ?? "America/Mexico_City";
 
 export type Accion = {
-  tipo: "crear" | "actualizar" | "comentar" | "archivar" | "consultar";
+  tipo: "crear" | "actualizar" | "comentar" | "archivar" | "consultar" | "datos" | "recordar";
   base: string;
   propiedades?: Json;
   contenido?: string;
@@ -24,6 +26,8 @@ export type Accion = {
   texto?: string;
   filtro?: Json | null;
   limite?: number;
+  herramienta?: string; // datos
+  params?: Json; // datos
 };
 
 export type Plan = {
@@ -46,7 +50,9 @@ Responde SIEMPRE con un único objeto JSON con esta forma exacta:
     {"tipo": "actualizar", "base": "<rol de base>", "buscar": "<palabras del título a localizar>", "propiedades": {"<campo>": <valor>}},
     {"tipo": "comentar", "base": "<rol de base>", "buscar": "<título>", "texto": "<nota a agregar>"},
     {"tipo": "archivar", "base": "<rol de base>", "buscar": "<título>"},
-    {"tipo": "consultar", "base": "<rol de base>", "filtro": {"<campo>": <valor> | {"distinto": "<opción>"}} | null, "limite": 10}
+    {"tipo": "consultar", "base": "<rol de base>", "filtro": {"<campo>": <valor> | {"distinto": "<opción>"}} | null, "limite": 10},
+    {"tipo": "datos", "herramienta": "<app_dashboard | app_pyl | app_ads | app_productos | app_ltv | app_contracargos>", "params": {"from": "AAAA-MM-DD", "to": "AAAA-MM-DD", ...}},
+    {"tipo": "recordar", "texto": "<lo que la jefa te enseñó, como regla corta y general>"}
   ]
 }
 Reglas de los valores:
@@ -58,6 +64,8 @@ Reglas de los valores:
 - "pregunta" es la frase completa y natural que se le dirá (por ejemplo "¿Cómo quieres llamar al proyecto?"), no una etiqueta.
 - Si la jefa solo saluda, pide ayuda o pregunta qué puedes hacer, responde sin acciones.
 - Nunca inventes campos ni bases que no estén en el esquema.
+- Preguntas de dinero, ventas, gasto, ROAS, márgenes, productos o clientes: usa "datos" con la herramienta y fechas adecuadas (la app responde en USD). No inventes cifras.
+- Si la jefa te corrige, te enseña algo o dice "recuerda que", "de ahora en adelante", "siempre", "nunca": agrega una acción "recordar" con la regla, además de lo que pida.
 `;
 
 const CAMPOS_SOLO_LECTURA = new Set(["created_time", "last_edited_time", "created_by", "last_edited_by", "formula", "rollup", "unique_id"]);
@@ -92,7 +100,7 @@ function describirEsquema(m: Mapa): string {
   return lineas.join("\n");
 }
 
-function sistema(m: Mapa): string {
+function sistema(m: Mapa, catalogo: string, aprendizajes: string[]): string {
   return (
     "Eres el asistente de voz de María Fernanda Rey (la jefa), dueña de tres tiendas Shopify: " +
     "Glowmmi (skincare), Balancea (salud/suplementos) y Pleena (cuidado capilar). " +
@@ -100,36 +108,15 @@ function sistema(m: Mapa): string {
     "tus respuestas se leen en voz alta, así que máximo dos frases, sin listas ni símbolos.\n\n" +
     `Hoy es ${hoy()}.\n\n` +
     "ESQUEMA DE NOTION DISPONIBLE:\n" + describirEsquema(m) + "\n\n" +
-    "REGLAS DEL ASISTENTE:\n" + REGLAS_ASISTENTE + "\n\n" + FORMATO_RESPUESTA
+    "REGLAS DEL ASISTENTE:\n" + REGLAS_ASISTENTE + "\n\n" +
+    (aprendizajes.length ? "LO QUE LA JEFA TE HA ENSEÑADO (tiene prioridad sobre lo anterior):\n" + aprendizajes.map((a) => `- ${a}`).join("\n") + "\n\n" : "") +
+    "DATOS DE LA APP (acción datos):\n" + catalogo + "\n\n" + FORMATO_RESPUESTA
   );
 }
 
 export async function pensar(m: Mapa, texto: string, historial: Turno[]): Promise<{ plan: Plan; crudo: string }> {
-  // En Vercel la variable llegó con la llave repetida en varias líneas: se usa la primera.
-  const key = process.env.GROQ_API_KEY?.split(/\s+/).find(Boolean);
-  if (!key) throw new Error("Falta GROQ_API_KEY");
-  const cuerpo = JSON.stringify({
-    model: MODELO,
-    temperature: 0.2,
-    response_format: { type: "json_object" },
-    messages: [{ role: "system", content: sistema(m) }, ...historial.slice(-10), { role: "user", content: texto }],
-  });
-  let r: Response;
-  for (let intento = 0; ; intento++) {
-    r = await fetch(GROQ_URL, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-      body: cuerpo,
-    });
-    // Plan gratis: 8k tokens/min compartidos con el bot de correos. Una espera corta suele bastar.
-    if (r.status !== 429 || intento >= 1) break;
-    const espera = Math.min(8, Number(r.headers.get("retry-after")) || 4);
-    await new Promise((res) => setTimeout(res, espera * 1000));
-  }
-  if (r.status === 429) throw new Error("Groq está saturado en este momento (límite por minuto del plan gratis). Inténtalo en un minuto.");
-  if (!r.ok) throw new Error(`Groq ${r.status}: ${(await r.text()).slice(0, 200)}`);
-  const data = await r.json();
-  const crudo: string = data.choices?.[0]?.message?.content ?? "{}";
+  const [catalogo, aprendizajes] = await Promise.all([catalogoDatos(), leerAprendizajes()]);
+  const crudo = await groq([{ role: "system", content: sistema(m, catalogo, aprendizajes) }, ...historial.slice(-10), { role: "user", content: texto }], true);
   let p: Partial<Plan> = {};
   try {
     p = JSON.parse(crudo);
@@ -148,6 +135,47 @@ export async function pensar(m: Mapa, texto: string, historial: Turno[]): Promis
   };
 }
 
+/** Convierte el JSON de las herramientas de datos en una respuesta corta para leer en voz alta. */
+export async function resumirDatos(pregunta: string, datos: string[]): Promise<string> {
+  // shortcut: 12k caracteres de datos por el límite de 8k tokens/min de Groq gratis; si se queda corto, pedir rangos más cortos.
+  const contexto = datos.join("\n\n").slice(0, 12_000);
+  return groq(
+    [
+      {
+        role: "system",
+        content:
+          "Eres el analista financiero de la jefa (tiendas Glowmmi, Balancea y Pleena). Responde en español, máximo tres frases, " +
+          "con cifras redondeadas en USD, solo con base en los datos dados; si no alcanzan para responder, dilo. Sin listas ni símbolos raros: se lee en voz alta.",
+      },
+      { role: "user", content: `Pregunta: ${pregunta}\n\nDatos de la app:\n${contexto}` },
+    ],
+    false,
+  );
+}
+
+async function groq(messages: Turno[] | { role: string; content: string }[], json: boolean): Promise<string> {
+  // En Vercel la variable llegó con la llave repetida en varias líneas: se usa la primera.
+  const key = process.env.GROQ_API_KEY?.split(/\s+/).find(Boolean);
+  if (!key) throw new Error("Falta GROQ_API_KEY");
+  const cuerpo = JSON.stringify({ model: MODELO, temperature: 0.2, ...(json ? { response_format: { type: "json_object" } } : {}), messages });
+  let r: Response;
+  for (let intento = 0; ; intento++) {
+    r = await fetch(GROQ_URL, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      body: cuerpo,
+    });
+    // Plan gratis: 8k tokens/min compartidos con el bot de correos. Una espera corta suele bastar.
+    if (r.status !== 429 || intento >= 1) break;
+    const espera = Math.min(8, Number(r.headers.get("retry-after")) || 4);
+    await new Promise((res) => setTimeout(res, espera * 1000));
+  }
+  if (r.status === 429) throw new Error("Groq está saturado en este momento (límite por minuto del plan gratis). Inténtalo en un minuto.");
+  if (!r.ok) throw new Error(`Groq ${r.status}: ${(await r.text()).slice(0, 200)}`);
+  const data = await r.json();
+  return data.choices?.[0]?.message?.content ?? (json ? "{}" : "");
+}
+
 // ======================= traducción de valores a Notion =======================
 const SINONIMOS_ROL: Record<string, string> = {
   tasks: "tareas", task: "tareas", tarea: "tareas",
@@ -155,6 +183,37 @@ const SINONIMOS_ROL: Record<string, string> = {
   idea: "ideas", notas: "ideas", nota: "ideas", notes: "ideas",
   delegacion: "delegaciones", "delegación": "delegaciones", delegations: "delegaciones",
 };
+
+/** Id de la tabla para un rol ("tareas"), un sinónimo ("tasks") o su título real. */
+export function resolverBase(m: Mapa, rol: string): string | undefined {
+  const r = (rol ?? "").toLowerCase().trim();
+  // El modelo a veces responde con el nombre en inglés o el título real de la tabla.
+  return m.roles[r] ?? m.roles[SINONIMOS_ROL[r] ?? ""] ?? Object.values(m.roles).find((bid) => m.bases[bid]?.titulo.toLowerCase() === r);
+}
+
+const hoyIso = () => new Date().toLocaleDateString("en-CA", { timeZone: ZONA });
+
+/**
+ * Una tarea nueva solo aparece en las vistas "Today" de Notion si va Delegada, con fecha y con responsable.
+ * Rellena estado y fecha (hoy) si faltan; si falta el responsable devuelve la pregunta a hacer.
+ */
+export function completarTarea(m: Mapa, a: Accion): string | null {
+  if (a.tipo !== "crear" || resolverBase(m, a.base) !== m.roles.tareas) return null;
+  const esq = m.bases[m.roles.tareas];
+  const props: Json = (a.propiedades ??= {});
+  const tiene = (campo?: string) => !!campo && Object.keys(props).some((k) => k.toLowerCase() === campo.toLowerCase()) && props[Object.keys(props).find((k) => k.toLowerCase() === campo.toLowerCase())!] != null;
+
+  const estado = esq.roles_campos.estado;
+  const delegada = esq.campos[estado ?? ""]?.opciones?.find((o) => o.toLowerCase() === "delegada");
+  if (estado && delegada && !tiene(estado) && !tiene("estado")) props[estado] = delegada;
+
+  const fecha = Object.keys(esq.campos).find((n) => esq.campos[n].tipo === "date" && /creat|creaci/i.test(n)) ?? esq.roles_campos.fecha;
+  if (fecha && !tiene(fecha) && !tiene("fecha")) props[fecha] = hoyIso();
+
+  const resp = esq.roles_campos.responsable;
+  if (resp && !tiene(resp) && !tiene("responsable")) return "¿A quién le asigno la tarea?";
+  return null;
+}
 
 export type Resultado = { texto: string; url?: string; ok: boolean };
 
@@ -170,12 +229,7 @@ export class Ejecutor {
   }
 
   private base(rol: string): [string, Base] {
-    const r = (rol ?? "").toLowerCase().trim();
-    // El modelo a veces responde con el nombre en inglés o el título real de la tabla.
-    const id =
-      this.m.roles[r] ??
-      this.m.roles[SINONIMOS_ROL[r] ?? ""] ??
-      Object.values(this.m.roles).find((bid) => this.m.bases[bid]?.titulo.toLowerCase() === r);
+    const id = resolverBase(this.m, rol);
     if (!id) throw new NotionError(`No hay una base configurada para '${rol}'`);
     return [id, this.m.bases[id]];
   }
@@ -312,6 +366,16 @@ export class Ejecutor {
   }
 
   async ejecutar(a: Accion): Promise<Resultado> {
+    if (a.tipo === "recordar") {
+      if (!a.texto?.trim()) return { ok: false, texto: "No había nada que recordar" };
+      await guardarAprendizaje(a.texto);
+      return { ok: true, texto: `Aprendido: ${a.texto}` };
+    }
+    if (a.tipo === "datos") {
+      // shortcut: 12k por llamada para no pasar el límite de Groq al resumir.
+      const r = await consultarDatos(a.herramienta ?? "", a.params ?? {}, 12_000);
+      return { ok: r.ok, texto: `DATOS ${a.herramienta}: ${r.texto}` };
+    }
     const [id, esq] = this.base(a.base ?? "");
     const nombreBase = esq.titulo;
 

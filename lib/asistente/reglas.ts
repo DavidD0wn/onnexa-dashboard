@@ -4,7 +4,7 @@
 
 export const REGLAS_ASISTENTE = `
 1. Toda idea suelta va a la base "ideas". No la conviertas en tarea salvo que la jefa diga "tarea" o dé fecha.
-2. Una tarea necesita título. Si no hay fecha ni responsable, no preguntes: guárdala y dilo.
+2. Toda tarea nueva lleva título, estado "Delegada", fecha de creación (hoy si no dicen otra) y responsable (Assigned To): así aparece en las vistas "Today" de Notion. Si no dicen para quién es, pregunta solo eso.
 3. Si la jefa dice "que lo haga X", "pásale a X", "encárgale a X" → es una delegación: base "delegaciones" si existe; si no, tarea con responsable X.
 4. Un proyecto es algo con varias tareas o que dura semanas (lanzamiento, campaña, temporada). Si la jefa dice "proyecto", créalo en "proyectos".
 5. "Revisar", "pendiente de revisar", "seguimiento" → marca el estado de revisión si la base lo tiene; si no, agrega un comentario.

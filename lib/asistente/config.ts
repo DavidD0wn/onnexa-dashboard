@@ -30,6 +30,25 @@ export async function guardarTokenNotion(token: string): Promise<void> {
   cache = { token, hasta: Date.now() + 60 * 1000 };
 }
 
+// Lo que Mafis le enseña al asistente ("recuerda que…"): se suma a las reglas en cada turno.
+const CLAVE_APRENDIZAJES = "aprendizajes";
+const MAX_APRENDIZAJES = 50; // shortcut: lista plana con tope; si crece mucho, resumirla o pasar a una tabla
+
+export async function leerAprendizajes(): Promise<string[]> {
+  const fila = await prisma.asistenteConfig.findUnique({ where: { clave: CLAVE_APRENDIZAJES } });
+  try {
+    return fila ? JSON.parse(fila.valor) : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function guardarAprendizaje(texto: string): Promise<void> {
+  const lista = [...(await leerAprendizajes()), texto.trim().slice(0, 500)].slice(-MAX_APRENDIZAJES);
+  const valor = JSON.stringify(lista);
+  await prisma.asistenteConfig.upsert({ where: { clave: CLAVE_APRENDIZAJES }, create: { clave: CLAVE_APRENDIZAJES, valor }, update: { valor } });
+}
+
 export async function leerRolesGuardados(): Promise<Record<string, string>> {
   const fila = await prisma.asistenteConfig.findUnique({ where: { clave: CLAVE_ROLES } });
   try {

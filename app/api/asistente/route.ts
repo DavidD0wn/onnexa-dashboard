@@ -7,12 +7,12 @@ import { mensajeSeguro } from "@/lib/asistente/errores";
 import { NextResponse } from "next/server";
 import { obtenerMapa } from "@/lib/asistente/mapa";
 import { leerTokenNotion } from "@/lib/asistente/config";
-import { Ejecutor, mensajeFinal, pendientesDeConfirmar, pensar, type Accion, type Turno } from "@/lib/asistente/cerebro";
+import { Ejecutor, completarTarea, mensajeFinal, pendientesDeConfirmar, pensar, resumirDatos, type Accion, type Turno } from "@/lib/asistente/cerebro";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
-const TIPOS = new Set(["crear", "actualizar", "comentar", "archivar", "consultar"]);
+const TIPOS = new Set(["crear", "actualizar", "comentar", "archivar", "consultar", "recordar"]);
 const OK_JSON = JSON.stringify({ respuesta: "ok", pregunta: null, necesita_confirmacion: false, acciones: [] });
 
 function nota(resumen: string): Turno[] {
@@ -63,6 +63,10 @@ export async function POST(req: Request) {
       { role: "assistant", content: crudo },
     ];
 
+    // Tareas: Delegada + fecha de hoy por defecto; sin responsable se pregunta antes de proponer nada.
+    const falta = plan.acciones.map((a) => completarTarea(mapa, a)).find(Boolean);
+    if (falta) return NextResponse.json({ respuesta: falta, pregunta: true, historial: turno });
+
     const avisos = pendientesDeConfirmar(mapa, plan.acciones);
     if (plan.acciones.length && (avisos.length || plan.necesita_confirmacion)) {
       return NextResponse.json({
@@ -82,10 +86,14 @@ export async function POST(req: Request) {
     }
 
     const resultados = await ejecutor.ejecutarTodo(plan.acciones);
+    // Datos de la app: el JSON no se lee en voz alta, se resume en una respuesta corta.
+    const conDatos = resultados.filter((r) => r.texto.startsWith("DATOS "));
+    const respuesta = conDatos.length ? await resumirDatos(texto, conDatos.map((r) => r.texto)) : mensajeFinal(plan, resultados);
+    const otros = resultados.filter((r) => !r.texto.startsWith("DATOS "));
     return NextResponse.json({
-      respuesta: mensajeFinal(plan, resultados),
-      resultados,
-      historial: [...turno, ...nota(resultados.map((r) => r.texto).join(" | "))],
+      respuesta,
+      resultados: otros,
+      historial: [...turno, ...nota([...otros.map((r) => r.texto), ...(conDatos.length ? [`Respuesta con datos: ${respuesta}`] : [])].join(" | "))],
     });
   } catch (e) {
     const msg = mensajeSeguro(e);
