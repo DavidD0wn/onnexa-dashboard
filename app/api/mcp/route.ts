@@ -121,17 +121,8 @@ async function llamar(nombre: string, args: any) {
   return { content: [{ type: "text", text: JSON.stringify(data) }], isError: !r.ok };
 }
 
-// Llave del MCP (variable MCP_CLAVE en Vercel). Sin llave configurada, no responde nada.
-// Va en la URL (?clave=…) para que funcione también desde claude.ai, o en el header Authorization: Bearer.
-function autorizado(req: Request): boolean {
-  const clave = process.env.MCP_CLAVE;
-  if (!clave) return false;
-  const bearer = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
-  return bearer === clave || new URL(req.url).searchParams.get("clave") === clave;
-}
-
+// Sin llave: la usan solo Fernanda y Hamlet. Las escrituras siguen pidiendo confirmación.
 export async function POST(req: Request) {
-  if (!autorizado(req)) return NextResponse.json({ jsonrpc: "2.0", id: null, error: { code: -32001, message: "Llave del MCP incorrecta o no configurada" } }, { status: 401 });
   const msg = await req.json().catch(() => null);
   if (!msg || msg.jsonrpc !== "2.0") return NextResponse.json({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "JSON-RPC inválido" } }, { status: 400 });
   if (msg.id === undefined) return new Response(null, { status: 202 }); // notificaciones (p. ej. notifications/initialized)
