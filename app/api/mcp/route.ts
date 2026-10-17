@@ -4,10 +4,55 @@
 // Es JSON-RPC a mano, sin SDK: solo initialize, tools/list y tools/call.
 // - asistente_notion / asistente_confirmar: el asistente completo (lenguaje natural + confirmación).
 // - notion_*: operaciones directas y deterministas, para clientes que ya tienen su propio modelo.
-import { NextResponse } from "next/server";
 import { POST as turno } from "../asistente/route";
 import { obtenerMapa } from "@/lib/asistente/mapa";
 import { Ejecutor, pendientesDeConfirmar, type Accion } from "@/lib/asistente/cerebro";
+import { NextRequest, NextResponse } from "next/server";
+import { GET as marcas } from "../brands/route";
+import { GET as dashboard } from "../dashboard/route";
+import { GET as pyl } from "../p-and-l/route";
+import { GET as ads } from "../meta-ads/insights/route";
+import { GET as productos } from "../products/analytics/route";
+import { GET as ltv } from "../ltv/route";
+import { GET as contracargos } from "../chargebacks/route";
+
+// Datos de la app (solo lectura): se llama al mismo handler GET que usa el dashboard,
+// así los números son idénticos. Montos en USD.
+const FECHAS = { from: "Desde, AAAA-MM-DD", to: "Hasta, AAAA-MM-DD" };
+const DATOS: Record<string, { get: (req: NextRequest) => Promise<Response>; descripcion: string; params: Record<string, string> }> = {
+  app_marcas: { get: () => marcas(), descripcion: "Marcas (Glowmmi, Balancea, Pleena…) y países con sus ids. Úsalo para saber qué id pasar en brand/brandId/country.", params: {} },
+  app_dashboard: {
+    get: dashboard,
+    descripcion: "KPIs del dashboard: ventas, pedidos, gasto en ads, ROAS, márgenes, por día. Montos en USD.",
+    params: { brand: "Id de marca (opcional, ver app_marcas)", country: "Id de país (opcional)", ...FECHAS, days: "Últimos N días si no hay from/to" },
+  },
+  app_pyl: {
+    get: pyl,
+    descripcion: "Estado de resultados (P&L): ingresos, COGS, envío, comisiones, ads, costos fijos y utilidad. USD.",
+    params: { brand: "Id de marca (opcional)", ...FECHAS, granularity: "day | week | month" },
+  },
+  app_ads: {
+    get: ads,
+    descripcion: "Meta Ads por campaña: gasto, compras, ROAS, CPA y estado.",
+    params: { brandId: "Id de marca (opcional)", dateFrom: "Desde, AAAA-MM-DD", dateTo: "Hasta, AAAA-MM-DD" },
+  },
+  app_productos: {
+    get: productos,
+    descripcion: "Analítica por producto: unidades, ingreso, COGS, margen y gasto atribuido. Puede ser una respuesta grande.",
+    params: { brandId: "Id de marca (opcional)", country: "Id de país (opcional)", ...FECHAS, days: "Últimos N días si no hay from/to" },
+  },
+  app_ltv: { get: ltv, descripcion: "Valor de vida del cliente (LTV), recompra y cohortes.", params: { brand: "Id de marca (opcional)", ...FECHAS } },
+  app_contracargos: { get: contracargos, descripcion: "Contracargos (disputas) registrados.", params: { brandId: "Id de marca (opcional)", ...FECHAS, days: "Últimos N días" } },
+};
+
+async function datos(nombre: string, args: Record<string, unknown> = {}) {
+  const url = new URL("http://mcp/");
+  for (const [k, v] of Object.entries(args)) if (v != null && v !== "" && k in DATOS[nombre].params) url.searchParams.set(k, String(v));
+  const r = await DATOS[nombre].get(new NextRequest(url));
+  const texto = await r.text();
+  // shortcut: corta respuestas enormes a 100k caracteres; si hace falta más, pedir rangos de fecha más cortos.
+  return { content: [{ type: "text", text: texto.length > 100_000 ? texto.slice(0, 100_000) + "\n…[recortado: pide un rango más corto]" : texto }], isError: !r.ok };
+}
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -84,6 +129,14 @@ const HERRAMIENTAS = [
   },
 ];
 
+HERRAMIENTAS.push(
+  ...Object.entries(DATOS).map(([name, d]) => ({
+    name,
+    description: d.descripcion,
+    inputSchema: { type: "object", properties: Object.fromEntries(Object.entries(d.params).map(([k, desc]) => [k, { type: "string", description: desc }])) } as any,
+  })),
+);
+
 const DIRECTAS = new Set(["notion_bases", "notion_consultar", "notion_crear", "notion_comentar"]);
 
 async function directa(nombre: string, a: any) {
@@ -111,6 +164,7 @@ async function directa(nombre: string, a: any) {
 }
 
 async function llamar(nombre: string, args: any) {
+  if (nombre in DATOS) return datos(nombre, args);
   if (DIRECTAS.has(nombre)) {
     const res = await directa(nombre, args);
     return { content: [{ type: "text", text: res.texto }], isError: !res.ok };
