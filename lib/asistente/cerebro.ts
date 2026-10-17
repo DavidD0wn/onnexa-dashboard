@@ -64,7 +64,7 @@ Reglas de los valores:
 - "pregunta" es la frase completa y natural que se le dirá (por ejemplo "¿Cómo quieres llamar al proyecto?"), no una etiqueta.
 - Si la jefa solo saluda, pide ayuda o pregunta qué puedes hacer, responde sin acciones.
 - Nunca inventes campos ni bases que no estén en el esquema.
-- Preguntas de dinero, ventas, gasto, ROAS, márgenes, productos o clientes: usa "datos" con la herramienta y fechas adecuadas (la app responde en USD). No inventes cifras.
+- Preguntas de dinero, ventas, gasto, ROAS, márgenes, productos o clientes: usa "datos" con la herramienta y fechas adecuadas (la app responde en USD). Si no dice tienda, usa todas (sin parámetro de marca); no preguntes la tienda. No inventes cifras.
 - Si la jefa te corrige, te enseña algo o dice "recuerda que", "de ahora en adelante", "siempre", "nunca": agrega una acción "recordar" con la regla, además de lo que pida.
 `;
 
